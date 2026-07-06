@@ -692,7 +692,7 @@ export default function OperationDetailPage({
     mutationFn: async ({ feedbackId, comment }: { feedbackId: string; comment?: string }) => {
       const res = await api.post(
         `/operations/${id}/feedback/${feedbackId}/approve`,
-        comment ? { reason: comment } : {}
+        comment ? { notes: comment } : {}
       );
       return res.data;
     },
@@ -5039,9 +5039,26 @@ export default function OperationDetailPage({
             <Button variant="outline" onClick={() => setShowTransitionConfirm(null)}>Cancel</Button>
             <Button
               variant={showTransitionConfirm?.destructive ? "destructive" : "default"}
-              disabled={transitionMutation.isPending}
+              disabled={transitionMutation.isPending || approveFeedbackMutation.isPending}
               onClick={() => {
                 if (!showTransitionConfirm) return;
+                // Approving truck feedback is what activates the operation. Route this
+                // step through the feedback-approve endpoint so the feedback record and
+                // the operation status stay in sync — the generic transition only moves
+                // the operation and would leave the feedback stuck as "pending".
+                if (op?.status === "feedback_submitted" && showTransitionConfirm.to === "active") {
+                  const pendingFb = feedbacks?.find(
+                    (f) => f.status === "pending" || f.status === "resubmitted"
+                  );
+                  if (pendingFb) {
+                    approveFeedbackMutation.mutate({
+                      feedbackId: pendingFb.id,
+                      comment: transitionNotes.trim() || undefined,
+                    });
+                    setShowTransitionConfirm(null);
+                    return;
+                  }
+                }
                 transitionMutation.mutate({
                   to_status: showTransitionConfirm.to,
                   reason: transitionNotes.trim() || undefined,

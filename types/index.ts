@@ -455,7 +455,7 @@ export interface TruckFeedback {
   submitted_by: string;
   reviewed_by?: string;
   truck_ids: string[];
-  status: "pending" | "approved" | "rejected";
+  status: "pending" | "approved" | "rejected" | "resubmitted";
   readiness_summary: string;
   truck_details: Record<string, unknown>;
   rejection_reason?: string;

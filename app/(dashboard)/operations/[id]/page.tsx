@@ -233,8 +233,9 @@ function getAvailableTransitions(
         ? [{ to: "pfi_linked", label: "Link PFI" }]
         : [{ to: "vessel_operations", label: "Start Vessel Ops" }];
     case "pending_completion":
+      // Delivery is done. Finance raises the final invoice next (→ invoiced),
+      // which is what advances toward completion. BM can only bounce it back.
       return [
-        { to: "completed", label: "Complete Operation" },
         { to: "active",    label: "Return to Active", destructive: true },
       ];
     case "vessel_operations":
@@ -246,7 +247,11 @@ function getAvailableTransitions(
     case "payment_processing":
       return [{ to: "payment_confirmed", label: "Confirm Payment" }];
     case "payment_confirmed":
-      return [{ to: "invoiced",          label: "Mark Invoiced" }];
+      // Truck-only: next is physical delivery + completion (Logistics), then Finance
+      // raises the actual invoice from the Finance tab. No raw status-flip to invoiced.
+      return op.type === "truck_only"
+        ? []
+        : [{ to: "invoiced", label: "Mark Invoiced" }];
     case "invoiced":
       return [{ to: "completed",         label: "Complete Operation" }];
     default:
@@ -1681,16 +1686,12 @@ export default function OperationDetailPage({
                   )}
                 </div>
               </div>
+              <div className="rounded-md bg-orange-100/60 px-3 py-2 text-xs text-orange-800">
+                Next step: <span className="font-semibold">Finance</span> raises the final invoice
+                from the Finance tab (→ Invoiced), then the operation completes when the invoice is
+                marked paid.
+              </div>
               <div className="flex gap-2 flex-wrap pt-1">
-                <Button
-                  size="sm"
-                  className="bg-emerald-600 hover:bg-emerald-700"
-                  disabled={transitionMutation.isPending}
-                  onClick={() => setShowTransitionConfirm({ to: "completed", label: "Complete Operation" })}
-                >
-                  <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" />
-                  Complete Operation
-                </Button>
                 <Button
                   size="sm"
                   variant="outline"
@@ -3975,12 +3976,12 @@ export default function OperationDetailPage({
                             </div>
                           )}
 
-                          {/* Submit for BM review — truck_only only (pending_completion is not in full/vessel flow) */}
-                          {firstPendingIdx === -1 && (isLO || isOS) && op.status === "active" && op.type === "truck_only" && (
+                          {/* Submit completion — truck_only, after payment is confirmed (money-first flow) */}
+                          {firstPendingIdx === -1 && (isLO || isOS) && op.status === "payment_confirmed" && op.type === "truck_only" && (
                             <div className="px-5 py-3 border-t bg-green-50/30 flex items-center justify-between gap-3">
                               <div className="flex items-center gap-2">
                                 <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                                <p className="text-sm font-medium text-emerald-800">All stages complete — ready for BM review</p>
+                                <p className="text-sm font-medium text-emerald-800">All deliveries complete — submit for completion</p>
                               </div>
                               <Button
                                 size="sm"
@@ -3989,8 +3990,15 @@ export default function OperationDetailPage({
                                 onClick={() => submitCompletionMutation.mutate()}
                               >
                                 {submitCompletionMutation.isPending && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
-                                Submit for BM Review
+                                Submit Completion
                               </Button>
+                            </div>
+                          )}
+                          {/* Deliveries done but payment not yet confirmed — waiting on Finance */}
+                          {firstPendingIdx === -1 && (isLO || isOS) && (op.status === "active" || op.status === "pfi_linked" || op.status === "payment_processing") && op.type === "truck_only" && (
+                            <div className="px-5 py-3 border-t bg-amber-50/40 flex items-center gap-2">
+                              <Loader2 className="w-4 h-4 text-amber-600 shrink-0" />
+                              <p className="text-sm font-medium text-amber-800">All deliveries recorded — awaiting payment confirmation from Finance before completion.</p>
                             </div>
                           )}
                           {/* For full/vessel operations: truck stages done is informational; BM drives vessel ops next */}

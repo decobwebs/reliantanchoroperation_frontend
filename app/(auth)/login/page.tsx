@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Loader2, Anchor, Eye, EyeOff, AlertCircle } from "lucide-react";
+import { Loader2, Eye, EyeOff, AlertCircle } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { getErrorMessage } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -64,8 +64,9 @@ export default function LoginPage() {
       <div className="relative w-full max-w-md">
         {/* Logo */}
         <div className="flex flex-col items-center mb-8">
-          <div className="flex items-center justify-center w-16 h-16 rounded-2xl bg-[oklch(0.82_0.15_75)] mb-4 shadow-lg">
-            <Anchor className="w-8 h-8 text-[oklch(0.15_0.025_240)]" />
+          <div className="flex items-center justify-center w-20 h-20 rounded-2xl bg-white mb-4 shadow-lg overflow-hidden">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/logo.jpeg" alt="Reliant Anchor Logistics" className="w-full h-full object-contain p-1" />
           </div>
           <h1 className="text-2xl font-bold text-white tracking-tight">
             Reliant Anchor

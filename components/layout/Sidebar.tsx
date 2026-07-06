@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  Anchor,
   LayoutDashboard,
   ClipboardList,
   CheckSquare,
@@ -131,8 +130,9 @@ export function Sidebar() {
     >
       {/* Logo */}
       <div className="flex items-center gap-3 px-4 py-5 border-b border-sidebar-border">
-        <div className="shrink-0 w-8 h-8 rounded-lg bg-sidebar-primary flex items-center justify-center">
-          <Anchor className="w-4 h-4 text-sidebar-primary-foreground" />
+        <div className="shrink-0 w-9 h-9 rounded-lg bg-white flex items-center justify-center overflow-hidden ring-1 ring-sidebar-border">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo.jpeg" alt="Reliant Anchor Logistics" className="w-full h-full object-contain" />
         </div>
         {!collapsed && (
           <div className="overflow-hidden">

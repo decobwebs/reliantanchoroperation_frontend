@@ -5,6 +5,11 @@ import { Providers } from "./providers";
 export const metadata: Metadata = {
   title: "Reliant Anchor — Operations Management",
   description: "RAOMS — Maritime bunker operations management system",
+  icons: {
+    icon: "/logo.jpeg",
+    shortcut: "/logo.jpeg",
+    apple: "/logo.jpeg",
+  },
 };
 
 export default function RootLayout({

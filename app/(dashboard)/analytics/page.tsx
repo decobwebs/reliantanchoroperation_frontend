@@ -90,7 +90,7 @@ export default function AnalyticsPage() {
                   <XAxis type="number" tick={{fontSize:11}} axisLine={false} tickLine={false} />
                   <YAxis type="category" dataKey="status" tick={{fontSize:10}} width={110} axisLine={false} tickLine={false} />
                   <Tooltip contentStyle={{fontSize:12,borderRadius:8}} />
-                  <Bar dataKey="count" name="Count" fill="oklch(0.82 0.15 75)" radius={[0,4,4,0]} />
+                  <Bar dataKey="count" name="Count" fill="oklch(0.58 0.125 247)" radius={[0,4,4,0]} />
                 </BarChart>
               </ResponsiveContainer>
             </CardContent>

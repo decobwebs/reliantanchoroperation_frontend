@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
-import { Loader2, Anchor, Bell, LogOut } from "lucide-react";
+import { Loader2, Bell, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { getInitials } from "@/lib/utils";
@@ -48,8 +48,9 @@ export default function PortalLayout({
         <header className="bg-[oklch(0.18_0.06_240)] text-white sticky top-0 z-20 shadow-md">
           <div className="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-[oklch(0.82_0.15_75)] flex items-center justify-center">
-                <Anchor className="w-4 h-4 text-[oklch(0.15_0.025_240)]" />
+              <div className="w-9 h-9 rounded-lg bg-white flex items-center justify-center overflow-hidden ring-1 ring-white/20">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/logo.jpeg" alt="Reliant Anchor Logistics" className="w-full h-full object-contain" />
               </div>
               <span className="font-bold text-sm tracking-tight">
                 Reliant Anchor
@@ -75,8 +76,8 @@ export default function PortalLayout({
             </nav>
 
             <div className="flex items-center gap-3">
-              <Avatar className="w-7 h-7 bg-[oklch(0.82_0.15_75)]">
-                <AvatarFallback className="text-[11px] bg-[oklch(0.82_0.15_75)] text-[oklch(0.15_0.025_240)] font-semibold">
+              <Avatar className="w-7 h-7 bg-[oklch(0.58_0.125_247)]">
+                <AvatarFallback className="text-[11px] bg-[oklch(0.58_0.125_247)] text-white font-semibold">
                   {getInitials(user.full_name)}
                 </AvatarFallback>
               </Avatar>

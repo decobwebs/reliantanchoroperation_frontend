@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Anchor } from "lucide-react";
 
 export const metadata: Metadata = {
   title: "Privacy Policy — Reliant Anchor",
@@ -27,8 +26,9 @@ export default function PrivacyPage() {
       {/* Header */}
       <header className="border-b border-border bg-background/95 backdrop-blur-sm sticky top-0 z-40">
         <div className="max-w-5xl mx-auto px-6 py-3 flex items-center gap-3">
-          <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-[oklch(0.82_0.15_75)]">
-            <Anchor className="w-4 h-4 text-[oklch(0.15_0.025_240)]" />
+          <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-white overflow-hidden ring-1 ring-black/10">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/logo.jpeg" alt="Reliant Anchor" className="w-full h-full object-contain" />
           </div>
           <Link href="/login" className="font-bold text-foreground text-sm">Reliant Anchor</Link>
           <span className="text-muted-foreground">/</span>

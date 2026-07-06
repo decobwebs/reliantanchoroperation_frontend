@@ -27,9 +27,11 @@ import {
 import { formatCurrency, formatDate } from "@/lib/utils";
 import type { ApiResponse, PaginatedData, Operation, OperationStatus } from "@/types";
 
-// Finance-relevant statuses
+// Finance-relevant statuses — ordered per new commercial flow:
+// PFI (advance) → payment confirmed → ops → BDN → invoice → complete
 const FINANCE_STATUSES: OperationStatus[] = [
   "pfi_linked",
+  "payment_processing",
   "payment_confirmed",
   "vessel_operations",
   "bdn_pending",
@@ -63,7 +65,7 @@ export default function FinancePage() {
     queryKey: ["finance-operations"],
     queryFn: async () => {
       const res = await api.get<ApiResponse<PaginatedData<Operation>>>(
-        "/operations?page=1&page_size=50"
+        "/operations?page=1&per_page=50"
       );
       const all: Operation[] = res.data.data.items;
       return all.filter((op) =>

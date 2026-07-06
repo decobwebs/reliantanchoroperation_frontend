@@ -160,9 +160,18 @@ export default function LoginPage() {
           </CardContent>
         </Card>
 
-        <p className="text-center text-xs text-white/30 mt-6">
-          © {new Date().getFullYear()} Reliant Anchor Ltd. All rights reserved.
-        </p>
+        <div className="text-center mt-6 space-y-2">
+          <p className="text-xs text-white/30">
+            © {new Date().getFullYear()} Reliant Anchor Ltd. All rights reserved.
+          </p>
+          <div className="flex items-center justify-center gap-4 text-xs text-white/20">
+            <a href="/privacy" className="hover:text-white/50 transition-colors">Privacy Policy</a>
+            <span>·</span>
+            <a href="/terms" className="hover:text-white/50 transition-colors">Terms of Use</a>
+            <span>·</span>
+            <a href="/cookies" className="hover:text-white/50 transition-colors">Cookies</a>
+          </div>
+        </div>
       </div>
     </div>
   );

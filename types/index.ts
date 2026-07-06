@@ -178,6 +178,7 @@ export interface PFI {
   pfi_number: string;
   operation_id?: string;
   linked_by: string;
+  pfi_type: "client_proforma" | "supplier_invoice";
   amount: string;
   currency: string;
   exchange_rate?: string;
@@ -250,6 +251,8 @@ export interface Invoice {
   paid_at?: string;
   notes?: string;
   created_at: string;
+  advance_paid?: string;   // sum of advance payments received via PFI
+  balance_due?: string;    // total_amount - advance_paid
 }
 
 // ─── Fleet ───────────────────────────────────────────────────────────────────
@@ -325,6 +328,10 @@ export interface TruckOperation {
   loading_location?: string;
   discharge_location?: string;
   destination_vessel_id?: string;
+  destination_vessel_name?: string;
+  discharge_approved?: boolean | null;
+  discharge_approved_by?: string;
+  discharge_approved_at?: string;
   waybill_number?: string;
   waybill_url?: string;
   departed_parking_at?: string;
@@ -472,6 +479,47 @@ export interface Vessel {
   notes?: string;
   created_at: string;
   updated_at: string;
+}
+
+// ─── Vessel Activities ────────────────────────────────────────────────────────
+
+export type VesselActivityStatus = "pending" | "active" | "completed" | "cancelled";
+
+export interface VesselActivity {
+  id: string;
+  activity_number: string;
+  operation_id: string;
+  vessel_id: string;
+  vessel_name?: string;
+  vessel_current_rob_mt?: string;
+  assigned_to: string;
+  assigned_by: string;
+
+  initial_rob_mt?: string;
+  truck_delivered_mt?: string;
+  vessel_received_mt?: string;
+  variance_mt?: string;
+  previous_rob_mt?: string;
+  new_rob_mt?: string;
+  quantity_discharged_mt?: string;
+  final_rob_mt?: string;
+
+  product_type?: string;
+  temperature_celsius?: string;
+  density?: string;
+  spillage_mt?: string;
+
+  bunkering_start_at?: string;
+  bunkering_end_at?: string;
+  discharge_start_at?: string;
+  discharge_end_at?: string;
+
+  status: VesselActivityStatus;
+  notes?: string;
+  completion_notes?: string;
+  started_at?: string;
+  completed_at?: string;
+  created_at: string;
 }
 
 // ─── BDN ─────────────────────────────────────────────────────────────────────

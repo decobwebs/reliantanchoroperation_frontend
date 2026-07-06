@@ -8,6 +8,7 @@ import {
   ClipboardList,
   CheckSquare,
   DollarSign,
+  FileText,
   Truck,
   Ship,
   BarChart3,
@@ -49,7 +50,7 @@ const NAV_ITEMS: NavItem[] = [
     href: "/operations",
     label: "Operations",
     icon: ClipboardList,
-    roles: ["bunker_manager", "ops_supervisor", "logistics_officer"],
+    roles: ["bunker_manager", "ops_supervisor", "logistics_officer", "marine_manager", "finance_manager"],
   },
 
   // ── Task management ──────────────────────────────────────────────────────
@@ -94,6 +95,12 @@ const NAV_ITEMS: NavItem[] = [
     href: "/admin",
     label: "User Admin",
     icon: Users,
+    roles: ["bunker_manager"],
+  },
+  {
+    href: "/documents",
+    label: "Document Hub",
+    icon: FileText,
     roles: ["bunker_manager"],
   },
   {

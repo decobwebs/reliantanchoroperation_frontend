@@ -8,7 +8,7 @@ import { Header } from "@/components/layout/Header";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { formatRelative } from "@/lib/utils";
+import { formatDateTime } from "@/lib/utils";
 import type { ApiResponse, PaginatedData, Notification } from "@/types";
 
 export default function NotificationsPage() {
@@ -90,8 +90,8 @@ export default function NotificationsPage() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between gap-2">
                           <p className="text-sm font-medium">{n.title}</p>
-                          <span className="text-[10px] text-muted-foreground flex-shrink-0">
-                            {formatRelative(n.created_at)}
+                          <span className="text-[10px] text-muted-foreground flex-shrink-0 whitespace-nowrap">
+                            {formatDateTime(n.created_at)}
                           </span>
                         </div>
                         <p className="text-xs text-muted-foreground mt-0.5">

@@ -199,7 +199,7 @@ export function OpsSupervisorDashboard() {
         </div>
 
         {/* Fleet quick view */}
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Link href="/fleet">
             <Card className="border-0 shadow-sm hover:shadow-md transition-shadow cursor-pointer">
               <CardContent className="p-4 flex items-center gap-4">

@@ -321,7 +321,7 @@ export function BunkerManagerDashboard() {
         </Card>
 
         {/* Quick action shortcuts */}
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           {[
             { href: "/operations", label: "New Operation", icon: PlusCircle, desc: "Create a bunker op" },
             { href: "/fleet", label: "Add Truck", icon: Truck, desc: "Register fleet truck" },

@@ -247,6 +247,34 @@ export default function OperationsPage() {
                 <Loader2 className="w-7 h-7 animate-spin text-primary" />
               </div>
             ) : (
+              <>
+              {/* Mobile: stacked cards (the wide table is hidden below md) */}
+              <div className="md:hidden divide-y">
+                {data?.items?.length ? (
+                  data.items.map((op) => (
+                    <button
+                      key={op.id}
+                      onClick={() => router.push(`/operations/${op.id}`)}
+                      className="w-full text-left px-4 py-3 hover:bg-muted/50 transition-colors"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-mono text-sm font-semibold text-primary">{op.operation_number}</span>
+                        <StatusBadge status={op.status as OperationStatus} />
+                      </div>
+                      <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                        <Badge variant="outline" className="text-[10px]">{OP_TYPE_LABELS[op.type] ?? op.type}</Badge>
+                        <span>{op.expected_volume_mt ? `${parseFloat(op.expected_volume_mt).toLocaleString()} MT` : "—"} {op.currency}</span>
+                        <span>{formatDateTime(op.created_at)}</span>
+                      </div>
+                    </button>
+                  ))
+                ) : (
+                  <div className="text-center py-16 text-muted-foreground text-sm">No operations found</div>
+                )}
+              </div>
+
+              {/* Desktop: full table */}
+              <div className="hidden md:block">
               <Table>
                 <TableHeader>
                   <TableRow className="hover:bg-transparent border-b">
@@ -325,6 +353,8 @@ export default function OperationsPage() {
                   )}
                 </TableBody>
               </Table>
+              </div>
+              </>
             )}
           </CardContent>
         </Card>

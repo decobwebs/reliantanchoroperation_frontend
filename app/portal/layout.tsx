@@ -46,16 +46,16 @@ export default function PortalLayout({
       <div className="min-h-screen bg-muted/30">
         {/* Top nav bar for clients */}
         <header className="bg-[oklch(0.18_0.06_240)] text-white sticky top-0 z-20 shadow-md">
-          <div className="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-lg bg-white flex items-center justify-center overflow-hidden ring-1 ring-white/20">
+          <div className="max-w-6xl mx-auto px-4 md:px-6 py-3 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 md:gap-3 min-w-0">
+              <div className="w-9 h-9 shrink-0 rounded-lg bg-white flex items-center justify-center overflow-hidden ring-1 ring-white/20">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src="/logo.jpeg" alt="Reliant Anchor Logistics" className="w-full h-full object-contain" />
               </div>
-              <span className="font-bold text-sm tracking-tight">
+              <span className="font-bold text-sm tracking-tight truncate">
                 Reliant Anchor
               </span>
-              <span className="text-white/30 text-xs">Client Portal</span>
+              <span className="text-white/30 text-xs hidden sm:inline">Client Portal</span>
             </div>
 
             <nav className="hidden md:flex items-center gap-1">
@@ -94,9 +94,29 @@ export default function PortalLayout({
               </Button>
             </div>
           </div>
+
+          {/* Mobile nav row — the desktop inline nav is hidden below md */}
+          <div className="md:hidden border-t border-white/10">
+            <div className="max-w-6xl mx-auto px-4 flex gap-1 py-1.5 overflow-x-auto">
+              {NAV.map((n) => (
+                <Link
+                  key={n.href}
+                  href={n.href}
+                  className={cn(
+                    "px-3 py-1.5 rounded-md text-sm font-medium whitespace-nowrap transition-colors",
+                    pathname === n.href
+                      ? "bg-white/15 text-white"
+                      : "text-white/70 hover:text-white hover:bg-white/10"
+                  )}
+                >
+                  {n.label}
+                </Link>
+              ))}
+            </div>
+          </div>
         </header>
 
-        <main className="max-w-6xl mx-auto px-6 py-8">{children}</main>
+        <main className="max-w-6xl mx-auto px-4 md:px-6 py-6 md:py-8">{children}</main>
       </div>
     </TooltipProvider>
   );

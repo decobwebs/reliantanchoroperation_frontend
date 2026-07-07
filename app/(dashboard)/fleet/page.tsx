@@ -117,7 +117,7 @@ function CreateTruckDialog({
           <DialogTitle>Register New Truck</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit((d) => mutation.mutate(d))} className="space-y-4 mt-2">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label>Truck Number <span className="text-destructive">*</span></Label>
               <Input placeholder="e.g. TRK-001" {...register("truck_number")} />
@@ -129,7 +129,7 @@ function CreateTruckDialog({
               {errors.capacity_mt && <p className="text-xs text-destructive">{errors.capacity_mt.message}</p>}
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label>Driver Name <span className="text-muted-foreground font-normal text-xs">(optional)</span></Label>
               <Input placeholder="Full name" {...register("driver_name")} />
@@ -229,7 +229,7 @@ export default function FleetPage() {
       />
 
       <div className="p-6 space-y-6">
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <StatCard title="Total Trucks" value={trucks?.length ?? 0} icon={Truck} color="blue" />
           <StatCard title="Available" value={available} icon={Truck} color="emerald" />
           <StatCard title="Assigned" value={assigned} icon={Truck} color="amber" />

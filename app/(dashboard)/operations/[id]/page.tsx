@@ -1896,7 +1896,7 @@ export default function OperationDetailPage({
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-4">
             <Tabs defaultValue="overview">
-              <TabsList className="flex-wrap h-auto">
+              <TabsList className="h-auto justify-start md:justify-center flex-nowrap overflow-x-auto max-w-full md:flex-wrap md:overflow-visible md:max-w-none">
                 <TabsTrigger value="overview">Overview</TabsTrigger>
 
                 {canSeeTasks && (

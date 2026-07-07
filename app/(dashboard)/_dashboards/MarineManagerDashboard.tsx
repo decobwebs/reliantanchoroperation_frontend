@@ -189,7 +189,7 @@ export function MarineManagerDashboard() {
 
                         {/* ROB strip — shown once receipt is recorded */}
                         {(activity.previous_rob_mt || activity.vessel_received_mt) && (
-                          <div className="mt-2 grid grid-cols-4 gap-1 text-[10px]">
+                          <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-1 text-[10px]">
                             {[
                               ["Prev ROB", activity.previous_rob_mt],
                               ["Received", activity.vessel_received_mt],

@@ -210,7 +210,7 @@ export default function DocumentHubPage() {
               )}
             </div>
 
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="space-y-1">
                 <Label className="text-xs text-muted-foreground">Document Type</Label>
                 <Select value={docType} onValueChange={(v) => { setDocType(v); setPage(1); }}>

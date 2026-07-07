@@ -27,15 +27,16 @@ import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { UserRole } from "@/types";
 
-interface NavItem {
+export interface NavItem {
   href: string;
   label: string;
   icon: React.ElementType;
   roles: UserRole[];
 }
 
-// Role-scoped navigation — each role sees only what's relevant to their job
-const NAV_ITEMS: NavItem[] = [
+// Role-scoped navigation — each role sees only what's relevant to their job.
+// Exported so the mobile drawer (MobileNav) reuses the exact same list.
+export const NAV_ITEMS: NavItem[] = [
   // ── Shared ──────────────────────────────────────────────────────────────
   {
     href: "/",
@@ -124,7 +125,8 @@ export function Sidebar() {
   return (
     <aside
       className={cn(
-        "relative flex flex-col h-full bg-sidebar text-sidebar-foreground transition-all duration-300 border-r border-sidebar-border",
+        // Desktop-only: the mobile drawer (MobileNav) replaces this below md.
+        "relative hidden md:flex flex-col h-full bg-sidebar text-sidebar-foreground transition-all duration-300 border-r border-sidebar-border",
         collapsed ? "w-16" : "w-60"
       )}
     >

@@ -211,6 +211,10 @@ const ELIGIBLE_TASK_TYPES: Record<string, { value: string; label: string }[]> = 
 
 // ─── Transition logic ────────────────────────────────────────────────────────
 
+// BM-actionable milestones only. Money-first for every type: PFI + payment come
+// before operations. Payment, invoicing, BDN and delivery are owned by their own
+// tabs/roles — for those states the BM sees a "next step" hint, not a button that
+// would 422. See getNextStepHint below.
 function getAvailableTransitions(
   op: Operation
 ): { to: OperationStatus; label: string; destructive?: boolean }[] {
@@ -229,33 +233,49 @@ function getAvailableTransitions(
     case "feedback_approved":
       return [{ to: "active", label: "Activate Operation" }];
     case "active":
-      return op.type === "truck_only"
-        ? [{ to: "pfi_linked", label: "Link PFI" }]
-        : [{ to: "vessel_operations", label: "Start Vessel Ops" }];
-    case "pending_completion":
-      // Delivery is done. Finance raises the final invoice next (→ invoiced),
-      // which is what advances toward completion. BM can only bounce it back.
-      return [
-        { to: "active",    label: "Return to Active", destructive: true },
-      ];
-    case "vessel_operations":
-      return [{ to: "bdn_pending",       label: "Mark BDN Pending" }];
-    case "bdn_approved":
-      return [{ to: "pfi_linked",        label: "Link PFI" }];
-    case "pfi_linked":
-      return [{ to: "payment_processing", label: "Process Payment" }];
-    case "payment_processing":
-      return [{ to: "payment_confirmed", label: "Confirm Payment" }];
+      // Money-first for ALL types: link the PFI before any operations begin.
+      return [{ to: "pfi_linked", label: "Link PFI" }];
     case "payment_confirmed":
-      // Truck-only: next is physical delivery + completion (Logistics), then Finance
-      // raises the actual invoice from the Finance tab. No raw status-flip to invoiced.
+      // Truck: deliveries are recorded in the Truck Reports tab. Vessel/Full:
+      // the BM kicks off vessel operations now that payment is secured.
       return op.type === "truck_only"
         ? []
-        : [{ to: "invoiced", label: "Mark Invoiced" }];
+        : [{ to: "vessel_operations", label: "Start Vessel Ops" }];
+    case "pending_completion":
+      // Delivery done. Finance raises the final invoice next (→ invoiced). BM can
+      // only bounce it back to Active.
+      return [
+        { to: "active", label: "Return to Active", destructive: true },
+      ];
     case "invoiced":
-      return [{ to: "completed",         label: "Complete Operation" }];
+      return [{ to: "completed", label: "Complete Operation" }];
     default:
+      // pfi_linked, payment_processing, vessel_operations, bdn_pending,
+      // bdn_approved → driven by the Finance / BDN tabs. No BM stage button.
       return [];
+  }
+}
+
+// Role-aware "what happens next" for states the BM does not action directly.
+// Keeps the operation moving without showing buttons that would fail permission.
+function getNextStepHint(op: Operation): { who: string; text: string } | null {
+  switch (op.status) {
+    case "pfi_linked":
+      return { who: "Finance", text: "PFI linked. Finance records the client's payment in the Finance tab." };
+    case "payment_processing":
+      return { who: "Finance", text: "Payment recorded. Finance confirms it in the Finance tab." };
+    case "payment_confirmed":
+      return op.type === "truck_only"
+        ? { who: "Logistics", text: "Payment confirmed. Logistics records the deliveries in the Truck Reports tab, then submits completion." }
+        : null; // vessel/full has a Start Vessel Ops button instead
+    case "vessel_operations":
+      return { who: "Marine", text: "Vessel operations underway. Record the delivery, then raise the BDN in the BDN tab." };
+    case "bdn_pending":
+      return { who: "Bunker Manager", text: "A BDN has been submitted. Review it in the BDN tab — approve or reject." };
+    case "bdn_approved":
+      return { who: "Finance", text: "BDN approved. Finance raises the final invoice in the Finance tab." };
+    default:
+      return null;
   }
 }
 
@@ -1805,6 +1825,25 @@ export default function OperationDetailPage({
             </CardContent>
           </Card>
         )}
+
+        {/* ── BM: role-aware "next step" hint (states the BM doesn't action) */}
+        {isBM && availableTransitions.length === 0 && (() => {
+          const hint = getNextStepHint(op);
+          if (!hint) return null;
+          return (
+            <Card className="border-0 shadow-sm bg-accent/10">
+              <CardContent className="p-4 flex items-start gap-3">
+                <Clock className="w-4 h-4 text-accent-foreground/70 mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-sm font-semibold">
+                    Next step · <span className="text-accent-foreground">{hint.who}</span>
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{hint.text}</p>
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })()}
 
         {/* ── Reopen button (BM only, completed/archived/cancelled) */}
         {isReopenable && (

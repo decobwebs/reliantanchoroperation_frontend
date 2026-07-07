@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
 import { Bell, Check, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { api, getErrorMessage } from "@/lib/api";
@@ -13,6 +14,7 @@ import type { ApiResponse, PaginatedData, Notification } from "@/types";
 
 export default function NotificationsPage() {
   const qc = useQueryClient();
+  const router = useRouter();
 
   const { data, isLoading } = useQuery({
     queryKey: ["notifications"],
@@ -40,7 +42,12 @@ export default function NotificationsPage() {
       qc.invalidateQueries({ queryKey: ["notifications"] });
       qc.invalidateQueries({ queryKey: ["notifications-unread-count"] });
     },
+    onError: (err) => toast.error(getErrorMessage(err)),
   });
+
+  // Where a notification points to. Prefer an explicit action_url, else the operation.
+  const targetOf = (n: { action_url?: string | null; operation_id?: string | null }) =>
+    n.action_url || (n.operation_id ? `/operations/${n.operation_id}` : null);
 
   const notifications = data?.items ?? [];
   const unread = notifications.filter((n) => !n.is_read).length;
@@ -75,12 +82,20 @@ export default function NotificationsPage() {
             <CardContent className="p-0">
               {notifications.length ? (
                 <div className="divide-y">
-                  {notifications.map((n) => (
+                  {notifications.map((n) => {
+                    const target = targetOf(n);
+                    return (
                     <div
                       key={n.id}
+                      role={target ? "button" : undefined}
+                      tabIndex={target ? 0 : undefined}
+                      onClick={() => {
+                        if (!n.is_read) markRead.mutate(n.id);
+                        if (target) router.push(target);
+                      }}
                       className={`flex items-start gap-4 px-5 py-4 transition-colors ${
                         !n.is_read ? "bg-primary/5" : ""
-                      }`}
+                      } ${target ? "cursor-pointer hover:bg-muted/40" : ""}`}
                     >
                       <div
                         className={`mt-0.5 w-2 h-2 rounded-full flex-shrink-0 ${
@@ -108,13 +123,14 @@ export default function NotificationsPage() {
                           variant="ghost"
                           size="icon"
                           className="h-6 w-6 flex-shrink-0"
-                          onClick={() => markRead.mutate(n.id)}
+                          onClick={(e) => { e.stopPropagation(); markRead.mutate(n.id); }}
                         >
                           <Check className="w-3 h-3" />
                         </Button>
                       )}
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : (
                 <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">

@@ -11,13 +11,20 @@ import { Header } from "@/components/layout/Header";
 import { StatCard } from "@/components/shared/StatCard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatCurrency, STATUS_LABELS } from "@/lib/utils";
+import { useAuth } from "@/hooks/useAuth";
+import { canAccessAnalytics } from "@/lib/auth";
+import { QueryError } from "@/components/shared/QueryError";
 import type { ApiResponse, AnalyticsDashboard, OperationStatus } from "@/types";
 
 const MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
 export default function AnalyticsPage() {
-  const { data: analytics, isLoading } = useQuery({
+  const { user } = useAuth();
+  const canSee = user ? canAccessAnalytics(user.role) : true;
+
+  const { data: analytics, isLoading, isError, error, refetch } = useQuery({
     queryKey: ["analytics-dashboard"],
+    enabled: canSee,
     queryFn: async () => {
       const res = await api.get<ApiResponse<AnalyticsDashboard>>("/analytics/dashboard");
       return res.data.data;
@@ -26,6 +33,7 @@ export default function AnalyticsPage() {
 
   const { data: monthly } = useQuery({
     queryKey: ["analytics-monthly"],
+    enabled: canSee,
     queryFn: async () => {
       const res = await api.get<ApiResponse<{month:number;count:number}[]>>(
         `/analytics/operations/monthly?year=${new Date().getFullYear()}`
@@ -33,6 +41,24 @@ export default function AnalyticsPage() {
       return res.data.data.map((m) => ({ month: MONTH_NAMES[m.month - 1], count: m.count }));
     },
   });
+
+  if (user && !canSee) {
+    return (
+      <div>
+        <Header title="Analytics" subtitle="Restricted" />
+        <div className="p-6"><QueryError error={{ isAxiosError: true, response: { status: 403 } }} /></div>
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div>
+        <Header title="Analytics" subtitle="Operational insights" />
+        <div className="p-6"><QueryError error={error} onRetry={() => refetch()} /></div>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return <div className="flex items-center justify-center h-full">

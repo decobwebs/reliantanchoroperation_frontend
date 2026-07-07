@@ -131,35 +131,33 @@ export function BunkerManagerDashboard() {
           />
         </div>
 
-        {/* Revenue row */}
-        {revenue.length > 0 && (
-          <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-            {revenue.map((r) => (
-              <StatCard
-                key={r.currency}
-                title={`Revenue (${r.currency})`}
-                value={formatCurrency(r.total_amount, r.currency)}
-                subtitle={`${r.payment_count} payment${r.payment_count !== 1 ? "s" : ""}`}
-                icon={DollarSign}
-                color="emerald"
-              />
-            ))}
+        {/* Commercial row — PFI/BDN counts always show; revenue cards when present */}
+        <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+          <StatCard
+            title="PFIs Linked"
+            value={ops?.total_pfis ?? 0}
+            subtitle="Pro-forma invoices"
+            icon={TrendingUp}
+            color="blue"
+          />
+          <StatCard
+            title="BDNs Approved"
+            value={ops?.total_bdns_approved ?? 0}
+            subtitle="Delivery notes"
+            icon={CheckCircle2}
+            color="amber"
+          />
+          {revenue.map((r) => (
             <StatCard
-              title="PFIs Linked"
-              value={ops?.total_pfis ?? 0}
-              subtitle="Pro-forma invoices"
-              icon={TrendingUp}
-              color="blue"
+              key={r.currency}
+              title={`Revenue (${r.currency})`}
+              value={formatCurrency(r.total_amount, r.currency)}
+              subtitle={`${r.payment_count} payment${r.payment_count !== 1 ? "s" : ""}`}
+              icon={DollarSign}
+              color="emerald"
             />
-            <StatCard
-              title="BDNs Approved"
-              value={ops?.total_bdns_approved ?? 0}
-              subtitle="Delivery notes"
-              icon={CheckCircle2}
-              color="amber"
-            />
-          </div>
-        )}
+          ))}
+        </div>
 
         {/* Pending Feedback Approvals — urgent action area */}
         {(pendingFeedback?.length ?? 0) > 0 && (

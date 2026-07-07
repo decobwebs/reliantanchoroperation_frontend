@@ -31,6 +31,8 @@ import {
 } from "@/components/ui/select";
 import { ROLE_LABELS } from "@/lib/auth";
 import { getInitials } from "@/lib/utils";
+import { useAuth } from "@/hooks/useAuth";
+import { QueryError } from "@/components/shared/QueryError";
 import type { ApiResponse, User } from "@/types";
 
 const ROLE_COLOR: Record<string, string> = {
@@ -200,14 +202,29 @@ function CreateUserDialog() {
 }
 
 export default function AdminPage() {
-  const { data: users, isLoading } = useQuery({
+  const { user } = useAuth();
+  const isBM = user?.role === "bunker_manager";
+
+  const { data: users, isLoading, isError, error, refetch } = useQuery({
     queryKey: ["admin-users"],
+    enabled: isBM,
     queryFn: async () => {
       const res = await api.get<ApiResponse<User[]>>("/admin/users?per_page=100");
       const d = res.data.data;
       return Array.isArray(d) ? d : (d as { items: User[] }).items ?? [];
     },
   });
+
+  if (user && !isBM) {
+    return (
+      <div>
+        <Header title="User Management" subtitle="Restricted" />
+        <div className="p-6">
+          <QueryError error={{ isAxiosError: true, response: { status: 403 } }} />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -217,7 +234,9 @@ export default function AdminPage() {
         actions={<CreateUserDialog />}
       />
       <div className="p-6">
-        {isLoading ? (
+        {isError ? (
+          <QueryError error={error} onRetry={() => refetch()} />
+        ) : isLoading ? (
           <div className="flex items-center justify-center py-16">
             <Loader2 className="w-7 h-7 animate-spin text-primary" />
           </div>

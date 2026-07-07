@@ -25,6 +25,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { formatCurrency, formatDate } from "@/lib/utils";
+import { useAuth } from "@/hooks/useAuth";
+import { canManageFinance } from "@/lib/auth";
+import { QueryError } from "@/components/shared/QueryError";
 import type { ApiResponse, PaginatedData, Operation, OperationStatus } from "@/types";
 
 // Finance-relevant statuses — ordered per new commercial flow:
@@ -52,27 +55,54 @@ interface AnalyticsDashboard {
 }
 
 export default function FinancePage() {
+  const { user } = useAuth();
+  const canSee = user ? canManageFinance(user.role) : true;
+
   const { data: analytics } = useQuery<AnalyticsDashboard>({
     queryKey: ["analytics-dashboard"],
+    enabled: canSee,
     queryFn: async () => {
       const res = await api.get("/analytics/dashboard");
       return res.data.data;
     },
   });
 
-  // Fetch operations that are at finance stages
-  const { data: opsData, isLoading: opsLoading } = useQuery({
+  // Fetch ALL finance-stage operations by paging through the list (the previous
+  // single per_page=50 call silently dropped finance ops beyond row 50).
+  const { data: opsData, isLoading: opsLoading, isError, error, refetch } = useQuery({
     queryKey: ["finance-operations"],
+    enabled: canSee,
     queryFn: async () => {
-      const res = await api.get<ApiResponse<PaginatedData<Operation>>>(
-        "/operations?page=1&per_page=50"
-      );
-      const all: Operation[] = res.data.data.items;
+      const perPage = 100;
+      let page = 1;
+      let all: Operation[] = [];
+      let total = Infinity;
+      while (all.length < total && page <= 20) {
+        const res = await api.get<ApiResponse<PaginatedData<Operation>>>(
+          `/operations?page=${page}&per_page=${perPage}`
+        );
+        const data = res.data.data;
+        all = all.concat(data.items);
+        total = data.total ?? all.length;
+        if (data.items.length < perPage) break;
+        page += 1;
+      }
       return all.filter((op) =>
         FINANCE_STATUSES.includes(op.status as OperationStatus)
       );
     },
   });
+
+  if (user && !canSee) {
+    return (
+      <div>
+        <Header title="Finance" subtitle="Restricted" />
+        <div className="p-6">
+          <QueryError error={{ isAxiosError: true, response: { status: 403 } }} />
+        </div>
+      </div>
+    );
+  }
 
   const revenue = analytics?.revenue ?? [];
   const totalPayments = revenue.reduce(
@@ -138,7 +168,9 @@ export default function FinancePage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
-            {opsLoading ? (
+            {isError ? (
+              <div className="p-5"><QueryError error={error} onRetry={() => refetch()} /></div>
+            ) : opsLoading ? (
               <div className="divide-y">
                 {[...Array(5)].map((_, i) => (
                   <div key={i} className="h-14 bg-muted/30 animate-pulse mx-5 my-2 rounded" />

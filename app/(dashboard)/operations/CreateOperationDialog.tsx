@@ -322,6 +322,9 @@ export function CreateOperationDialog({ open, onClose, onCreated }: Props) {
       setValue(`assignments.${i}.assigned_to`, "");
       setValue(`assignments.${i}.task_type`, "");
     });
+    // Truck-only has no vessel — clear any previously chosen vessel so a stale
+    // selection isn't submitted or shown after switching type.
+    if (prevType === "truck_only") setValue("vessel_id", "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prevType]);
 
@@ -433,7 +436,7 @@ export function CreateOperationDialog({ open, onClose, onCreated }: Props) {
             {/* Product Type */}
             <div className="space-y-1.5">
               <Label>Product Type <span className="text-destructive">*</span></Label>
-              <Select onValueChange={(v) => setValue("product_type", v)}>
+              <Select value={watch("product_type") ?? ""} onValueChange={(v) => setValue("product_type", v)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select product…" />
                 </SelectTrigger>
@@ -453,7 +456,7 @@ export function CreateOperationDialog({ open, onClose, onCreated }: Props) {
             {/* Client */}
             <div className="space-y-1.5">
               <Label>Client <span className="text-destructive">*</span></Label>
-              <Select onValueChange={(v) => setValue("client_id", v)}>
+              <Select value={watch("client_id") ?? ""} onValueChange={(v) => setValue("client_id", v)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select client…" />
                 </SelectTrigger>
@@ -480,7 +483,7 @@ export function CreateOperationDialog({ open, onClose, onCreated }: Props) {
                     (required for {opType === "vessel_only" ? "Vessel Only" : "Full Operation"})
                   </span>
                 </Label>
-                <Select onValueChange={(v) => setValue("vessel_id", v)}>
+                <Select value={watch("vessel_id") ?? ""} onValueChange={(v) => setValue("vessel_id", v)}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select vessel…" />
                   </SelectTrigger>
@@ -533,7 +536,12 @@ export function CreateOperationDialog({ open, onClose, onCreated }: Props) {
                   type="number"
                   step="0.001"
                   placeholder="e.g. 500"
-                  {...register("expected_volume_mt", { valueAsNumber: true })}
+                  {...register("expected_volume_mt", {
+                    // Empty optional field must become undefined, not NaN (which fails
+                    // z.number().positive().optional() and blocks submit).
+                    setValueAs: (v) =>
+                      v === "" || v === null || v === undefined ? undefined : Number(v),
+                  })}
                 />
                 {errors.expected_volume_mt && (
                   <p className="text-xs text-destructive">{errors.expected_volume_mt.message}</p>

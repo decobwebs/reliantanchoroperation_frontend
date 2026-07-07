@@ -84,7 +84,22 @@ export default function PortalOperationDetailPage({
     );
   }
 
-  if (!op) return null;
+  if (!op) {
+    return (
+      <div className="flex flex-col items-center justify-center py-24 text-center gap-3">
+        <p className="text-sm font-semibold">Operation not found</p>
+        <p className="max-w-sm text-xs text-muted-foreground">
+          This operation may not exist, or you don&rsquo;t have access to it.
+        </p>
+        <Button variant="outline" size="sm" asChild>
+          <Link href="/portal/operations">
+            <ArrowLeft className="w-4 h-4 mr-1.5" />
+            Back to operations
+          </Link>
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

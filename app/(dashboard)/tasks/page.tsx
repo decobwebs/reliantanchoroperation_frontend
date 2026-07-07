@@ -275,10 +275,11 @@ function MarkVesselReadyDialog({
     useForm<VesselReadyForm>({ resolver: zodResolver(vesselReadySchema) });
 
   const mutation = useMutation({
-    mutationFn: async (data: VesselReadyForm) => {
+    mutationFn: async (_data: VesselReadyForm) => {
+      // Only flip status — do NOT write the readiness note into `instructions`,
+      // which would clobber the Bunker Manager's original assignment instructions.
       await api.put(`/tasks/${task.id}`, {
         status: "completed",
-        instructions: data.notes.trim(),
       });
     },
     onSuccess: () => {

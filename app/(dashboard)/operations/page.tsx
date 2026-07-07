@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import {
   Plus,
   Search,
@@ -119,8 +120,18 @@ export default function OperationsPage() {
   const { user } = useAuth();
   const router = useRouter();
   const [page, setPage] = useState(1);
+  const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+
+  // Debounce the search box so typing doesn't fire a request per keystroke.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setSearch(searchInput);
+      setPage(1);
+    }, 350);
+    return () => clearTimeout(t);
+  }, [searchInput]);
   const [typeFilter, setTypeFilter] = useState("all");
   const [showCreate, setShowCreate] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -160,6 +171,7 @@ export default function OperationsPage() {
               onClick={async () => {
                 setExporting(true);
                 try { await downloadCSV(search, statusFilter, typeFilter); }
+                catch { toast.error("CSV export failed. Please try again."); }
                 finally { setExporting(false); }
               }}
             >
@@ -184,11 +196,8 @@ export default function OperationsPage() {
             <Input
               placeholder="Search by number or notes…"
               className="pl-9"
-              value={search}
-              onChange={(e) => {
-                setSearch(e.target.value);
-                setPage(1);
-              }}
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
             />
           </div>
           <Select

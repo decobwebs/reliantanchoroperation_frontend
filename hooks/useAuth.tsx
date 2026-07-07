@@ -51,12 +51,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     async (email: string, password: string) => {
       const me = await apiLogin(email, password);
       setUser(me);
-      // Route based on role
+      // Route based on role, honoring a ?from= deep-link for staff when it is a
+      // safe internal path (not the portal, not another absolute URL).
       if (me.role === "client") {
         router.push("/portal");
-      } else {
-        router.push("/");
+        return;
       }
+      const from =
+        typeof window !== "undefined"
+          ? new URLSearchParams(window.location.search).get("from")
+          : null;
+      const safeFrom =
+        from && from.startsWith("/") && !from.startsWith("//") && !from.startsWith("/portal")
+          ? from
+          : null;
+      router.push(safeFrom ?? "/");
     },
     [router]
   );

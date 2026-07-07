@@ -5147,13 +5147,11 @@ export default function OperationDetailPage({
             {/* ── GENERATE tab ── */}
             <TabsContent value="generate" className="mt-3 space-y-3">
               {(() => {
-                const type = op?.type;
                 const st   = op?.status;
-                const needsState =
-                  type === "truck_only"    ? "active" :
-                  type === "full_operation"? "bdn_approved" :
-                  type === "vessel_only"   ? "bdn_approved" : null;
-                const postPfi = ["pfi_linked","payment_processing","payment_confirmed","invoiced","completed","archived"];
+                // Money-first: a PFI is generated when the operation goes Active,
+                // for every operation type (backend allows generation from 'active').
+                const needsState = "active";
+                const postPfi = ["pfi_linked","payment_processing","payment_confirmed","vessel_operations","bdn_pending","bdn_approved","invoiced","completed","archived"];
                 const isReady    = st === needsState;
                 const isPastPfi  = postPfi.includes(st ?? "");
                 const isBlocked  = !isReady && !isPastPfi;
@@ -5243,9 +5241,9 @@ export default function OperationDetailPage({
                 <Button
                   disabled={(() => {
                     if (!genRate || parseFloat(genRate) <= 0 || !op?.expected_volume_mt || generatePfiMutation.isPending) return true;
-                    const needsState = op?.type === "truck_only" ? "active" : "bdn_approved";
-                    const postPfi = ["pfi_linked","payment_processing","payment_confirmed","invoiced","completed","archived"];
-                    return op?.status !== needsState && !postPfi.includes(op?.status ?? "");
+                    // Money-first: PFI is generated when the operation goes Active (all types).
+                    const postPfi = ["pfi_linked","payment_processing","payment_confirmed","vessel_operations","bdn_pending","bdn_approved","invoiced","completed","archived"];
+                    return op?.status !== "active" && !postPfi.includes(op?.status ?? "");
                   })()}
                   onClick={() => generatePfiMutation.mutate()}
                   className="gap-1.5"

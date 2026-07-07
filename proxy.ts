@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const PUBLIC_PATHS = ["/login", "/api/auth"];
+// Static assets served from /public (logo, images, fonts, etc.) — must never be
+// gated behind auth, or unauthenticated pages (e.g. /login) can't load them.
+const PUBLIC_FILE = /\.(?:svg|png|jpe?g|gif|webp|ico|txt|xml|json|webmanifest|woff2?|ttf|otf)$/i;
 
 export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
@@ -9,7 +12,8 @@ export function proxy(req: NextRequest) {
   if (
     PUBLIC_PATHS.some((p) => pathname.startsWith(p)) ||
     pathname.startsWith("/_next") ||
-    pathname.startsWith("/favicon")
+    pathname.startsWith("/favicon") ||
+    PUBLIC_FILE.test(pathname)
   ) {
     return NextResponse.next();
   }

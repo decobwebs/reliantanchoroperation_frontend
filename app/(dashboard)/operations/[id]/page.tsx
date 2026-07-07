@@ -1513,8 +1513,12 @@ export default function OperationDetailPage({
         if (form.spillage_mt) payload.spillage_mt = parseFloat(form.spillage_mt);
         if (form.notes) payload.notes = form.notes;
         const mode = dischargeVesselMode[truckOpId] ?? "system";
-        if (mode === "system" && dischargeVesselId[truckOpId])
-          payload.destination_vessel_id = dischargeVesselId[truckOpId];
+        // Full operations: trucks discharge into THIS operation's vessel. Default to
+        // it when the officer hasn't picked one, so truck fuel lands on the right ROB.
+        const systemVesselId = dischargeVesselId[truckOpId]
+          || (op?.type === "full_operation" ? op?.vessel_id ?? undefined : undefined);
+        if (mode === "system" && systemVesselId)
+          payload.destination_vessel_id = systemVesselId;
         else if (mode === "other" && dischargeVesselName[truckOpId])
           payload.destination_vessel_name = dischargeVesselName[truckOpId];
         await api.post(`/operations/${id}/trucks/${truckOpId}/end-discharge`, payload);
@@ -1844,6 +1848,24 @@ export default function OperationDetailPage({
             </Card>
           );
         })()}
+
+        {/* ── Full operation: load the vessel via trucks before starting vessel ops */}
+        {isBM && op.type === "full_operation" && op.status === "payment_confirmed" && (
+          <Card className="border-amber-200 bg-amber-50/40 shadow-sm">
+            <CardContent className="p-4 flex items-start gap-3">
+              <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
+              <div>
+                <p className="text-sm font-semibold text-amber-800">Load the vessel first</p>
+                <p className="text-xs text-amber-700/90 mt-0.5">
+                  This is a full operation: record all truck discharges into the vessel
+                  (Truck Reports tab) <strong>before</strong> starting vessel operations. The
+                  vessel&rsquo;s ROB is captured when vessel ops begin — starting early snapshots
+                  a stale figure.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* ── Reopen button (BM only, completed/archived/cancelled) */}
         {isReopenable && (
@@ -3808,7 +3830,7 @@ export default function OperationDetailPage({
                                                 {(dischargeVesselMode[to.id] ?? "system") === "system" ? (
                                                   <div className="space-y-1">
                                                     <Select
-                                                      value={dischargeVesselId[to.id] ?? ""}
+                                                      value={dischargeVesselId[to.id] ?? (op?.type === "full_operation" ? (op?.vessel_id ?? "") : "")}
                                                       onValueChange={(v) => setDischargeVesselId((p) => ({ ...p, [to.id]: v }))}
                                                     >
                                                       <SelectTrigger className="h-8 text-xs">

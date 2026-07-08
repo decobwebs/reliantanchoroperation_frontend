@@ -175,20 +175,20 @@ export default function OperationsPage() {
                 finally { setExporting(false); }
               }}
             >
-              {exporting ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Download className="w-4 h-4 mr-1.5" />}
-              Export CSV
+              {exporting ? <Loader2 className="w-4 h-4 sm:mr-1.5 animate-spin" /> : <Download className="w-4 h-4 sm:mr-1.5" />}
+              <span className="hidden sm:inline">Export CSV</span>
             </Button>
             {isBM && (
               <Button size="sm" onClick={() => setShowCreate(true)}>
-                <Plus className="w-4 h-4 mr-1.5" />
-                New Operation
+                <Plus className="w-4 h-4 sm:mr-1.5" />
+                <span className="hidden sm:inline">New Operation</span>
               </Button>
             )}
           </div>
         }
       />
 
-      <div className="p-6 space-y-4">
+      <div className="p-4 md:p-6 space-y-4">
         {/* Filters */}
         <div className="flex flex-wrap gap-3">
           <div className="relative flex-1 min-w-[200px]">

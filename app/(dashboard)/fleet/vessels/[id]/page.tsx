@@ -552,7 +552,7 @@ export default function VesselProfilePage({
         }
       />
 
-      <div className="p-6 space-y-6 max-w-6xl">
+      <div className="p-4 md:p-6 space-y-6 max-w-6xl">
 
         {/* ── Hero card ── */}
         <Card className="border-0 shadow-sm overflow-hidden">

@@ -71,7 +71,7 @@ export function FinanceManagerDashboard() {
     <div>
       <Header title="Finance Dashboard" subtitle="Revenue, PFIs and payment pipeline" />
 
-      <div className="p-6 space-y-6">
+      <div className="p-4 md:p-6 space-y-6">
         {/* Revenue KPIs */}
         <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
           {revenue.length > 0 ? (

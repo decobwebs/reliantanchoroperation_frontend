@@ -173,7 +173,7 @@ export default function ActivityPage() {
         subtitle={`${total.toLocaleString()} event${total !== 1 ? "s" : ""} recorded`}
       />
 
-      <div className="p-6 space-y-5">
+      <div className="p-4 md:p-6 space-y-5">
         {/* ── Filters */}
         <Card className="border-0 shadow-sm">
           <CardHeader className="pb-3 pt-4 px-5">

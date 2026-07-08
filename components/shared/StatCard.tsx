@@ -48,18 +48,21 @@ export function StatCard({
 
   return (
     <Card className={cn("border-0 shadow-sm", className)}>
-      <CardContent className="p-6">
-        <div className="flex items-start justify-between">
+      <CardContent className="p-4 md:p-6">
+        <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-muted-foreground truncate">
+            <p className="text-xs md:text-sm font-medium text-muted-foreground truncate">
               {title}
             </p>
-            <p className="text-3xl font-bold mt-1 text-foreground">{value}</p>
+            {/* Long values (currency) must shrink + wrap on narrow cards, not overflow. */}
+            <p className="text-lg md:text-3xl font-bold mt-1 text-foreground leading-tight break-words tabular-nums">
+              {value}
+            </p>
             {subtitle && (
-              <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>
+              <p className="text-[11px] md:text-xs text-muted-foreground mt-1 break-words">{subtitle}</p>
             )}
             {trend && (
-              <p className={cn("text-xs font-medium mt-2", colors.trend)}>
+              <p className={cn("text-[11px] md:text-xs font-medium mt-2", colors.trend)}>
                 {trend.value > 0 ? "+" : ""}
                 {trend.value}% {trend.label}
               </p>
@@ -67,11 +70,11 @@ export function StatCard({
           </div>
           <div
             className={cn(
-              "flex-shrink-0 w-11 h-11 rounded-xl flex items-center justify-center",
+              "flex-shrink-0 w-9 h-9 md:w-11 md:h-11 rounded-xl flex items-center justify-center",
               colors.icon
             )}
           >
-            <Icon className="w-5 h-5" />
+            <Icon className="w-4 h-4 md:w-5 md:h-5" />
           </div>
         </div>
       </CardContent>

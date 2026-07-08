@@ -191,7 +191,7 @@ export default function TruckProfilePage({
         }
       />
 
-      <div className="p-6 space-y-6 max-w-6xl">
+      <div className="p-4 md:p-6 space-y-6 max-w-6xl">
 
         {/* ── HERO ── */}
         <div className={`rounded-2xl overflow-hidden shadow-md bg-linear-to-br ${statusDef.bg}`}>

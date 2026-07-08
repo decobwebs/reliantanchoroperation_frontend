@@ -77,7 +77,7 @@ export default function AnalyticsPage() {
   return (
     <div>
       <Header title="Analytics" subtitle="Operations and revenue insights" />
-      <div className="p-6 space-y-6">
+      <div className="p-4 md:p-6 space-y-6">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <StatCard title="Total Ops" value={ops?.total_operations ?? 0} icon={BarChart3} color="blue" />
           <StatCard title="Active Ops" value={ops?.active_operations ?? 0} icon={TrendingUp} color="amber" />

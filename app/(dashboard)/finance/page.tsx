@@ -114,7 +114,7 @@ export default function FinancePage() {
     <div>
       <Header title="Finance" subtitle="Revenue, PFIs and payment tracking" />
 
-      <div className="p-6 space-y-6">
+      <div className="p-4 md:p-6 space-y-6">
         {/* Revenue stat cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {revenue.map((r) => (

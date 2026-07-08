@@ -179,7 +179,7 @@ export default function DocumentHubPage() {
         subtitle={`${total.toLocaleString()} document${total !== 1 ? "s" : ""} across all operations`}
       />
 
-      <div className="p-6 space-y-5">
+      <div className="p-4 md:p-6 space-y-5">
         {/* ── Search & Filters */}
         <Card className="border-0 shadow-sm">
           <CardHeader className="pb-3 pt-4 px-5">

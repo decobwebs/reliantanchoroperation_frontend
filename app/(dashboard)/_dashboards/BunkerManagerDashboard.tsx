@@ -92,14 +92,14 @@ export function BunkerManagerDashboard() {
         actions={
           <Link href="/operations">
             <Button size="sm">
-              <PlusCircle className="w-4 h-4 mr-1.5" />
-              New Operation
+              <PlusCircle className="w-4 h-4 sm:mr-1.5" />
+              <span className="hidden sm:inline">New Operation</span>
             </Button>
           </Link>
         }
       />
 
-      <div className="p-6 space-y-6">
+      <div className="p-4 md:p-6 space-y-4 md:space-y-6">
         {/* Primary KPIs */}
         <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
           <StatCard

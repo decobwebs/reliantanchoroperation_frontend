@@ -64,7 +64,7 @@ export function OpsSupervisorDashboard() {
     <div>
       <Header title="Operations Overview" subtitle="Ops Supervisor workspace" />
 
-      <div className="p-6 space-y-6">
+      <div className="p-4 md:p-6 space-y-6">
         {/* KPIs */}
         <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
           <StatCard

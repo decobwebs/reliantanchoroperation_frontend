@@ -88,7 +88,7 @@ export default function TruckDetailPage({
         }
       />
 
-      <div className="p-6 space-y-6">
+      <div className="p-4 md:p-6 space-y-6">
 
         {/* ── Top bar */}
         <div className="flex flex-wrap items-center gap-3">

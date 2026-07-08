@@ -373,7 +373,7 @@ export default function TasksPage() {
         subtitle={`${activeTasks.length} active · ${doneTasks.length} completed`}
       />
 
-      <div className="p-6 space-y-6">
+      <div className="p-4 md:p-6 space-y-6">
         {isLoading ? (
           <div className="flex items-center justify-center py-16">
             <Loader2 className="w-7 h-7 animate-spin text-primary" />

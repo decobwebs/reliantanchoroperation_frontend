@@ -45,7 +45,12 @@ export function StandaloneInvoiceDialog({
   onOpenChange: (v: boolean) => void;
 }) {
   const qc = useQueryClient();
+  // "registered" = pick an existing client user; "manual" = one-off client that
+  // was never onboarded (billed by free-text name/email).
+  const [clientMode, setClientMode] = useState<"registered" | "manual">("registered");
   const [clientId, setClientId] = useState("");
+  const [clientName, setClientName] = useState("");
+  const [clientEmail, setClientEmail] = useState("");
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
   const [currency, setCurrency] = useState("USD");
@@ -64,14 +69,20 @@ export function StandaloneInvoiceDialog({
   });
 
   const reset = () => {
-    setClientId(""); setDescription(""); setAmount("");
+    setClientMode("registered");
+    setClientId(""); setClientName(""); setClientEmail("");
+    setDescription(""); setAmount("");
     setCurrency("USD"); setTax("0"); setDueDate(""); setNotes("");
   };
 
   const mutation = useMutation({
     mutationFn: async () => {
+      const isManual = clientMode === "manual";
       await api.post("/invoices", {
-        client_id: clientId,
+        // Exactly one of these is sent — the backend requires one or the other.
+        client_id: isManual ? undefined : clientId,
+        client_name: isManual ? clientName.trim() : undefined,
+        client_email: isManual ? clientEmail.trim() || undefined : undefined,
         description: description.trim(),
         amount: parseFloat(amount),
         currency,
@@ -92,8 +103,10 @@ export function StandaloneInvoiceDialog({
   const amt = parseFloat(amount) || 0;
   const taxAmt = parseFloat(tax) || 0;
   const total = amt + taxAmt;
+  const hasClient =
+    clientMode === "registered" ? !!clientId : clientName.trim().length > 0;
   const canSubmit =
-    !!clientId && description.trim().length > 0 && amt > 0 && !mutation.isPending;
+    hasClient && description.trim().length > 0 && amt > 0 && !mutation.isPending;
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) reset(); onOpenChange(v); }}>
@@ -112,22 +125,54 @@ export function StandaloneInvoiceDialog({
           </div>
 
           <div className="space-y-1.5">
-            <Label className="text-xs">Client <span className="text-destructive">*</span></Label>
-            <Select value={clientId} onValueChange={setClientId}>
-              <SelectTrigger><SelectValue placeholder="Select client…" /></SelectTrigger>
-              <SelectContent>
-                {clients?.length ? (
-                  clients.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.full_name}
-                      <span className="ml-1.5 text-xs text-muted-foreground">({c.email})</span>
-                    </SelectItem>
-                  ))
-                ) : (
-                  <div className="px-3 py-2 text-xs text-muted-foreground">No clients found</div>
-                )}
-              </SelectContent>
-            </Select>
+            <div className="flex items-center justify-between gap-2">
+              <Label className="text-xs">Client <span className="text-destructive">*</span></Label>
+              <button
+                type="button"
+                className="text-[11px] text-primary hover:underline"
+                onClick={() =>
+                  setClientMode((m) => (m === "registered" ? "manual" : "registered"))
+                }
+              >
+                {clientMode === "registered" ? "Client not registered? Enter manually" : "Pick a registered client"}
+              </button>
+            </div>
+
+            {clientMode === "registered" ? (
+              <Select value={clientId} onValueChange={setClientId}>
+                <SelectTrigger><SelectValue placeholder="Select client…" /></SelectTrigger>
+                <SelectContent>
+                  {clients?.length ? (
+                    clients.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.full_name}
+                        <span className="ml-1.5 text-xs text-muted-foreground">({c.email})</span>
+                      </SelectItem>
+                    ))
+                  ) : (
+                    <div className="px-3 py-2 text-xs text-muted-foreground">No clients found</div>
+                  )}
+                </SelectContent>
+              </Select>
+            ) : (
+              <div className="space-y-2">
+                <Input
+                  placeholder="Client name (e.g. Oceanic Traders Ltd)"
+                  value={clientName}
+                  onChange={(e) => setClientName(e.target.value)}
+                />
+                <Input
+                  type="email"
+                  placeholder="Client email (optional)"
+                  value={clientEmail}
+                  onChange={(e) => setClientEmail(e.target.value)}
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Billed to a one-off client with no account. The name appears on the PDF&rsquo;s
+                  BILL TO — they won&rsquo;t see this invoice in a portal.
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="space-y-1.5">

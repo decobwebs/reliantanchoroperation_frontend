@@ -237,7 +237,9 @@ export interface Invoice {
   invoice_number: string;
   operation_id?: string;   // absent for standalone (ad-hoc) invoices
   bdn_id?: string;
-  client_id: string;
+  client_id?: string;      // absent when billed to a manually-entered client
+  client_name?: string;    // manual client name
+  client_email?: string;
   generated_by: string;
   amount: string;
   currency: string;

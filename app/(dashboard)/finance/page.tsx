@@ -331,6 +331,7 @@ export default function FinancePage() {
                         )}
                       </div>
                       <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                        {inv.client_name ? `${inv.client_name} · ` : ""}
                         {inv.description || "Operation invoice"} · {formatDate(inv.created_at)}
                       </p>
                     </div>

@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import {
@@ -9,6 +10,9 @@ import {
   Clock,
   TrendingUp,
   ExternalLink,
+  Loader2,
+  PlusCircle,
+  Receipt,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { Header } from "@/components/layout/Header";
@@ -28,7 +32,22 @@ import { formatCurrency, formatDate } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { canManageFinance } from "@/lib/auth";
 import { QueryError } from "@/components/shared/QueryError";
-import type { ApiResponse, PaginatedData, Operation, OperationStatus } from "@/types";
+import { Button } from "@/components/ui/button";
+import {
+  INVOICE_STATUS_CLASS,
+  VOUCHER_STATUS_CLASS,
+  VOUCHER_CATEGORY_LABELS,
+} from "@/lib/finance";
+import { StandaloneInvoiceDialog } from "./StandaloneInvoiceDialog";
+import { StandaloneVoucherDialog } from "./StandaloneVoucherDialog";
+import type {
+  ApiResponse,
+  PaginatedData,
+  Operation,
+  OperationStatus,
+  Invoice,
+  Voucher,
+} from "@/types";
 
 // Finance-relevant statuses — ordered per new commercial flow:
 // PFI (advance) → payment confirmed → ops → BDN → invoice → complete
@@ -57,6 +76,30 @@ interface AnalyticsDashboard {
 export default function FinancePage() {
   const { user } = useAuth();
   const canSee = user ? canManageFinance(user.role) : true;
+  // Page is BM+FM, but the create endpoints are FM-only — don't show a BM
+  // buttons that would 403.
+  const isFM = user?.role === "finance_manager";
+  const [showInvoice, setShowInvoice] = useState(false);
+  const [showVoucher, setShowVoucher] = useState(false);
+
+  const invoicesQuery = useQuery({
+    queryKey: ["all-invoices"],
+    enabled: canSee,
+    queryFn: async () => {
+      const res = await api.get<ApiResponse<Invoice[]>>("/invoices");
+      return (res.data.data ?? []) as Invoice[];
+    },
+  });
+
+  const vouchersQuery = useQuery({
+    queryKey: ["all-vouchers"],
+    enabled: canSee,
+    queryFn: async () => {
+      const res = await api.get<ApiResponse<Voucher[]>>("/vouchers");
+      const d = res.data.data as unknown;
+      return (Array.isArray(d) ? d : ((d as { items?: Voucher[] })?.items ?? [])) as Voucher[];
+    },
+  });
 
   const { data: analytics } = useQuery<AnalyticsDashboard>({
     queryKey: ["analytics-dashboard"],
@@ -112,7 +155,27 @@ export default function FinancePage() {
 
   return (
     <div>
-      <Header title="Finance" subtitle="Revenue, PFIs and payment tracking" />
+      <Header
+        title="Finance"
+        subtitle="Revenue, PFIs and payment tracking"
+        actions={
+          isFM ? (
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" onClick={() => setShowVoucher(true)}>
+                <Receipt className="w-4 h-4 sm:mr-1.5" />
+                <span className="hidden sm:inline">New Voucher</span>
+              </Button>
+              <Button size="sm" onClick={() => setShowInvoice(true)}>
+                <PlusCircle className="w-4 h-4 sm:mr-1.5" />
+                <span className="hidden sm:inline">New Invoice</span>
+              </Button>
+            </div>
+          ) : undefined
+        }
+      />
+
+      <StandaloneInvoiceDialog open={showInvoice} onOpenChange={setShowInvoice} />
+      <StandaloneVoucherDialog open={showVoucher} onOpenChange={setShowVoucher} />
 
       <div className="p-4 md:p-6 space-y-6">
         {/* Revenue stat cards */}
@@ -225,6 +288,121 @@ export default function FinancePage() {
                   ))}
                 </TableBody>
               </Table>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* ── Invoices (incl. standalone) ─────────────────────────────────── */}
+        <Card className="border-0 shadow-sm">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <FileText className="w-4 h-4 text-primary" />
+              Invoices
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            {invoicesQuery.isError ? (
+              <div className="p-5">
+                <QueryError error={invoicesQuery.error} onRetry={() => invoicesQuery.refetch()} />
+              </div>
+            ) : invoicesQuery.isLoading ? (
+              <div className="flex items-center justify-center py-10">
+                <Loader2 className="w-6 h-6 animate-spin text-primary" />
+              </div>
+            ) : !invoicesQuery.data?.length ? (
+              <div className="flex flex-col items-center py-10 text-muted-foreground">
+                <FileText className="w-9 h-9 mb-2 opacity-30" />
+                <p className="text-sm">No invoices yet</p>
+              </div>
+            ) : (
+              <div className="divide-y">
+                {invoicesQuery.data.map((inv) => (
+                  <div key={inv.id} className="flex items-center justify-between gap-3 px-4 md:px-5 py-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-mono text-xs font-semibold text-primary">
+                          {inv.invoice_number}
+                        </span>
+                        <Badge className={`text-[10px] ${INVOICE_STATUS_CLASS[inv.status] ?? ""}`} variant="secondary">
+                          {inv.status}
+                        </Badge>
+                        {!inv.operation_id && (
+                          <Badge variant="outline" className="text-[10px]">Standalone</Badge>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                        {inv.description || "Operation invoice"} · {formatDate(inv.created_at)}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-3 shrink-0">
+                      <span className="text-sm font-semibold tabular-nums">
+                        {formatCurrency(inv.total_amount, inv.currency)}
+                      </span>
+                      {inv.operation_id && (
+                        <Link
+                          href={`/operations/${inv.operation_id}`}
+                          className="text-primary hover:underline"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                        </Link>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* ── Vouchers (incl. standalone) ─────────────────────────────────── */}
+        <Card className="border-0 shadow-sm">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <Receipt className="w-4 h-4 text-primary" />
+              Expense Vouchers
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            {vouchersQuery.isError ? (
+              <div className="p-5">
+                <QueryError error={vouchersQuery.error} onRetry={() => vouchersQuery.refetch()} />
+              </div>
+            ) : vouchersQuery.isLoading ? (
+              <div className="flex items-center justify-center py-10">
+                <Loader2 className="w-6 h-6 animate-spin text-primary" />
+              </div>
+            ) : !vouchersQuery.data?.length ? (
+              <div className="flex flex-col items-center py-10 text-muted-foreground">
+                <Receipt className="w-9 h-9 mb-2 opacity-30" />
+                <p className="text-sm">No vouchers yet</p>
+              </div>
+            ) : (
+              <div className="divide-y">
+                {vouchersQuery.data.map((v) => (
+                  <div key={v.id} className="flex items-center justify-between gap-3 px-4 md:px-5 py-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-mono text-xs font-semibold text-primary">
+                          {v.voucher_number}
+                        </span>
+                        <Badge className={`text-[10px] ${VOUCHER_STATUS_CLASS[v.status] ?? ""}`} variant="secondary">
+                          {v.status}
+                        </Badge>
+                        {!v.operation_id && (
+                          <Badge variant="outline" className="text-[10px]">Standalone</Badge>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                        {VOUCHER_CATEGORY_LABELS[v.category] ?? v.category}
+                        {v.supplier_name ? ` · ${v.supplier_name}` : ""} · {formatDate(v.created_at)}
+                      </p>
+                    </div>
+                    <span className="text-sm font-semibold tabular-nums shrink-0">
+                      {formatCurrency(v.amount, v.currency)}
+                    </span>
+                  </div>
+                ))}
+              </div>
             )}
           </CardContent>
         </Card>

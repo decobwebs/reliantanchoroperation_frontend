@@ -235,7 +235,7 @@ export interface Payment {
 export interface Invoice {
   id: string;
   invoice_number: string;
-  operation_id: string;
+  operation_id?: string;   // absent for standalone (ad-hoc) invoices
   bdn_id?: string;
   client_id: string;
   generated_by: string;
@@ -249,6 +249,7 @@ export interface Invoice {
   pdf_url?: string;
   sent_at?: string;
   paid_at?: string;
+  description?: string;    // line item text — standalone invoices
   notes?: string;
   created_at: string;
   advance_paid?: string;   // sum of advance payments received via PFI

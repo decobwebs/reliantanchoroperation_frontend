@@ -99,6 +99,7 @@ import type {
   AuditWaiver,
 } from "@/types";
 import { PRODUCT_TYPE_LABELS } from "@/types";
+import { VOUCHER_CATEGORY_OPTIONS } from "@/lib/finance";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -157,18 +158,7 @@ const PRIORITY_OPTIONS = [
   { value: "urgent", label: "Urgent" },
 ];
 
-const VOUCHER_CATEGORY_OPTIONS = [
-  ["port_fees", "Port Fees"],
-  ["demurrage", "Demurrage"],
-  ["logistics", "Logistics"],
-  ["bunker_purchase", "Bunker Purchase"],
-  ["labour", "Labour"],
-  ["agency_fees", "Agency Fees"],
-  ["documentation", "Documentation"],
-  ["customs", "Customs"],
-  ["inspection", "Inspection"],
-  ["other", "Other"],
-] as const;
+// VOUCHER_CATEGORY_OPTIONS now lives in lib/finance.ts (shared with the Finance page).
 
 type VoucherDraft = {
   category: string;

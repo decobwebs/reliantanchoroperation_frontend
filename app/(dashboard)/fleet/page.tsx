@@ -37,8 +37,7 @@ const STATUS_COLOR: Record<string, string> = {
 const truckSchema = z.object({
   truck_number:     z.string().min(1, "Truck number is required").trim(),
   capacity_mt:      z.string().min(1, "Capacity is required").refine((v) => !isNaN(parseFloat(v)) && parseFloat(v) > 0, "Must be a positive number"),
-  driver_name:      z.string().optional(),
-  driver_phone:     z.string().optional(),
+  chassis_number:   z.string().optional(),
   current_location: z.string().optional(),
   notes:            z.string().optional(),
 });
@@ -59,6 +58,10 @@ function CreateTruckDialog({
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [licenceFile, setLicenceFile] = useState<File | null>(null);
+  const [calibrationFile, setCalibrationFile] = useState<File | null>(null);
+  const licenceInputRef = useRef<HTMLInputElement>(null);
+  const calibrationInputRef = useRef<HTMLInputElement>(null);
 
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -76,6 +79,10 @@ function CreateTruckDialog({
   const handleClose = () => {
     reset();
     clearPhoto();
+    setLicenceFile(null);
+    setCalibrationFile(null);
+    if (licenceInputRef.current) licenceInputRef.current.value = "";
+    if (calibrationInputRef.current) calibrationInputRef.current.value = "";
     onClose();
   };
 
@@ -85,18 +92,31 @@ function CreateTruckDialog({
       const res = await api.post<{ data: { id: string } }>("/trucks", {
         truck_number:     data.truck_number.trim(),
         capacity_mt:      parseFloat(data.capacity_mt),
-        driver_name:      data.driver_name?.trim() || undefined,
-        driver_phone:     data.driver_phone?.trim() || undefined,
+        chassis_number:   data.chassis_number?.trim() || undefined,
         current_location: data.current_location?.trim() || undefined,
         notes:            data.notes?.trim() || undefined,
       });
       const truckId = res.data.data.id;
 
-      // Step 2: upload photo if one was selected
+      // Step 2: upload photo/documents if selected
       if (photoFile && truckId) {
         const form = new FormData();
         form.append("file", photoFile);
         await api.post(`/trucks/${truckId}/photo`, form, {
+          headers: { "Content-Type": "multipart/form-data" },
+        });
+      }
+      if (licenceFile && truckId) {
+        const form = new FormData();
+        form.append("file", licenceFile);
+        await api.post(`/trucks/${truckId}/documents/licence`, form, {
+          headers: { "Content-Type": "multipart/form-data" },
+        });
+      }
+      if (calibrationFile && truckId) {
+        const form = new FormData();
+        form.append("file", calibrationFile);
+        await api.post(`/trucks/${truckId}/documents/calibration_cert`, form, {
           headers: { "Content-Type": "multipart/form-data" },
         });
       }
@@ -105,6 +125,8 @@ function CreateTruckDialog({
       toast.success("Truck registered successfully");
       reset();
       clearPhoto();
+      setLicenceFile(null);
+      setCalibrationFile(null);
       onCreated();
     },
     onError: (err) => toast.error(getErrorMessage(err)),
@@ -129,15 +151,9 @@ function CreateTruckDialog({
               {errors.capacity_mt && <p className="text-xs text-destructive">{errors.capacity_mt.message}</p>}
             </div>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <Label>Driver Name <span className="text-muted-foreground font-normal text-xs">(optional)</span></Label>
-              <Input placeholder="Full name" {...register("driver_name")} />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Driver Phone <span className="text-muted-foreground font-normal text-xs">(optional)</span></Label>
-              <Input placeholder="+234..." {...register("driver_phone")} />
-            </div>
+          <div className="space-y-1.5">
+            <Label>Chassis Number <span className="text-muted-foreground font-normal text-xs">(optional)</span></Label>
+            <Input placeholder="e.g. WVW..." {...register("chassis_number")} />
           </div>
           <div className="space-y-1.5">
             <Label>Current Location <span className="text-muted-foreground font-normal text-xs">(optional)</span></Label>
@@ -182,6 +198,43 @@ function CreateTruckDialog({
             />
           </div>
 
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label>Truck Licence (PDF) <span className="text-muted-foreground font-normal text-xs">(optional)</span></Label>
+              <button
+                type="button"
+                onClick={() => licenceInputRef.current?.click()}
+                className="flex items-center gap-2 w-full rounded-lg border border-dashed border-border px-3 py-2.5 text-xs text-muted-foreground hover:border-primary hover:text-primary transition-colors truncate"
+              >
+                {licenceFile ? licenceFile.name : "Click to upload PDF"}
+              </button>
+              <input
+                ref={licenceInputRef}
+                type="file"
+                accept="application/pdf"
+                className="hidden"
+                onChange={(e) => setLicenceFile(e.target.files?.[0] ?? null)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Calibration Certificate (PDF) <span className="text-muted-foreground font-normal text-xs">(optional)</span></Label>
+              <button
+                type="button"
+                onClick={() => calibrationInputRef.current?.click()}
+                className="flex items-center gap-2 w-full rounded-lg border border-dashed border-border px-3 py-2.5 text-xs text-muted-foreground hover:border-primary hover:text-primary transition-colors truncate"
+              >
+                {calibrationFile ? calibrationFile.name : "Click to upload PDF"}
+              </button>
+              <input
+                ref={calibrationInputRef}
+                type="file"
+                accept="application/pdf"
+                className="hidden"
+                onChange={(e) => setCalibrationFile(e.target.files?.[0] ?? null)}
+              />
+            </div>
+          </div>
+
           <div className="flex justify-end gap-2 pt-1">
             <Button type="button" variant="outline" onClick={handleClose}>Cancel</Button>
             <Button type="submit" disabled={mutation.isPending}>
@@ -200,6 +253,7 @@ export default function FleetPage() {
   const qc = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
   const isBM = user?.role === "bunker_manager";
+  const isOpsSupervisor = user?.role === "ops_supervisor";
 
   const { data: trucks, isLoading } = useQuery({
     queryKey: ["trucks"],
@@ -219,12 +273,19 @@ export default function FleetPage() {
         title="Fleet — Trucks"
         subtitle="Manage truck fleet"
         actions={
-          isBM ? (
-            <Button size="sm" onClick={() => setShowCreate(true)}>
-              <PlusCircle className="w-4 h-4 mr-1.5" />
-              Add Truck
-            </Button>
-          ) : undefined
+          <div className="flex items-center gap-2">
+            {(isBM || isOpsSupervisor) && (
+              <Link href="/fleet/waivers">
+                <Button size="sm" variant="outline">Waiver Numbers</Button>
+              </Link>
+            )}
+            {isBM && (
+              <Button size="sm" onClick={() => setShowCreate(true)}>
+                <PlusCircle className="w-4 h-4 mr-1.5" />
+                Add Truck
+              </Button>
+            )}
+          </div>
         }
       />
 

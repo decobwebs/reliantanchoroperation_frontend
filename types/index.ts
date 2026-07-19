@@ -101,6 +101,7 @@ export interface Operation {
   notes?: string;
   currency: string;
   vessel_id?: string;
+  trucks_required?: number;
   version: number;
   parent_operation_id?: string;
   version_notes?: string;
@@ -183,6 +184,9 @@ export interface PFI {
   currency: string;
   exchange_rate?: string;
   amount_ngn?: string;
+  quantity_litres?: string;
+  allocated_litres: string;
+  remaining_litres?: string;
   status: string;
   supplier_name?: string;
   description?: string;
@@ -191,6 +195,16 @@ export interface PFI {
   client_ref?: string;
   confirmed_by?: string;
   confirmed_at?: string;
+  created_at: string;
+}
+
+export interface PfiAllocation {
+  id: string;
+  pfi_id: string;
+  operation_id: string;
+  quantity_litres: string;
+  linked_by: string;
+  notes?: string;
   created_at: string;
 }
 
@@ -267,6 +281,9 @@ export interface Truck {
   status: string;
   driver_name?: string;
   driver_phone?: string;
+  chassis_number?: string;
+  truck_licence_url?: string;
+  calibration_cert_url?: string;
   current_location?: string;
   gps_lat?: string;
   gps_lng?: string;
@@ -275,6 +292,16 @@ export interface Truck {
   notes?: string;
   created_at: string;
   updated_at: string;
+}
+
+export type TruckWaiverStatus = "available" | "linked";
+
+export interface TruckWaiver {
+  id: string;
+  waybill_truck_number: string;
+  status: TruckWaiverStatus;
+  added_by: string;
+  created_at: string;
 }
 
 export interface TruckEvent {
@@ -286,6 +313,7 @@ export interface TruckEvent {
 }
 
 export type AuditResult = "satisfactory" | "not_satisfactory";
+export type AuditPhase = "pre" | "post";
 
 export interface AuditWaiver {
   item: string;
@@ -298,11 +326,13 @@ export interface AuditWaiver {
 export interface AuditChecklistItem {
   item: string;
   passed: boolean;
+  checked_at?: string;
 }
 
 export interface TruckSafetyAudit {
   id: string;
   truck_op_id: string;
+  phase: AuditPhase;
   operation_id: string;
   truck_id: string;
   conducted_by: string;
@@ -310,6 +340,7 @@ export interface TruckSafetyAudit {
   conducted_at: string;
   result: AuditResult;
   checklist: AuditChecklistItem[];
+  header: Record<string, string>;
   waivers: AuditWaiver[];
   notes?: string;
   created_at: string;
@@ -337,6 +368,11 @@ export interface TruckOperation {
   discharge_approved_at?: string;
   waybill_number?: string;
   waybill_url?: string;
+  driver_name?: string;
+  driver_phone?: string;
+  vendor_name?: string;
+  waybill_document_number?: string;
+  waiver_id?: string;
   departed_parking_at?: string;
   arrived_loading_at?: string;
   departed_loading_at?: string;
@@ -351,7 +387,7 @@ export interface TruckOperation {
   updated_at: string;
   truck?: Truck;
   supervisor?: { id: string; full_name: string; role: string };
-  safety_audit?: TruckSafetyAudit;
+  safety_audits: TruckSafetyAudit[];
 }
 
 export interface TruckOperationHistory {
@@ -616,6 +652,7 @@ export interface AuditLogEntry {
   entity_type: string;
   entity_id?: string;
   changes?: Record<string, unknown>;
+  reason?: string;
   created_at: string;
 }
 

@@ -95,8 +95,11 @@ import type {
   VesselActivity,
   TruckSafetyAudit,
   AuditResult,
+  AuditPhase,
   AuditLogEntry,
   AuditWaiver,
+  PfiAllocation,
+  TruckWaiver,
 } from "@/types";
 import { PRODUCT_TYPE_LABELS } from "@/types";
 import { VOUCHER_CATEGORY_OPTIONS } from "@/lib/finance";
@@ -552,6 +555,26 @@ export default function OperationDetailPage({
     staleTime: 0,
   });
 
+  const { data: activePfis } = useQuery({
+    queryKey: ["pfis-active"],
+    queryFn: async () => {
+      const res = await api.get<ApiResponse<PFI[]>>(`/pfis/active`);
+      return res.data.data ?? [];
+    },
+    enabled: canSeeFinance && isBM,
+    staleTime: 0,
+  });
+
+  const { data: pfiAllocations, refetch: refetchPfiAllocations } = useQuery({
+    queryKey: ["operation-pfi-allocations", id],
+    queryFn: async () => {
+      const res = await api.get<ApiResponse<PfiAllocation[]>>(`/operations/${id}/pfis/allocations`);
+      return res.data.data ?? [];
+    },
+    enabled: canSeeFinance,
+    staleTime: 0,
+  });
+
   const { data: payments, refetch: refetchPayments } = useQuery({
     queryKey: ["operation-payments", id],
     queryFn: async () => {
@@ -765,6 +788,7 @@ export default function OperationDetailPage({
   // Upload form
   const [pfiAmount,   setPfiAmount]   = useState("");
   const [pfiCurrency, setPfiCurrency] = useState("NGN");
+  const [pfiQuantity, setPfiQuantity] = useState("");
   const [pfiSupplier, setPfiSupplier] = useState("");
   const [pfiDesc,     setPfiDesc]     = useState("");
   const [pfiDocFile,  setPfiDocFile]  = useState<File | null>(null);
@@ -774,17 +798,51 @@ export default function OperationDetailPage({
   const [genValidity,   setGenValidity]   = useState("7");
   const [genTax,        setGenTax]        = useState("0");
   const [genExchange,   setGenExchange]   = useState("");
+  const [genQuantity,   setGenQuantity]   = useState("");
   const [genSupplier,   setGenSupplier]   = useState("");
   const [genDesc,       setGenDesc]       = useState("");
   const [genNotes,      setGenNotes]      = useState("");
 
   const closePfiDialog = () => {
     setShowPfiDialog(false);
-    setPfiAmount(""); setPfiCurrency("NGN"); setPfiSupplier(""); setPfiDesc("");
+    setPfiAmount(""); setPfiCurrency("NGN"); setPfiQuantity(""); setPfiSupplier(""); setPfiDesc("");
     setPfiDocFile(null);
-    setGenRate(""); setGenValidity("7"); setGenTax("0"); setGenExchange("");
+    setGenRate(""); setGenValidity("7"); setGenTax("0"); setGenExchange(""); setGenQuantity("");
     setGenSupplier(""); setGenDesc(""); setGenNotes("");
   };
+
+  // ── PFI allocation (BM links an active PFI to this operation, volume drawdown)
+  const [allocPfiId,    setAllocPfiId]    = useState("");
+  const [allocQuantity, setAllocQuantity] = useState("");
+  const [allocNotes,    setAllocNotes]    = useState("");
+
+  const allocatePfiMutation = useMutation({
+    mutationFn: async () => {
+      await api.post(`/operations/${id}/pfis/${allocPfiId}/allocations`, {
+        quantity_litres: parseFloat(allocQuantity),
+        notes: allocNotes.trim() || undefined,
+      });
+    },
+    onSuccess: () => {
+      toast.success("PFI allocated to this operation");
+      setAllocPfiId(""); setAllocQuantity(""); setAllocNotes("");
+      refetchPfiAllocations();
+      qc.invalidateQueries({ queryKey: ["pfis-active"] });
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const deleteAllocationMutation = useMutation({
+    mutationFn: async ({ allocationId, reason }: { allocationId: string; reason: string }) => {
+      await api.delete(`/pfi-allocations/${allocationId}`, { params: { reason } });
+    },
+    onSuccess: () => {
+      toast.success("Allocation removed");
+      refetchPfiAllocations();
+      qc.invalidateQueries({ queryKey: ["pfis-active"] });
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
 
   const linkPfiMutation = useMutation({
     mutationFn: async () => {
@@ -806,6 +864,7 @@ export default function OperationDetailPage({
       await api.post(`/operations/${id}/pfis`, {
         amount:        parseFloat(pfiAmount),
         currency:      pfiCurrency,
+        quantity_litres: pfiQuantity ? parseFloat(pfiQuantity) : undefined,
         supplier_name: pfiSupplier.trim() || undefined,
         description:   pfiDesc.trim()    || undefined,
         document_url,
@@ -826,6 +885,7 @@ export default function OperationDetailPage({
         validity_days: parseInt(genValidity) || 7,
         tax_rate:      parseFloat(genTax) || 0,
         exchange_rate: genExchange ? parseFloat(genExchange) : undefined,
+        quantity_litres: genQuantity ? parseFloat(genQuantity) : undefined,
         supplier_name: genSupplier.trim() || undefined,
         description:   genDesc.trim()    || undefined,
         notes:         genNotes.trim()   || undefined,
@@ -1293,47 +1353,125 @@ export default function OperationDetailPage({
   };
 
   // ── Safety audit state
-  const SAFETY_CHECKLIST_ITEMS = [
-    "Brakes functional",
-    "Tires in good condition",
-    "Lights & signals working",
-    "Fire extinguisher present & charged",
-    "Driver license valid",
-    "Vehicle registration valid",
-    "Load securing equipment present",
-    "No visible fuel/oil leaks",
+  // Pre (before loading): vessel/jetty readiness + transshipment loading procedure
+  const PRE_CHECKLIST_ITEMS = [
+    "Confirm vessel arrival time and storage capacity",
+    "Confirm barge size is minimum of 15 metres breadth and securely placed",
+    "Confirm depth of the jetty",
+    "Verify truck scheduling and coordination",
+    "Obtain necessary port, safety permits and Navy Clearance",
+    "Conduct equipment inspections (hoses, pumps, connections)",
+    "Inspect trucks for product type, quantity, and seal integrity",
+    "Review weather conditions for safe operation",
+    "Ensure availability of spill response kits and fire suppression equipment",
+    "Conduct safety briefing for all personnel",
+    "Verify PPE availability (fire-resistant clothing, gloves, boots, helmets)",
+    "Confirm vessel readiness and jetty clearance",
+    "Ensure trucks are positioned in the correct designated area",
+    "Ullage truck compartments",
+    "Inspect trucks for any visible damage or leaks",
+    "Confirm truck waybill",
+    "Record product type and quantity",
+    "Securely connect hoses and pipelines between trucks and vessel",
+    "Securely connect flow meter between trucks and vessel",
+    "Pump 250/300 litres into drum to confirm flow meter accuracy",
+    "Is flow meter reading accurate?",
+    "Assign pump operators for product flow management",
+    "Begin product transfer at a controlled rate",
+    "Monitor flow meters and tank levels",
+    "Maintain communication between Jetty Supervisor, vessel crew, and truck drivers",
+    "Address any leaks or spills immediately",
   ];
+  // Post (before discharge): ongoing monitoring + close-out checks, gating discharge
+  const POST_CHECKLIST_ITEMS = [
+    "Continuous safety checks by Safety Officer",
+    "Monitor for leaks, spills, or equipment malfunctions",
+    "Adjust product flow rate as needed",
+    "Ensure environmental protection protocols are followed",
+    "Document any issues or incidents during the transfer process",
+    "Safely disconnect hoses and pipelines",
+    "Confirm truck empty tanks are carried out and empty",
+    "Confirm truck have no hidden tanks (Aso Rock)",
+    "Seal truck valves and drain any remaining product",
+    "Conduct final inspection for spills or leaks",
+    "Complete all necessary documentation (bills of lading, transfer logs)",
+    "Ensure all parties sign required documents",
+    "Submit reports to port authorities and internal stakeholders",
+    "Detain/release truck with loss or average",
+    "Conduct a post-operation debrief with the team",
+    "Clean and store equipment appropriately",
+  ];
+  const CHECKLIST_ITEMS_BY_PHASE: Record<AuditPhase, string[]> = { pre: PRE_CHECKLIST_ITEMS, post: POST_CHECKLIST_ITEMS };
+  const HEADER_FIELDS_BY_PHASE: Record<AuditPhase, { k: string; label: string }[]> = {
+    pre: [
+      { k: "safety_officer", label: "Safety Officer" },
+      { k: "driver_name", label: "Truck Driver" },
+      { k: "truck_number", label: "Truck Number" },
+      { k: "truck_quantity", label: "Truck Quantity" },
+      { k: "driver_phone", label: "Driver Contact" },
+      { k: "pfi_number", label: "PFI" },
+      { k: "nomination_date", label: "Nomination Date" },
+      { k: "product_type", label: "Product Type" },
+    ],
+    post: [
+      { k: "truck_arrival_date", label: "Truck Arrival Date" },
+      { k: "quantity_discharge", label: "Quantity Discharge" },
+      { k: "discharge_date", label: "Discharge Date" },
+    ],
+  };
+
   const [auditDialogTruckOpId, setAuditDialogTruckOpId] = useState<string | null>(null);
+  const [auditPhase, setAuditPhase] = useState<AuditPhase>("pre");
   const [auditChecklist, setAuditChecklist] = useState<Record<string, boolean>>({});
+  const [auditItemTimestamps, setAuditItemTimestamps] = useState<Record<string, string>>({});
+  const [auditHeader, setAuditHeader] = useState<Record<string, string>>({});
   const [auditResult, setAuditResult] = useState<AuditResult>("satisfactory");
   const [auditNotes, setAuditNotes] = useState("");
 
-  const openAuditDialog = (truckOpId: string, existing?: TruckSafetyAudit) => {
+  const openAuditDialog = (truckOpId: string, phase: AuditPhase, existing?: TruckSafetyAudit) => {
+    const items = CHECKLIST_ITEMS_BY_PHASE[phase];
     if (existing) {
       const map: Record<string, boolean> = {};
-      existing.checklist.forEach((c) => { map[c.item] = c.passed; });
+      const ts: Record<string, string> = {};
+      existing.checklist.forEach((c) => {
+        map[c.item] = c.passed;
+        if (c.checked_at) ts[c.item] = c.checked_at;
+      });
       setAuditChecklist(map);
+      setAuditItemTimestamps(ts);
+      setAuditHeader(existing.header ?? {});
       setAuditResult(existing.result);
       setAuditNotes(existing.notes ?? "");
     } else {
       const map: Record<string, boolean> = {};
-      SAFETY_CHECKLIST_ITEMS.forEach((item) => { map[item] = false; });
+      items.forEach((item) => { map[item] = false; });
       setAuditChecklist(map);
+      setAuditItemTimestamps({});
+      setAuditHeader({});
       setAuditResult("satisfactory");
       setAuditNotes("");
     }
+    setAuditPhase(phase);
     setAuditDialogTruckOpId(truckOpId);
+  };
+
+  const toggleAuditItem = (item: string, passed: boolean) => {
+    setAuditChecklist((prev) => ({ ...prev, [item]: passed }));
+    setAuditItemTimestamps((prev) => ({ ...prev, [item]: new Date().toISOString() }));
   };
 
   const submitAuditMutation = useMutation({
     mutationFn: async ({ truckOpId }: { truckOpId: string }) => {
-      const checklist = SAFETY_CHECKLIST_ITEMS.map((item) => ({
+      const checklist = CHECKLIST_ITEMS_BY_PHASE[auditPhase].map((item) => ({
         item,
         passed: auditChecklist[item] ?? false,
+        checked_at: auditItemTimestamps[item],
       }));
       await api.post(`/operations/${id}/trucks/${truckOpId}/audit`, {
+        phase: auditPhase,
         result: auditResult,
         checklist,
+        header: auditHeader,
         notes: auditNotes.trim() || undefined,
       });
     },
@@ -1347,13 +1485,14 @@ export default function OperationDetailPage({
 
   // ── Waiver state (BM only)
   const [waiverDialog, setWaiverDialog] = useState<{
-    truckOpId: string; item: string;
+    truckOpId: string; phase: AuditPhase; item: string;
   } | null>(null);
   const [waiverNotes, setWaiverNotes] = useState("");
 
   const waiveItemMutation = useMutation({
-    mutationFn: async ({ truckOpId, item, notes }: { truckOpId: string; item: string; notes: string }) => {
+    mutationFn: async ({ truckOpId, phase, item, notes }: { truckOpId: string; phase: AuditPhase; item: string; notes: string }) => {
       await api.post(`/operations/${id}/trucks/${truckOpId}/audit/waive`, {
+        phase,
         item,
         waiver_notes: notes.trim() || undefined,
       });
@@ -1367,6 +1506,115 @@ export default function OperationDetailPage({
     },
     onError: (err) => toast.error(getErrorMessage(err)),
   });
+
+  // Renders one phase's (Pre or Post) safety-checklist banner + breakdown for a
+  // truck operation. Neither phase gates the other, nor the movement stages —
+  // both are just independently trackable readiness checks.
+  const renderAuditBanner = (to: TruckOperation, phase: AuditPhase, audit?: TruckSafetyAudit) => {
+    const label = phase === "pre" ? "Pre (before loading)" : "Post (before discharge)";
+    const auditPassed = audit?.result === "satisfactory";
+    const failedItems = audit?.checklist.filter((c) => !c.passed) ?? [];
+    const waivedSet = new Set((audit?.waivers ?? []).map((w: AuditWaiver) => w.item));
+    const unwaivedFailed = failedItems.filter((c) => !waivedSet.has(c.item));
+    const hasWaivers = (audit?.waivers?.length ?? 0) > 0;
+
+    return (
+      <div key={phase}>
+        <div className={`flex items-center gap-2 px-5 py-2.5 border-b ${
+          auditPassed ? "bg-emerald-50/50" : audit ? "bg-red-50/40" : "bg-amber-50/50"
+        }`}>
+          {auditPassed
+            ? <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+            : audit
+            ? <ShieldAlert className="w-3.5 h-3.5 text-red-600 shrink-0" />
+            : <Shield className="w-3.5 h-3.5 text-amber-600 shrink-0" />}
+          <p className={`text-xs font-medium flex-1 ${
+            auditPassed ? "text-emerald-700" : audit ? "text-red-700" : "text-amber-700"
+          }`}>
+            <span className="font-semibold">{label}:</span>{" "}
+            {auditPassed
+              ? `Passed · ${audit?.conductor_name ?? ""}${audit?.conducted_at ? ` · ${formatDate(audit.conducted_at)}` : ""}`
+              : audit
+              ? `FAILED — ${unwaivedFailed.length} unresolved issue${unwaivedFailed.length !== 1 ? "s" : ""}`
+              : "Not yet conducted"}
+            {hasWaivers && !auditPassed && (
+              <span className="ml-2 text-amber-600 font-semibold">
+                ({(audit?.waivers?.length ?? 0)} waived by BM)
+              </span>
+            )}
+          </p>
+          {(isLO || isOS) && (
+            <Button size="sm" variant={audit && !auditPassed ? "destructive" : "outline"}
+              className="h-6 text-[11px] px-2 shrink-0"
+              onClick={() => openAuditDialog(to.id, phase, audit ?? undefined)}>
+              {audit ? "Re-audit" : "Conduct Audit"}
+            </Button>
+          )}
+        </div>
+
+        {isBM && audit && (
+          <div className="px-5 py-3 border-b bg-muted/10 space-y-1.5">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+              {label} checklist — {audit.conductor_name} · {formatDateTime(audit.conducted_at)}
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
+              {audit.checklist.map((c) => {
+                const waiver = (audit.waivers ?? []).find((w: AuditWaiver) => w.item === c.item);
+                return (
+                  <div key={c.item} className={`flex items-start gap-2 text-xs rounded-md px-2.5 py-1.5 ${
+                    c.passed ? "bg-emerald-50 text-emerald-700"
+                    : waiver ? "bg-amber-50 text-amber-800"
+                    : "bg-red-50 text-red-700"
+                  }`}>
+                    <span className="shrink-0 mt-0.5 font-bold">
+                      {c.passed ? "✓" : waiver ? "⚠" : "✗"}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <span>{c.item}</span>
+                      {c.checked_at && <span className="ml-1.5 text-[9px] text-muted-foreground">{formatDateTime(c.checked_at)}</span>}
+                      {!c.passed && !waiver && (
+                        <button
+                          type="button"
+                          className="ml-2 text-[10px] font-semibold underline text-red-600 hover:text-red-800"
+                          onClick={() => { setWaiverDialog({ truckOpId: to.id, phase, item: c.item }); setWaiverNotes(""); }}
+                        >
+                          Waive
+                        </button>
+                      )}
+                      {waiver && (
+                        <p className="text-[10px] text-amber-700 mt-0.5">
+                          Waived by {waiver.waived_by_name} · {formatDate(waiver.waived_at)}
+                          {waiver.notes && ` — "${waiver.notes}"`}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            {audit.notes && (
+              <p className="text-[11px] text-muted-foreground italic mt-2">Notes: {audit.notes}</p>
+            )}
+          </div>
+        )}
+
+        {!isBM && audit && failedItems.length > 0 && (
+          <div className="px-5 py-2 border-b bg-red-50/30">
+            <p className="text-[10px] font-semibold text-red-600 mb-1">Failed items:</p>
+            <div className="flex flex-wrap gap-1.5">
+              {failedItems.map((c) => (
+                <span key={c.item} className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                  waivedSet.has(c.item) ? "bg-amber-100 text-amber-700" : "bg-red-100 text-red-700"
+                }`}>
+                  {waivedSet.has(c.item) ? "⚠ " : "✗ "}{c.item}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   // CSV export of activity log
   const exportActivityCsv = () => {
@@ -1434,6 +1682,55 @@ export default function OperationDetailPage({
     onSuccess: () => {
       toast.success("Trucks initialized — you can now record progress");
       qc.invalidateQueries({ queryKey: ["operation-trucks", id] });
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  // ── Waybill link (LO only): waiver number + driver + vendor come together here
+  const [waybillDialogTruckOpId, setWaybillDialogTruckOpId] = useState<string | null>(null);
+  const [waybillWaiverId,  setWaybillWaiverId]  = useState("");
+  const [waybillDriver,    setWaybillDriver]    = useState("");
+  const [waybillPhone,     setWaybillPhone]     = useState("");
+  const [waybillVendor,    setWaybillVendor]    = useState("");
+  const [waybillDocNumber, setWaybillDocNumber] = useState("");
+  const [waybillNumber,    setWaybillNumber]    = useState("");
+
+  const { data: availableWaivers } = useQuery({
+    queryKey: ["truck-waivers", "available"],
+    queryFn: async () => {
+      const res = await api.get<ApiResponse<TruckWaiver[]>>("/trucks/waivers", { params: { status: "available" } });
+      return res.data.data ?? [];
+    },
+    enabled: !!waybillDialogTruckOpId,
+  });
+
+  const openWaybillDialog = (to: TruckOperation) => {
+    setWaybillDialogTruckOpId(to.id);
+    setWaybillWaiverId(to.waiver_id ?? "");
+    setWaybillDriver(to.driver_name ?? "");
+    setWaybillPhone(to.driver_phone ?? "");
+    setWaybillVendor(to.vendor_name ?? "");
+    setWaybillDocNumber(to.waybill_document_number ?? "");
+    setWaybillNumber(to.waybill_number ?? "");
+  };
+
+  const linkWaybillMutation = useMutation({
+    mutationFn: async () => {
+      if (!waybillDialogTruckOpId) return;
+      await api.post(`/operations/${id}/trucks/${waybillDialogTruckOpId}/waybill`, {
+        waiver_id: waybillWaiverId,
+        driver_name: waybillDriver.trim(),
+        driver_phone: waybillPhone.trim(),
+        vendor_name: waybillVendor.trim() || undefined,
+        waybill_document_number: waybillDocNumber.trim() || undefined,
+        waybill_number: waybillNumber.trim() || undefined,
+      });
+    },
+    onSuccess: () => {
+      toast.success("Waybill linked — waiver, plate, and driver are now on record");
+      setWaybillDialogTruckOpId(null);
+      qc.invalidateQueries({ queryKey: ["operation-trucks", id] });
+      qc.invalidateQueries({ queryKey: ["truck-waivers"] });
     },
     onError: (err) => toast.error(getErrorMessage(err)),
   });
@@ -3461,9 +3758,10 @@ export default function OperationDetailPage({
                       };
                       const firstPendingIdx = TRUCK_STAGES.findIndex((s) => !stageValues[s.key]);
 
-                      const audit = to.safety_audit;
-                      const auditPassed = audit?.result === "satisfactory";
-                      const auditBlocked = !auditPassed; // Stage 1 is blocked until audit passes
+                      // Pre (before loading) and Post (before discharge) are two independent,
+                      // non-blocking checklists — neither gates the other or the movement stages.
+                      const preAudit  = to.safety_audits?.find((a) => a.phase === "pre");
+                      const postAudit = to.safety_audits?.find((a) => a.phase === "post");
 
                       return (
                         <Card key={to.id} className="border-0 shadow-sm overflow-hidden">
@@ -3484,6 +3782,18 @@ export default function OperationDetailPage({
                                   {to.status.replace(/_/g, " ")}
                                 </span>
                               )}
+                              {/* LO: link waiver number + driver at waybill-generation time */}
+                              {isLO && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 text-xs gap-1.5"
+                                  onClick={() => openWaybillDialog(to)}
+                                >
+                                  <FileText className="w-3.5 h-3.5" />
+                                  {to.waiver_id ? "Edit Waybill" : "Link Waybill"}
+                                </Button>
+                              )}
                               {/* BM: upload document for this truck */}
                               {isBM && (
                                 <Button
@@ -3503,118 +3813,19 @@ export default function OperationDetailPage({
                             </div>
                           </div>
 
-                          {/* Safety Audit section */}
-                          {(() => {
-                            const failedItems = audit?.checklist.filter((c) => !c.passed) ?? [];
-                            const waivedSet = new Set((audit?.waivers ?? []).map((w: AuditWaiver) => w.item));
-                            const unwaivedFailed = failedItems.filter((c) => !waivedSet.has(c.item));
-                            const hasWaivers = (audit?.waivers?.length ?? 0) > 0;
+                          {/* Waybill / driver summary, once linked */}
+                          {to.waiver_id && (
+                            <div className="px-5 py-2 border-b bg-sky-50/40 text-[11px] text-sky-800 flex flex-wrap gap-x-4 gap-y-0.5">
+                              <span>Driver: <strong>{to.driver_name}</strong> ({to.driver_phone})</span>
+                              {to.vendor_name && <span>Vendor: <strong>{to.vendor_name}</strong></span>}
+                              {to.waybill_document_number && <span>Waybill No: <strong>{to.waybill_document_number}</strong></span>}
+                            </div>
+                          )}
 
-                            return (
-                              <>
-                                {/* Banner row */}
-                                <div className={`flex items-center gap-2 px-5 py-2.5 border-b ${
-                                  auditPassed ? "bg-emerald-50/50"
-                                  : audit ? "bg-red-50/40"
-                                  : "bg-amber-50/50"
-                                }`}>
-                                  {auditPassed
-                                    ? <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                                    : audit
-                                    ? <ShieldAlert className="w-3.5 h-3.5 text-red-600 shrink-0" />
-                                    : <Shield className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                                  }
-                                  <p className={`text-xs font-medium flex-1 ${
-                                    auditPassed ? "text-emerald-700"
-                                    : audit ? "text-red-700"
-                                    : "text-amber-700"
-                                  }`}>
-                                    {auditPassed
-                                      ? `Safety audit passed · ${audit?.conductor_name ?? ""}${audit?.conducted_at ? ` · ${formatDate(audit.conducted_at)}` : ""}`
-                                      : audit
-                                      ? `Safety audit FAILED — ${unwaivedFailed.length} unresolved issue${unwaivedFailed.length !== 1 ? "s" : ""}`
-                                      : "Safety audit required before loading can begin"}
-                                    {hasWaivers && !auditPassed && (
-                                      <span className="ml-2 text-amber-600 font-semibold">
-                                        ({(audit?.waivers?.length ?? 0)} waived by BM)
-                                      </span>
-                                    )}
-                                  </p>
-                                  {(isLO || isOS) && (
-                                    <Button size="sm" variant={audit && !auditPassed ? "destructive" : "outline"}
-                                      className="h-6 text-[11px] px-2 shrink-0"
-                                      onClick={() => openAuditDialog(to.id, audit ?? undefined)}>
-                                      {audit ? (auditPassed ? "Re-audit" : "Re-audit") : "Conduct Audit"}
-                                    </Button>
-                                  )}
-                                </div>
-
-                                {/* BM: detailed checklist breakdown (always visible when audit exists) */}
-                                {isBM && audit && (
-                                  <div className="px-5 py-3 border-b bg-muted/10 space-y-1.5">
-                                    <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">
-                                      Checklist — {audit.conductor_name} · {formatDateTime(audit.conducted_at)}
-                                    </p>
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
-                                      {audit.checklist.map((c) => {
-                                        const waiver = (audit.waivers ?? []).find((w: AuditWaiver) => w.item === c.item);
-                                        return (
-                                          <div key={c.item} className={`flex items-start gap-2 text-xs rounded-md px-2.5 py-1.5 ${
-                                            c.passed ? "bg-emerald-50 text-emerald-700"
-                                            : waiver ? "bg-amber-50 text-amber-800"
-                                            : "bg-red-50 text-red-700"
-                                          }`}>
-                                            <span className="shrink-0 mt-0.5 font-bold">
-                                              {c.passed ? "✓" : waiver ? "⚠" : "✗"}
-                                            </span>
-                                            <div className="flex-1 min-w-0">
-                                              <span>{c.item}</span>
-                                              {!c.passed && !waiver && (
-                                                <button
-                                                  type="button"
-                                                  className="ml-2 text-[10px] font-semibold underline text-red-600 hover:text-red-800"
-                                                  onClick={() => { setWaiverDialog({ truckOpId: to.id, item: c.item }); setWaiverNotes(""); }}
-                                                >
-                                                  Waive
-                                                </button>
-                                              )}
-                                              {waiver && (
-                                                <p className="text-[10px] text-amber-700 mt-0.5">
-                                                  Waived by {waiver.waived_by_name} · {formatDate(waiver.waived_at)}
-                                                  {waiver.notes && ` — "${waiver.notes}"`}
-                                                </p>
-                                              )}
-                                            </div>
-                                          </div>
-                                        );
-                                      })}
-                                    </div>
-                                    {audit.notes && (
-                                      <p className="text-[11px] text-muted-foreground italic mt-2">
-                                        Notes: {audit.notes}
-                                      </p>
-                                    )}
-                                  </div>
-                                )}
-
-                                {/* Non-BM: failed items listed (LO/OS to see what failed) */}
-                                {!isBM && audit && failedItems.length > 0 && (
-                                  <div className="px-5 py-2 border-b bg-red-50/30">
-                                    <p className="text-[10px] font-semibold text-red-600 mb-1">Failed items:</p>
-                                    <div className="flex flex-wrap gap-1.5">
-                                      {failedItems.map((c) => (
-                                        <span key={c.item} className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
-                                          waivedSet.has(c.item) ? "bg-amber-100 text-amber-700" : "bg-red-100 text-red-700"
-                                        }`}>
-                                          {waivedSet.has(c.item) ? "⚠ " : "✗ "}{c.item}
-                                        </span>
-                                      ))}
-                                    </div>
-                                  </div>
-                                )}
-                              </>
-                            );
-                          })()}
+                          {/* Safety Audits — Pre (before loading) and Post (before discharge),
+                              independently trackable, neither gates the other */}
+                          {renderAuditBanner(to, "pre", preAudit)}
+                          {renderAuditBanner(to, "post", postAudit)}
 
                           {/* BM upload panel */}
                           {isBM && uploadingTruckId === to.id && (
@@ -3698,13 +3909,14 @@ export default function OperationDetailPage({
                                           </p>
                                           <p className="text-[11px] text-muted-foreground">{stage.description}</p>
                                         </div>
-                                        {/* Record button — LO/OS for next stage; Stage 1 blocked until audit passes */}
-                                        {isNext && (isLO || isOS) && !isRecording && (
+                                        {/* Record button — any undone stage is recordable; phases don't gate
+                                            each other. Out-of-order recording is still allowed (BM can always
+                                            unlock/override), it's just visually de-emphasized via isFuture. */}
+                                        {!isDone && (isLO || isOS) && !isRecording && (
                                           <Button
                                             size="sm"
+                                            variant={isNext ? "default" : "outline"}
                                             className="h-7 text-xs shrink-0"
-                                            disabled={idx === 0 && auditBlocked}
-                                            title={idx === 0 && auditBlocked ? "Complete safety audit first" : undefined}
                                             onClick={() => setActiveRecording((prev) => ({ ...prev, [to.id]: stage.key }))}
                                           >
                                             Record
@@ -4254,16 +4466,19 @@ export default function OperationDetailPage({
                                   {entry.changes && Object.keys(entry.changes).length > 0 && (
                                     <div className="mt-1 flex flex-wrap gap-1.5">
                                       {Object.entries(entry.changes).slice(0, 4).map(([k, v]) => {
-                                        const val = typeof v === "object" && v !== null && "to" in v
-                                          ? String((v as Record<string, unknown>).to)
-                                          : String(v);
+                                        const isDiff = typeof v === "object" && v !== null && "to" in v;
+                                        const val = isDiff ? String((v as Record<string, unknown>).to) : String(v);
+                                        const fromVal = isDiff ? String((v as Record<string, unknown>).from) : null;
                                         return (
                                           <span key={k} className="text-[10px] bg-muted px-1.5 py-0.5 rounded font-mono">
-                                            {k.replace(/_/g, " ")}: {val.slice(0, 40)}
+                                            {k.replace(/_/g, " ")}: {fromVal && fromVal !== "None" ? `${fromVal.slice(0, 20)} → ` : ""}{val.slice(0, 40)}
                                           </span>
                                         );
                                       })}
                                     </div>
+                                  )}
+                                  {entry.reason && (
+                                    <p className="text-[11px] text-muted-foreground italic mt-1">Reason: {entry.reason}</p>
                                   )}
                                 </div>
                               </div>
@@ -4384,6 +4599,11 @@ export default function OperationDetailPage({
                                         <span className="font-semibold">{pfi.currency} {parseFloat(pfi.amount).toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
                                         {pfi.supplier_name && <span className="ml-2">· {pfi.supplier_name}</span>}
                                       </p>
+                                      {pfi.quantity_litres && (
+                                        <p className="text-[10px] text-muted-foreground mt-0.5">
+                                          {parseFloat(pfi.remaining_litres ?? pfi.quantity_litres).toLocaleString()} / {parseFloat(pfi.quantity_litres).toLocaleString()} L remaining
+                                        </p>
+                                      )}
                                       <p className="text-[10px] text-muted-foreground/60 mt-0.5">{formatDateTime(pfi.created_at)}</p>
                                     </div>
                                     <div className="flex items-center gap-2 shrink-0">
@@ -4439,6 +4659,85 @@ export default function OperationDetailPage({
                       </CardContent>
                     </Card>
                   </div>
+
+                  {/* ── PFI Allocations (volume drawdown) ── */}
+                  {isBM && (
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2">
+                        <FileText className="w-4 h-4 text-primary" />
+                        <h3 className="text-sm font-semibold">PFI Allocations</h3>
+                        {pfiAllocations?.length ? (
+                          <Badge variant="secondary" className="text-[10px] h-4 px-1.5">{pfiAllocations.length}</Badge>
+                        ) : null}
+                      </div>
+                      <Card className="border-0 shadow-sm">
+                        <CardContent className="p-4 space-y-3">
+                          <div className="grid grid-cols-1 sm:grid-cols-[1fr_140px_auto] gap-2 items-end">
+                            <div className="space-y-1.5">
+                              <Label className="text-xs">Active PFI</Label>
+                              <Select value={allocPfiId} onValueChange={setAllocPfiId}>
+                                <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select PFI…" /></SelectTrigger>
+                                <SelectContent>
+                                  {activePfis?.map((p) => (
+                                    <SelectItem key={p.id} value={p.id} className="text-xs">
+                                      {p.pfi_number} — {parseFloat(p.remaining_litres ?? "0").toLocaleString()} L remaining
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="space-y-1.5">
+                              <Label className="text-xs">Quantity (L)</Label>
+                              <Input type="number" step="0.01" className="h-8 text-xs" placeholder="e.g. 42000"
+                                value={allocQuantity} onChange={(e) => setAllocQuantity(e.target.value)} />
+                            </div>
+                            <Button
+                              size="sm"
+                              className="h-8 gap-1.5"
+                              disabled={!allocPfiId || !allocQuantity || parseFloat(allocQuantity) <= 0 || allocatePfiMutation.isPending}
+                              onClick={() => allocatePfiMutation.mutate()}
+                            >
+                              {allocatePfiMutation.isPending
+                                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                : <PlusCircle className="w-3.5 h-3.5" />}
+                              Allocate
+                            </Button>
+                          </div>
+
+                          {pfiAllocations?.length ? (
+                            <div className="divide-y border-t pt-2">
+                              {pfiAllocations.map((a) => {
+                                const sourcePfi = pfis?.find((p) => p.id === a.pfi_id) ?? activePfis?.find((p) => p.id === a.pfi_id);
+                                return (
+                                  <div key={a.id} className="flex items-center justify-between gap-3 py-2 text-xs">
+                                    <div className="min-w-0">
+                                      <span className="font-mono font-semibold">{sourcePfi?.pfi_number ?? a.pfi_id.slice(0, 8)}</span>
+                                      <span className="ml-2 text-muted-foreground">{parseFloat(a.quantity_litres).toLocaleString()} L</span>
+                                      {a.notes && <span className="ml-2 text-muted-foreground/70">· {a.notes}</span>}
+                                    </div>
+                                    <Button
+                                      size="sm" variant="ghost"
+                                      className="h-6 text-[10px] text-destructive hover:text-destructive gap-1 shrink-0"
+                                      onClick={() => {
+                                        const reason = window.prompt("Reason for removing this allocation?");
+                                        if (reason && reason.trim()) {
+                                          deleteAllocationMutation.mutate({ allocationId: a.id, reason: reason.trim() });
+                                        }
+                                      }}
+                                    >
+                                      <Trash2 className="w-3 h-3" />Remove
+                                    </Button>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <p className="text-xs text-muted-foreground/70 text-center py-2">No PFI allocated to this operation yet.</p>
+                          )}
+                        </CardContent>
+                      </Card>
+                    </div>
+                  )}
 
                   {/* ── Payments Section (client pays us) */}
                   <div className="space-y-3">
@@ -5212,6 +5511,11 @@ export default function OperationDetailPage({
                     disabled={op?.currency === "NGN"}
                     value={genExchange} onChange={(e) => setGenExchange(e.target.value)} />
                 </div>
+                <div className="space-y-1.5 col-span-2">
+                  <Label className="text-xs">Quantity (litres) <span className="text-muted-foreground font-normal">optional — for volume drawdown</span></Label>
+                  <Input type="number" step="0.01" placeholder="e.g. 252000"
+                    value={genQuantity} onChange={(e) => setGenQuantity(e.target.value)} />
+                </div>
               </div>
 
               <div className="space-y-1.5">
@@ -5291,6 +5595,11 @@ export default function OperationDetailPage({
                     </SelectContent>
                   </Select>
                 </div>
+                <div className="space-y-1.5 col-span-2">
+                  <Label className="text-xs">Quantity (litres) <span className="text-muted-foreground font-normal">optional — for volume drawdown</span></Label>
+                  <Input type="number" step="0.01" placeholder="e.g. 252000"
+                    value={pfiQuantity} onChange={(e) => setPfiQuantity(e.target.value)} />
+                </div>
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs">Supplier Name <span className="text-muted-foreground font-normal">optional</span></Label>
@@ -5363,17 +5672,31 @@ export default function OperationDetailPage({
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Shield className="w-4 h-4 text-primary" />
-              Pre-Operation Safety Audit
+              {auditPhase === "pre" ? "Pre-Operation Safety Checklist (before loading)" : "Post-Operation Safety Checklist (before discharge)"}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 mt-1 max-h-[70vh] overflow-y-auto pr-1">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {HEADER_FIELDS_BY_PHASE[auditPhase].map((f) => (
+                <div key={f.k} className="space-y-1">
+                  <Label className="text-[10px] text-muted-foreground">{f.label}</Label>
+                  <Input
+                    className="h-8 text-xs"
+                    value={auditHeader[f.k] ?? ""}
+                    onChange={(e) => setAuditHeader((prev) => ({ ...prev, [f.k]: e.target.value }))}
+                  />
+                </div>
+              ))}
+            </div>
+
             <div className="space-y-1.5">
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
                 Checklist — tick each item that PASSES inspection
               </p>
               <div className="grid grid-cols-1 gap-1.5">
-                {SAFETY_CHECKLIST_ITEMS.map((item) => {
+                {CHECKLIST_ITEMS_BY_PHASE[auditPhase].map((item) => {
                   const passed = auditChecklist[item] ?? false;
+                  const checkedAt = auditItemTimestamps[item];
                   return (
                     <label key={item} className={`flex items-center gap-3 cursor-pointer rounded-lg border px-3 py-2.5 transition-colors ${
                       passed ? "border-emerald-300 bg-emerald-50" : "border-red-200 bg-red-50/50 hover:border-red-300"
@@ -5382,9 +5705,12 @@ export default function OperationDetailPage({
                         type="checkbox"
                         className="w-4 h-4 rounded border-border accent-emerald-600 cursor-pointer"
                         checked={passed}
-                        onChange={(e) => setAuditChecklist((prev) => ({ ...prev, [item]: e.target.checked }))}
+                        onChange={(e) => toggleAuditItem(item, e.target.checked)}
                       />
-                      <span className={`text-sm flex-1 ${passed ? "text-emerald-800" : "text-red-700 font-medium"}`}>{item}</span>
+                      <span className={`text-sm flex-1 ${passed ? "text-emerald-800" : "text-red-700 font-medium"}`}>
+                        {item}
+                        {checkedAt && <span className="ml-2 text-[10px] text-muted-foreground font-normal">{formatDateTime(checkedAt)}</span>}
+                      </span>
                       <span className={`text-xs font-bold shrink-0 ${passed ? "text-emerald-600" : "text-red-500"}`}>
                         {passed ? "✓ PASS" : "✗ FAIL"}
                       </span>
@@ -5440,6 +5766,65 @@ export default function OperationDetailPage({
             >
               {submitAuditMutation.isPending && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
               Submit Audit
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── LO: Link Waybill dialog (waiver number + plate + driver, at waybill time) */}
+      <Dialog open={!!waybillDialogTruckOpId} onOpenChange={(v) => { if (!v) setWaybillDialogTruckOpId(null); }}>
+        <DialogContent className="sm:max-w-md" aria-describedby={undefined}>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="w-4 h-4 text-primary" />
+              Link Waybill
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 mt-1">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Waiver / Regulatory Number <span className="text-destructive">*</span></Label>
+              <Select value={waybillWaiverId} onValueChange={setWaybillWaiverId}>
+                <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select an available waiver number…" /></SelectTrigger>
+                <SelectContent>
+                  {availableWaivers?.map((w) => (
+                    <SelectItem key={w.id} value={w.id}>{w.waybill_truck_number}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Driver Name <span className="text-destructive">*</span></Label>
+                <Input value={waybillDriver} onChange={(e) => setWaybillDriver(e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Driver Phone <span className="text-destructive">*</span></Label>
+                <Input value={waybillPhone} onChange={(e) => setWaybillPhone(e.target.value)} />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Vendor <span className="text-muted-foreground font-normal">optional</span></Label>
+              <Input value={waybillVendor} onChange={(e) => setWaybillVendor(e.target.value)} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Waybill No. <span className="text-muted-foreground font-normal">optional</span></Label>
+                <Input placeholder="e.g. WB 25615" value={waybillDocNumber} onChange={(e) => setWaybillDocNumber(e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Internal Waybill # <span className="text-muted-foreground font-normal">optional</span></Label>
+                <Input value={waybillNumber} onChange={(e) => setWaybillNumber(e.target.value)} />
+              </div>
+            </div>
+          </div>
+          <DialogFooter className="mt-4">
+            <Button variant="outline" onClick={() => setWaybillDialogTruckOpId(null)}>Cancel</Button>
+            <Button
+              disabled={!waybillWaiverId || !waybillDriver.trim() || !waybillPhone.trim() || linkWaybillMutation.isPending}
+              onClick={() => linkWaybillMutation.mutate()}
+            >
+              {linkWaybillMutation.isPending && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
+              Link Waybill
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -5592,6 +5977,7 @@ export default function OperationDetailPage({
               disabled={!waiverNotes.trim() || waiveItemMutation.isPending}
               onClick={() => waiverDialog && waiveItemMutation.mutate({
                 truckOpId: waiverDialog.truckOpId,
+                phase: waiverDialog.phase,
                 item: waiverDialog.item,
                 notes: waiverNotes,
               })}

@@ -92,7 +92,7 @@ async function downloadCSV(search: string, statusFilter: string, typeFilter: str
 
   const items = allItems;
 
-  const headers = ["Number", "Type", "Status", "Volume (MT)", "Currency", "Created", "Updated"];
+  const headers = ["Number", "Type", "Status", "Volume (L)", "Currency", "Created", "Updated"];
   const rows = items.map((op) => [
     op.operation_number,
     OP_TYPE_LABELS[op.type] ?? op.type,
@@ -263,7 +263,7 @@ export default function OperationsPage() {
                       </div>
                       <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                         <Badge variant="outline" className="text-[10px]">{OP_TYPE_LABELS[op.type] ?? op.type}</Badge>
-                        <span>{op.expected_volume_mt ? `${parseFloat(op.expected_volume_mt).toLocaleString()} MT` : "—"} {op.currency}</span>
+                        <span>{op.expected_volume_mt ? `${parseFloat(op.expected_volume_mt).toLocaleString()} L` : "—"} {op.currency}</span>
                         <span>{formatDateTime(op.created_at)}</span>
                       </div>
                     </button>
@@ -288,7 +288,7 @@ export default function OperationsPage() {
                       Status
                     </TableHead>
                     <TableHead className="font-semibold text-xs uppercase tracking-wide">
-                      Volume (MT)
+                      Volume (L)
                     </TableHead>
                     <TableHead className="font-semibold text-xs uppercase tracking-wide">
                       Currency
@@ -322,7 +322,7 @@ export default function OperationsPage() {
                         </TableCell>
                         <TableCell className="text-sm">
                           {op.expected_volume_mt
-                            ? `${parseFloat(op.expected_volume_mt).toLocaleString()} MT`
+                            ? `${parseFloat(op.expected_volume_mt).toLocaleString()} L`
                             : "—"}
                         </TableCell>
                         <TableCell className="text-sm font-medium">

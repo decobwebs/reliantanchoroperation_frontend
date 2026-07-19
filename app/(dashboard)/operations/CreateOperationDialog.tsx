@@ -492,7 +492,7 @@ export function CreateOperationDialog({ open, onClose, onCreated }: Props) {
                       <SelectItem key={v.id} value={v.id}>
                         {v.vessel_name}
                         <span className="ml-1.5 text-xs text-muted-foreground">
-                          · ROB: {parseFloat(v.current_rob_mt).toLocaleString()} MT
+                          · ROB: {parseFloat(v.current_rob_mt).toLocaleString()} L
                         </span>
                       </SelectItem>
                     ))}
@@ -531,7 +531,7 @@ export function CreateOperationDialog({ open, onClose, onCreated }: Props) {
             {/* Volume + Currency */}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label>Expected Volume (MT)</Label>
+                <Label>Expected Volume (L)</Label>
                 <Input
                   type="number"
                   step="0.001"

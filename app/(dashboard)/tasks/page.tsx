@@ -179,7 +179,7 @@ function SubmitReadinessDialog({
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium font-mono">{truck.truck_number}</p>
                         <p className="text-xs text-muted-foreground">
-                          {parseFloat(truck.capacity_mt).toLocaleString()} MT
+                          {parseFloat(truck.capacity_mt).toLocaleString()} L
                           {truck.driver_name ? ` · ${truck.driver_name}` : ""}
                         </p>
                       </div>

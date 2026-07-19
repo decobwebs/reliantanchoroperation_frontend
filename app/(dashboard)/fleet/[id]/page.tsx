@@ -242,7 +242,7 @@ export default function TruckProfilePage({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-white/80">
                   <div className="flex items-center gap-2">
                     <Package className="w-3.5 h-3.5 text-white/50 shrink-0" />
-                    <span>Capacity: <span className="font-bold text-white">{formatNumber(parseFloat(truck.capacity_mt))} MT</span></span>
+                    <span>Capacity: <span className="font-bold text-white">{formatNumber(parseFloat(truck.capacity_mt))} L</span></span>
                   </div>
                   {truck.driver_name && (
                     <div className="flex items-center gap-2">
@@ -309,25 +309,25 @@ export default function TruckProfilePage({
             <MetricCard
               icon={TrendingUp}
               label="Total Loaded"
-              value={`${formatNumber(parseFloat(stats.total_loaded_mt))} MT`}
+              value={`${formatNumber(parseFloat(stats.total_loaded_mt))} L`}
               accent="bg-emerald-50 text-emerald-600"
             />
             <MetricCard
               icon={TrendingDown}
               label="Total Discharged"
-              value={`${formatNumber(parseFloat(stats.total_discharged_mt))} MT`}
+              value={`${formatNumber(parseFloat(stats.total_discharged_mt))} L`}
               accent="bg-blue-50 text-blue-600"
             />
             <MetricCard
               icon={Activity}
               label="Volume Variance"
-              value={`${variancePositive ? "+" : ""}${formatNumber(varNum)} MT`}
+              value={`${variancePositive ? "+" : ""}${formatNumber(varNum)} L`}
               accent={variancePositive ? "bg-emerald-50 text-emerald-600" : "bg-red-50 text-red-600"}
             />
             <MetricCard
               icon={Droplets}
               label="Total Spillage"
-              value={`${formatNumber(parseFloat(stats.total_spillage_mt))} MT`}
+              value={`${formatNumber(parseFloat(stats.total_spillage_mt))} L`}
               accent={parseFloat(stats.total_spillage_mt) > 0 ? "bg-red-50 text-red-600" : "bg-gray-50 text-gray-500"}
             />
             <MetricCard
@@ -459,33 +459,33 @@ export default function TruckProfilePage({
                             {loaded != null && (
                               <div className="bg-emerald-50 rounded-lg px-3 py-2 text-center">
                                 <p className="text-[9px] font-medium text-emerald-600 uppercase tracking-wide mb-0.5">Loaded</p>
-                                <p className="text-sm font-bold text-emerald-700 tabular-nums">{formatNumber(loaded)} MT</p>
+                                <p className="text-sm font-bold text-emerald-700 tabular-nums">{formatNumber(loaded)} L</p>
                               </div>
                             )}
                             {discharged != null && (
                               <div className="bg-blue-50 rounded-lg px-3 py-2 text-center">
                                 <p className="text-[9px] font-medium text-blue-600 uppercase tracking-wide mb-0.5">Discharged</p>
-                                <p className="text-sm font-bold text-blue-700 tabular-nums">{formatNumber(discharged)} MT</p>
+                                <p className="text-sm font-bold text-blue-700 tabular-nums">{formatNumber(discharged)} L</p>
                               </div>
                             )}
                             {remaining != null && (
                               <div className="bg-gray-50 rounded-lg px-3 py-2 text-center">
                                 <p className="text-[9px] font-medium text-gray-500 uppercase tracking-wide mb-0.5">Remaining</p>
-                                <p className="text-sm font-bold text-gray-700 tabular-nums">{formatNumber(remaining)} MT</p>
+                                <p className="text-sm font-bold text-gray-700 tabular-nums">{formatNumber(remaining)} L</p>
                               </div>
                             )}
                             {variance != null && (
                               <div className={`rounded-lg px-3 py-2 text-center ${variance >= 0 ? "bg-emerald-50" : "bg-red-50"}`}>
                                 <p className={`text-[9px] font-medium uppercase tracking-wide mb-0.5 ${variance >= 0 ? "text-emerald-600" : "text-red-600"}`}>Variance</p>
                                 <p className={`text-sm font-bold tabular-nums ${variance >= 0 ? "text-emerald-700" : "text-red-700"}`}>
-                                  {variance >= 0 ? "+" : ""}{formatNumber(variance)} MT
+                                  {variance >= 0 ? "+" : ""}{formatNumber(variance)} L
                                 </p>
                               </div>
                             )}
                             {spillage != null && spillage > 0 && (
                               <div className="bg-red-50 rounded-lg px-3 py-2 text-center">
                                 <p className="text-[9px] font-medium text-red-600 uppercase tracking-wide mb-0.5">Spillage</p>
-                                <p className="text-sm font-bold text-red-700 tabular-nums">{formatNumber(spillage)} MT</p>
+                                <p className="text-sm font-bold text-red-700 tabular-nums">{formatNumber(spillage)} L</p>
                               </div>
                             )}
                           </div>
@@ -561,7 +561,7 @@ export default function TruckProfilePage({
                 <CardContent className="space-y-3">
                   {[
                     { label: "Registration / Number", value: truck.truck_number, mono: true },
-                    { label: "Capacity", value: `${formatNumber(parseFloat(truck.capacity_mt))} MT` },
+                    { label: "Capacity", value: `${formatNumber(parseFloat(truck.capacity_mt))} L` },
                     { label: "Status", value: truck.status.replace(/_/g, " "), capitalize: true },
                     { label: "Active", value: truck.is_active ? "Yes" : "No" },
                     { label: "Registered", value: formatDate(truck.created_at) },
@@ -612,10 +612,10 @@ export default function TruckProfilePage({
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                     {[
                       { label: "Total Operations",  value: stats.total_operations, unit: "" },
-                      { label: "Total Loaded",      value: formatNumber(parseFloat(stats.total_loaded_mt)),       unit: "MT" },
-                      { label: "Total Discharged",  value: formatNumber(parseFloat(stats.total_discharged_mt)),   unit: "MT" },
-                      { label: "Total Variance",    value: `${variancePositive ? "+" : ""}${formatNumber(varNum)}`, unit: "MT" },
-                      { label: "Total Spillage",    value: formatNumber(parseFloat(stats.total_spillage_mt)),     unit: "MT" },
+                      { label: "Total Loaded",      value: formatNumber(parseFloat(stats.total_loaded_mt)),       unit: "L" },
+                      { label: "Total Discharged",  value: formatNumber(parseFloat(stats.total_discharged_mt)),   unit: "L" },
+                      { label: "Total Variance",    value: `${variancePositive ? "+" : ""}${formatNumber(varNum)}`, unit: "L" },
+                      { label: "Total Spillage",    value: formatNumber(parseFloat(stats.total_spillage_mt)),     unit: "L" },
                       { label: "Efficiency",        value: effPct != null ? effPct.toFixed(1) : "—",              unit: effPct != null ? "%" : "" },
                     ].map(({ label, value, unit }) => (
                       <div key={label} className="text-center p-3 rounded-xl bg-muted/30">

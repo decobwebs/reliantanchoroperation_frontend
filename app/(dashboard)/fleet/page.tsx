@@ -146,7 +146,7 @@ function CreateTruckDialog({
               {errors.truck_number && <p className="text-xs text-destructive">{errors.truck_number.message}</p>}
             </div>
             <div className="space-y-1.5">
-              <Label>Capacity (MT) <span className="text-destructive">*</span></Label>
+              <Label>Capacity (L) <span className="text-destructive">*</span></Label>
               <Input type="number" step="0.01" placeholder="e.g. 30" {...register("capacity_mt")} />
               {errors.capacity_mt && <p className="text-xs text-destructive">{errors.capacity_mt.message}</p>}
             </div>
@@ -313,7 +313,7 @@ export default function FleetPage() {
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-bold font-mono tracking-tight">{truck.truck_number}</p>
                       <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                        {parseFloat(truck.capacity_mt).toLocaleString()} MT
+                        {parseFloat(truck.capacity_mt).toLocaleString()} L
                         {truck.driver_name ? ` · ${truck.driver_name}` : ""}
                         {truck.current_location ? ` · ${truck.current_location}` : ""}
                       </p>

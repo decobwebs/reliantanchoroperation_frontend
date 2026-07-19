@@ -112,12 +112,12 @@ function CreateVesselDialog({
               <Input placeholder="e.g. Apapa Port" {...register("current_location")} />
             </div>
             <div className="space-y-1.5">
-              <Label>Capacity (MT) <span className="text-muted-foreground font-normal text-xs">(optional)</span></Label>
+              <Label>Capacity (L) <span className="text-muted-foreground font-normal text-xs">(optional)</span></Label>
               <Input type="number" step="0.01" placeholder="e.g. 5000" {...register("capacity_mt")} />
               {errors.capacity_mt && <p className="text-xs text-destructive">{errors.capacity_mt.message}</p>}
             </div>
             <div className="space-y-1.5">
-              <Label>ROB Threshold (MT) <span className="text-muted-foreground font-normal text-xs">(optional)</span></Label>
+              <Label>ROB Threshold (L) <span className="text-muted-foreground font-normal text-xs">(optional)</span></Label>
               <Input type="number" step="0.01" placeholder="e.g. 500" {...register("rob_threshold_mt")} />
               {errors.rob_threshold_mt && <p className="text-xs text-destructive">{errors.rob_threshold_mt.message}</p>}
               <p className="text-[10px] text-muted-foreground">Alert when ROB drops below this value</p>
@@ -243,7 +243,7 @@ export default function VesselsPage() {
                           )}
                         </div>
                         <span className="text-xs font-semibold tabular-nums">
-                          {formatNumber(parseFloat(vessel.current_rob_mt))} MT
+                          {formatNumber(parseFloat(vessel.current_rob_mt))} L
                         </span>
                       </div>
                       <div className="h-1.5 bg-muted rounded-full overflow-hidden">
@@ -257,7 +257,7 @@ export default function VesselsPage() {
                       <div className="flex justify-between mt-1">
                         <span className="text-[10px] text-muted-foreground">0</span>
                         <span className="text-[10px] text-muted-foreground">
-                          Cap: {vessel.capacity_mt ? formatNumber(parseFloat(vessel.capacity_mt)) : "—"} MT
+                          Cap: {vessel.capacity_mt ? formatNumber(parseFloat(vessel.capacity_mt)) : "—"} L
                         </span>
                       </div>
                     </div>

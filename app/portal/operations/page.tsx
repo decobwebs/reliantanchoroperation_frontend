@@ -93,7 +93,7 @@ export default function PortalOperationsPage() {
                       <p className="text-xs text-muted-foreground mt-1">
                         Created {formatDate(op.created_at)}
                         {op.expected_volume_mt &&
-                          ` · ${parseFloat(op.expected_volume_mt).toLocaleString()} MT`}
+                          ` · ${parseFloat(op.expected_volume_mt).toLocaleString()} L`}
                       </p>
                     </div>
                     <div className="flex items-center gap-3 flex-shrink-0">

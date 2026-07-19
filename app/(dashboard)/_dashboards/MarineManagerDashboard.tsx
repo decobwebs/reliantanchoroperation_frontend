@@ -106,10 +106,10 @@ export function MarineManagerDashboard() {
                     </div>
                     <div className="text-right">
                       <p className="text-sm font-semibold text-red-700">
-                        {formatNumber(parseFloat(vessel.current_rob_mt))} MT
+                        {formatNumber(parseFloat(vessel.current_rob_mt))} L
                       </p>
                       <p className="text-[10px] text-muted-foreground">
-                        Threshold: {vessel.rob_threshold_mt ? `${formatNumber(parseFloat(vessel.rob_threshold_mt))} MT` : "—"}
+                        Threshold: {vessel.rob_threshold_mt ? `${formatNumber(parseFloat(vessel.rob_threshold_mt))} L` : "—"}
                       </p>
                     </div>
                   </div>
@@ -212,7 +212,7 @@ export function MarineManagerDashboard() {
                         {activity.final_rob_mt && (
                           <div className="mt-1.5 flex items-center gap-1.5 text-xs text-emerald-700">
                             <CheckCircle2 className="w-3 h-3" />
-                            Final ROB: <span className="font-semibold font-mono">{parseFloat(activity.final_rob_mt).toFixed(3)} MT</span>
+                            Final ROB: <span className="font-semibold font-mono">{parseFloat(activity.final_rob_mt).toFixed(3)} L</span>
                           </div>
                         )}
 
@@ -220,7 +220,7 @@ export function MarineManagerDashboard() {
                         {activity.variance_mt && parseFloat(activity.variance_mt) > 0.5 && (
                           <div className="mt-1.5 flex items-center gap-1.5 text-xs text-amber-700">
                             <Gauge className="w-3 h-3" />
-                            High variance: <span className="font-semibold">+{parseFloat(activity.variance_mt).toFixed(3)} MT</span>
+                            High variance: <span className="font-semibold">+{parseFloat(activity.variance_mt).toFixed(3)} L</span>
                             &nbsp;(truck vs vessel received)
                           </div>
                         )}
@@ -289,7 +289,7 @@ export function MarineManagerDashboard() {
                               />
                             </div>
                             <span className="text-[10px] text-muted-foreground shrink-0 tabular-nums">
-                              {formatNumber(parseFloat(vessel.current_rob_mt))} MT
+                              {formatNumber(parseFloat(vessel.current_rob_mt))} L
                             </span>
                           </div>
                         </div>

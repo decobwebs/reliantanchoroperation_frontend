@@ -287,7 +287,7 @@ const TRUCK_STAGES: TruckStage[] = [
     extras: [{ k: "temperature_celsius", label: "Temperature (°C)", type: "number", optional: true }] },
   { key: "departed_loading_at",  label: "Loading Completed / Departed", description: "Loading done, truck departed",
     extras: [
-      { k: "quantity_loaded_mt", label: "Quantity Loaded (MT)", type: "number" },
+      { k: "quantity_loaded_mt", label: "Quantity Loaded (L)", type: "number" },
       { k: "waybill_number",     label: "Waybill Number",       type: "text",   optional: true },
     ]},
   { key: "arrived_discharge_at", label: "Arrived at Discharge Point",   description: "Truck reached discharge location",
@@ -296,9 +296,9 @@ const TRUCK_STAGES: TruckStage[] = [
     extras: [{ k: "temperature_celsius", label: "Temperature (°C)", type: "number", optional: true }] },
   { key: "discharge_end_at",     label: "Discharge Completed",          description: "All product delivered",
     extras: [
-      { k: "quantity_discharged_mt", label: "Quantity Discharged (MT)", type: "number"               },
+      { k: "quantity_discharged_mt", label: "Quantity Discharged (L)", type: "number"               },
       { k: "temperature_celsius",    label: "Temperature (°C)",         type: "number", optional: true },
-      { k: "spillage_mt",            label: "Spillage (MT)",            type: "number", optional: true },
+      { k: "spillage_mt",            label: "Spillage (L)",            type: "number", optional: true },
     ]},
 ];
 
@@ -839,6 +839,48 @@ export default function OperationDetailPage({
     onSuccess: () => {
       toast.success("Allocation removed");
       refetchPfiAllocations();
+      qc.invalidateQueries({ queryKey: ["pfis-active"] });
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  // ── Edit PFI (BM/FM) ──────────────────────────────────────────────────────
+  const [editPfiId,       setEditPfiId]       = useState<string | null>(null);
+  const [editPfiAmount,   setEditPfiAmount]   = useState("");
+  const [editPfiCurrency, setEditPfiCurrency] = useState("NGN");
+  const [editPfiQuantity, setEditPfiQuantity] = useState("");
+  const [editPfiSupplier, setEditPfiSupplier] = useState("");
+  const [editPfiDesc,     setEditPfiDesc]     = useState("");
+  const [editPfiReason,   setEditPfiReason]   = useState("");
+
+  const openEditPfiDialog = (pfi: PFI) => {
+    setEditPfiId(pfi.id);
+    setEditPfiAmount(pfi.amount ?? "");
+    setEditPfiCurrency(pfi.currency ?? "NGN");
+    setEditPfiQuantity(pfi.quantity_litres ?? "");
+    setEditPfiSupplier(pfi.supplier_name ?? "");
+    setEditPfiDesc(pfi.description ?? "");
+    setEditPfiReason("");
+  };
+
+  const closeEditPfiDialog = () => setEditPfiId(null);
+
+  const editPfiMutation = useMutation({
+    mutationFn: async () => {
+      if (!editPfiId) return;
+      await api.put(`/pfis/${editPfiId}`, {
+        amount: editPfiAmount ? parseFloat(editPfiAmount) : undefined,
+        currency: editPfiCurrency || undefined,
+        quantity_litres: editPfiQuantity ? parseFloat(editPfiQuantity) : undefined,
+        supplier_name: editPfiSupplier.trim() || undefined,
+        description: editPfiDesc.trim() || undefined,
+        reason: editPfiReason.trim(),
+      });
+    },
+    onSuccess: () => {
+      toast.success("PFI updated");
+      closeEditPfiDialog();
+      refetchPfis();
       qc.invalidateQueries({ queryKey: ["pfis-active"] });
     },
     onError: (err) => toast.error(getErrorMessage(err)),
@@ -1939,7 +1981,7 @@ export default function OperationDetailPage({
           )}
           {op.expected_volume_mt && (
             <span className="text-sm text-muted-foreground">
-              {parseFloat(op.expected_volume_mt).toLocaleString()} MT expected
+              {parseFloat(op.expected_volume_mt).toLocaleString()} L expected
             </span>
           )}
           <span className="text-sm text-muted-foreground ml-auto">
@@ -2305,11 +2347,11 @@ export default function OperationDetailPage({
                     )}
                     <InfoItem
                       label="Expected Volume"
-                      value={op.expected_volume_mt ? `${parseFloat(op.expected_volume_mt).toLocaleString()} MT` : "—"}
+                      value={op.expected_volume_mt ? `${parseFloat(op.expected_volume_mt).toLocaleString()} L` : "—"}
                     />
                     <InfoItem
                       label="Actual Volume"
-                      value={op.actual_volume_mt ? `${parseFloat(op.actual_volume_mt).toLocaleString()} MT` : "—"}
+                      value={op.actual_volume_mt ? `${parseFloat(op.actual_volume_mt).toLocaleString()} L` : "—"}
                     />
                     <InfoItem label="Version" value={`v${op.version ?? 1}`} />
                     <InfoItem label="Created" value={formatDate(op.created_at)} />
@@ -2486,7 +2528,7 @@ export default function OperationDetailPage({
                                 <div className="space-y-1 max-h-44 overflow-y-auto border rounded-md p-2">
                                   {fleetTrucks.map((truck) => {
                                     const checked = loSelectedTrucks.includes(truck.id);
-                                    const cap = truck.capacity_mt ? `${parseFloat(truck.capacity_mt).toLocaleString()} MT` : "";
+                                    const cap = truck.capacity_mt ? `${parseFloat(truck.capacity_mt).toLocaleString()} L` : "";
                                     return (
                                       <label key={truck.id} className="flex items-center gap-2.5 cursor-pointer text-sm px-1.5 py-1 rounded hover:bg-muted">
                                         <input
@@ -2811,7 +2853,7 @@ export default function OperationDetailPage({
                               </Select>
                             </div>
                             <div className="space-y-1.5">
-                              <Label className="text-xs">Quantity Delivered (MT) <span className="text-destructive">*</span></Label>
+                              <Label className="text-xs">Quantity Delivered (L) <span className="text-destructive">*</span></Label>
                               <Input
                                 type="number" step="0.001" min="0"
                                 className="h-8 text-xs" placeholder="0.000"
@@ -2884,7 +2926,7 @@ export default function OperationDetailPage({
                                 <div>
                                   <p className="text-sm font-mono font-semibold">{bdn.bdn_number}</p>
                                   <p className="text-xs text-muted-foreground">
-                                    {parseFloat(bdn.quantity_delivered_mt).toLocaleString(undefined, { minimumFractionDigits: 3 })} MT
+                                    {parseFloat(bdn.quantity_delivered_mt).toLocaleString(undefined, { minimumFractionDigits: 3 })} L
                                     {bdn.product_type ? ` · ${bdn.product_type}` : ""}
                                     {" · "}{formatDate(bdn.delivery_date)}
                                   </p>
@@ -3017,7 +3059,7 @@ export default function OperationDetailPage({
                                 </div>
                                 <div className="text-right">
                                   <p className="text-sm font-mono font-semibold text-blue-700">
-                                    +{row.totalMt.toFixed(3)} MT
+                                    +{row.totalMt.toFixed(3)} L
                                   </p>
                                   <p className="text-[10px] text-muted-foreground uppercase tracking-wide">received</p>
                                 </div>
@@ -3027,7 +3069,7 @@ export default function OperationDetailPage({
                           {byVessel.size > 1 && (
                             <div className="px-5 py-2.5 border-t bg-muted/20 flex items-center justify-between">
                               <p className="text-xs text-muted-foreground">Total across all vessels</p>
-                              <p className="text-sm font-mono font-semibold">{totalMt.toFixed(3)} MT</p>
+                              <p className="text-sm font-mono font-semibold">{totalMt.toFixed(3)} L</p>
                             </div>
                           )}
                         </CardContent>
@@ -3090,7 +3132,7 @@ export default function OperationDetailPage({
                                 <SelectContent>
                                   {allVessels?.map((v) => (
                                     <SelectItem key={v.id} value={v.id} className="text-xs">
-                                      {v.vessel_name} — ROB: {parseFloat(v.current_rob_mt).toFixed(1)} MT
+                                      {v.vessel_name} — ROB: {parseFloat(v.current_rob_mt).toFixed(1)} L
                                     </SelectItem>
                                   ))}
                                 </SelectContent>
@@ -3310,7 +3352,7 @@ export default function OperationDetailPage({
                                   ) : (
                                     <span className="text-xs font-mono font-semibold">
                                       {activity.initial_rob_mt
-                                        ? `${parseFloat(activity.initial_rob_mt).toFixed(3)} MT`
+                                        ? `${parseFloat(activity.initial_rob_mt).toFixed(3)} L`
                                         : <span className="text-muted-foreground">—</span>}
                                     </span>
                                   )}
@@ -3368,7 +3410,7 @@ export default function OperationDetailPage({
                                     <p className="text-[9px] text-muted-foreground uppercase tracking-wide">{lbl}</p>
                                     <p className={`text-xs font-semibold font-mono ${lbl === "Spillage" && val && parseFloat(String(val)) > 0 ? "text-amber-600" : "text-emerald-700"}`}>
                                       {val && parseFloat(String(val)) > 0
-                                        ? `${parseFloat(String(val)).toFixed(3)} MT`
+                                        ? `${parseFloat(String(val)).toFixed(3)} L`
                                         : "—"}
                                     </p>
                                   </div>
@@ -3462,10 +3504,10 @@ export default function OperationDetailPage({
                                       </div>
                                       {hasReceipt ? (
                                         <p className="text-xs text-muted-foreground">
-                                          {parseFloat(activity.vessel_received_mt!).toFixed(3)} MT
+                                          {parseFloat(activity.vessel_received_mt!).toFixed(3)} L
                                           {op?.type === "vessel_only" ? " inflow" : " received"}
                                           {activity.product_type && ` · ${activity.product_type}`}
-                                          {activity.variance_mt && ` · Variance: ${parseFloat(activity.variance_mt) > 0 ? "+" : ""}${parseFloat(activity.variance_mt).toFixed(3)} MT`}
+                                          {activity.variance_mt && ` · Variance: ${parseFloat(activity.variance_mt) > 0 ? "+" : ""}${parseFloat(activity.variance_mt).toFixed(3)} L`}
                                         </p>
                                       ) : (
                                         <>
@@ -3485,7 +3527,7 @@ export default function OperationDetailPage({
                                           <div className="grid grid-cols-3 gap-2">
                                             <div className="space-y-1">
                                               <Label className="text-[11px]">
-                                                {op?.type === "vessel_only" ? "Additional Inflow (MT)" : "Vessel Received (MT)"}
+                                                {op?.type === "vessel_only" ? "Additional Inflow (L)" : "Vessel Received (L)"}
                                                 {op?.type !== "vessel_only" && <span className="ml-0.5 text-destructive">*</span>}
                                                 {op?.type === "vessel_only" && <span className="ml-1 text-muted-foreground font-normal">(optional)</span>}
                                               </Label>
@@ -3498,16 +3540,16 @@ export default function OperationDetailPage({
                                               />
                                             </div>
                                             <div className="space-y-1">
-                                              <Label className="text-[11px] text-muted-foreground">Previous ROB (MT)</Label>
+                                              <Label className="text-[11px] text-muted-foreground">Previous ROB (L)</Label>
                                               <p className="text-sm font-mono font-semibold">
                                                 {activity.initial_rob_mt
-                                                  ? `${parseFloat(activity.initial_rob_mt).toFixed(3)} MT`
+                                                  ? `${parseFloat(activity.initial_rob_mt).toFixed(3)} L`
                                                   : <span className="text-muted-foreground text-xs">—</span>}
                                               </p>
                                             </div>
                                             {op?.type === "full_operation" && (
                                               <div className="space-y-1">
-                                                <Label className="text-[11px]">Truck Delivered (MT)</Label>
+                                                <Label className="text-[11px]">Truck Delivered (L)</Label>
                                                 <Input
                                                   className="h-8 text-xs"
                                                   type="number" step="0.001"
@@ -3612,7 +3654,7 @@ export default function OperationDetailPage({
                                         <>
                                           <div className="grid grid-cols-3 gap-2">
                                             <div className="space-y-1">
-                                              <Label className="text-[11px]">Qty Discharged (MT) *</Label>
+                                              <Label className="text-[11px]">Qty Discharged (L) *</Label>
                                               <Input className="h-8 text-xs" type="number" step="0.001" placeholder="0.000" value={actDischQty} onChange={(e) => setActDischQty(e.target.value)} />
                                             </div>
                                             <div className="space-y-1">
@@ -3636,8 +3678,8 @@ export default function OperationDetailPage({
                                       )}
                                       {hasDischarge && (
                                         <p className="text-xs text-muted-foreground">
-                                          {parseFloat(activity.quantity_discharged_mt!).toFixed(3)} MT discharged
-                                          {activity.final_rob_mt && ` · Final ROB: ${parseFloat(activity.final_rob_mt).toFixed(3)} MT`}
+                                          {parseFloat(activity.quantity_discharged_mt!).toFixed(3)} L discharged
+                                          {activity.final_rob_mt && ` · Final ROB: ${parseFloat(activity.final_rob_mt).toFixed(3)} L`}
                                         </p>
                                       )}
                                     </div>
@@ -3652,7 +3694,7 @@ export default function OperationDetailPage({
                                       </div>
                                       <p className="text-xs text-muted-foreground">
                                         Finalises the session. Vessel ROB will update to{" "}
-                                        <strong>{parseFloat(activity.final_rob_mt ?? activity.new_rob_mt ?? "0").toFixed(3)} MT</strong>.
+                                        <strong>{parseFloat(activity.final_rob_mt ?? activity.new_rob_mt ?? "0").toFixed(3)} L</strong>.
                                         Record becomes immutable — BM and Finance are notified automatically.
                                       </p>
                                       <Textarea
@@ -3743,7 +3785,7 @@ export default function OperationDetailPage({
                   ) : (
                     truckOps.map((to) => {
                       const label = to.truck?.truck_number ?? to.truck_id.slice(0, 8);
-                      const cap   = to.truck?.capacity_mt ? `${parseFloat(to.truck.capacity_mt).toLocaleString()} MT` : "";
+                      const cap   = to.truck?.capacity_mt ? `${parseFloat(to.truck.capacity_mt).toLocaleString()} L` : "";
                       const recording = activeRecording[to.id] ?? "";
 
                       // Determine which stages are done
@@ -3952,7 +3994,7 @@ export default function OperationDetailPage({
                                                 )}
                                                 {to.spillage_mt && parseFloat(to.spillage_mt) > 0 && (
                                                   <p className="text-[11px] text-red-600">
-                                                    Spillage: <span className="font-semibold">{parseFloat(to.spillage_mt).toFixed(3)} MT</span>
+                                                    Spillage: <span className="font-semibold">{parseFloat(to.spillage_mt).toFixed(3)} L</span>
                                                   </p>
                                                 )}
                                                 {/* Approval badge */}
@@ -4113,13 +4155,13 @@ export default function OperationDetailPage({
                                 {to.quantity_loaded_mt && (
                                   <div className="text-xs">
                                     <span className="text-muted-foreground">Loaded: </span>
-                                    <span className="font-semibold">{parseFloat(to.quantity_loaded_mt).toLocaleString()} MT</span>
+                                    <span className="font-semibold">{parseFloat(to.quantity_loaded_mt).toLocaleString()} L</span>
                                   </div>
                                 )}
                                 {to.quantity_discharged_mt && (
                                   <div className="text-xs">
                                     <span className="text-muted-foreground">Discharged: </span>
-                                    <span className="font-semibold">{parseFloat(to.quantity_discharged_mt).toLocaleString()} MT</span>
+                                    <span className="font-semibold">{parseFloat(to.quantity_discharged_mt).toLocaleString()} L</span>
                                   </div>
                                 )}
                                 {to.quantity_loaded_mt && to.quantity_discharged_mt && (
@@ -4129,14 +4171,14 @@ export default function OperationDetailPage({
                                       parseFloat(to.quantity_discharged_mt) < parseFloat(to.quantity_loaded_mt)
                                       ? "text-red-600" : "text-emerald-600"
                                     }`}>
-                                      {(parseFloat(to.quantity_discharged_mt) - parseFloat(to.quantity_loaded_mt)).toFixed(3)} MT
+                                      {(parseFloat(to.quantity_discharged_mt) - parseFloat(to.quantity_loaded_mt)).toFixed(3)} L
                                     </span>
                                   </div>
                                 )}
                                 {to.spillage_mt && parseFloat(to.spillage_mt) > 0 && (
                                   <div className="text-xs">
                                     <span className="text-muted-foreground">Spillage: </span>
-                                    <span className="font-semibold text-red-600">{parseFloat(to.spillage_mt).toLocaleString()} MT</span>
+                                    <span className="font-semibold text-red-600">{parseFloat(to.spillage_mt).toLocaleString()} L</span>
                                   </div>
                                 )}
                                 {to.waybill_number && (
@@ -4607,6 +4649,15 @@ export default function OperationDetailPage({
                                       <p className="text-[10px] text-muted-foreground/60 mt-0.5">{formatDateTime(pfi.created_at)}</p>
                                     </div>
                                     <div className="flex items-center gap-2 shrink-0">
+                                      {(isBM || isFM) && (
+                                        <Button
+                                          size="sm" variant="outline"
+                                          className="gap-1 h-7 text-xs"
+                                          onClick={() => openEditPfiDialog(pfi)}
+                                        >
+                                          <Pencil className="w-3 h-3" />Edit
+                                        </Button>
+                                      )}
                                       {pfi.document_url && (
                                         <a href={pfi.document_url} target="_blank" rel="noopener noreferrer">
                                           <Button size="sm" variant="outline" className="gap-1 h-7 text-xs">
@@ -5102,7 +5153,7 @@ export default function OperationDetailPage({
                                 <SelectContent>
                                   {bdns?.filter((b) => b.status === "approved").map((b) => (
                                     <SelectItem key={b.id} value={b.id} className="text-xs">
-                                      {b.bdn_number} — {parseFloat(b.quantity_delivered_mt).toFixed(2)} MT
+                                      {b.bdn_number} — {parseFloat(b.quantity_delivered_mt).toFixed(2)} L
                                     </SelectItem>
                                   ))}
                                 </SelectContent>
@@ -5491,7 +5542,7 @@ export default function OperationDetailPage({
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Rate per MT ({op?.currency}) <span className="text-destructive">*</span></Label>
+                  <Label className="text-xs">Rate per L ({op?.currency}) <span className="text-destructive">*</span></Label>
                   <Input type="number" step="0.01" placeholder="e.g. 450.00"
                     value={genRate} onChange={(e) => setGenRate(e.target.value)} />
                 </div>
@@ -5546,7 +5597,7 @@ export default function OperationDetailPage({
                     </span>
                   </div>
                   <p className="text-emerald-600 mt-0.5">
-                    {parseFloat(op.expected_volume_mt).toLocaleString()} MT × {op.currency} {parseFloat(genRate).toLocaleString()} /MT
+                    {parseFloat(op.expected_volume_mt).toLocaleString()} L × {op.currency} {parseFloat(genRate).toLocaleString()} /L
                     {parseFloat(genTax) > 0 && ` + ${genTax}% tax`}
                   </p>
                 </div>
@@ -5771,6 +5822,64 @@ export default function OperationDetailPage({
         </DialogContent>
       </Dialog>
 
+      {/* ── BM/FM: Edit PFI dialog */}
+      <Dialog open={!!editPfiId} onOpenChange={(v) => { if (!v) closeEditPfiDialog(); }}>
+        <DialogContent className="sm:max-w-md" aria-describedby={undefined}>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Pencil className="w-4 h-4 text-primary" />
+              Edit PFI
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 mt-1">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Amount</Label>
+                <Input type="number" step="0.01" value={editPfiAmount} onChange={(e) => setEditPfiAmount(e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Currency</Label>
+                <Select value={editPfiCurrency} onValueChange={setEditPfiCurrency}>
+                  <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="NGN">NGN</SelectItem>
+                    <SelectItem value="USD">USD</SelectItem>
+                    <SelectItem value="EUR">EUR</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Quantity (litres) <span className="text-muted-foreground font-normal">optional</span></Label>
+              <Input type="number" step="0.01" value={editPfiQuantity} onChange={(e) => setEditPfiQuantity(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Supplier Name</Label>
+              <Input value={editPfiSupplier} onChange={(e) => setEditPfiSupplier(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Description</Label>
+              <Textarea rows={2} className="resize-none text-sm" value={editPfiDesc} onChange={(e) => setEditPfiDesc(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Reason for edit <span className="text-destructive">*</span></Label>
+              <Textarea rows={2} className="resize-none text-sm" placeholder="Why is this PFI being edited…"
+                value={editPfiReason} onChange={(e) => setEditPfiReason(e.target.value)} />
+            </div>
+          </div>
+          <DialogFooter className="mt-4">
+            <Button variant="outline" onClick={closeEditPfiDialog}>Cancel</Button>
+            <Button
+              disabled={!editPfiReason.trim() || editPfiMutation.isPending}
+              onClick={() => editPfiMutation.mutate()}
+            >
+              {editPfiMutation.isPending && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
+              Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* ── LO: Link Waybill dialog (waiver number + plate + driver, at waybill time) */}
       <Dialog open={!!waybillDialogTruckOpId} onOpenChange={(v) => { if (!v) setWaybillDialogTruckOpId(null); }}>
         <DialogContent className="sm:max-w-md" aria-describedby={undefined}>
@@ -5849,7 +5958,7 @@ export default function OperationDetailPage({
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label className="text-xs font-semibold">Quantity Discharged (MT)</Label>
+                <Label className="text-xs font-semibold">Quantity Discharged (L)</Label>
                 <Input
                   type="number"
                   step="0.001"
@@ -5860,7 +5969,7 @@ export default function OperationDetailPage({
                 />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs font-semibold">Spillage (MT) <span className="font-normal text-muted-foreground">(opt.)</span></Label>
+                <Label className="text-xs font-semibold">Spillage (L) <span className="font-normal text-muted-foreground">(opt.)</span></Label>
                 <Input
                   type="number"
                   step="0.001"

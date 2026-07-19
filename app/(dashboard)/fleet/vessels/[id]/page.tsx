@@ -233,14 +233,14 @@ function RobGauge({
       </div>
       <div className="text-center mt-1">
         <p className={`text-sm font-semibold tabular-nums ${belowThreshold ? "text-red-500" : "text-foreground"}`}>
-          {formatNumber(currentRob)} MT
+          {formatNumber(currentRob)} L
         </p>
         <p className="text-[11px] text-muted-foreground">
-          of {formatNumber(capacity)} MT capacity
+          of {formatNumber(capacity)} L capacity
         </p>
         {belowThreshold && (
           <Badge variant="destructive" className="mt-1 text-[10px]">
-            Below Threshold ({formatNumber(threshold)} MT)
+            Below Threshold ({formatNumber(threshold)} L)
           </Badge>
         )}
       </div>
@@ -276,10 +276,10 @@ function CargoEntryRow({ entry }: { entry: CargoEntry }) {
             {/* Quantity + ROB flow */}
             <div className="flex items-baseline gap-2 flex-wrap">
               <span className={`text-sm font-bold tabular-nums ${isNeg ? "text-red-500" : "text-emerald-600"}`}>
-                {isNeg ? "" : "+"}{formatNumber(Math.abs(qty))} MT
+                {isNeg ? "" : "+"}{formatNumber(Math.abs(qty))} L
               </span>
               <span className="text-xs text-muted-foreground">
-                ROB: {formatNumber(parseFloat(entry.rob_before_mt))} → {formatNumber(parseFloat(entry.rob_after_mt))} MT
+                ROB: {formatNumber(parseFloat(entry.rob_before_mt))} → {formatNumber(parseFloat(entry.rob_after_mt))} L
               </span>
               {entry.operation && (
                 <span className="text-xs font-mono text-primary">
@@ -364,9 +364,9 @@ function OperationContext({ op }: { op: OperationContext }) {
                   <p className="text-muted-foreground capitalize">{t.status.replace(/_/g, " ")}</p>
                   {t.quantity_loaded_mt && (
                     <p className="text-muted-foreground">
-                      Loaded: <span className="text-foreground font-medium">{formatNumber(parseFloat(t.quantity_loaded_mt))} MT</span>
+                      Loaded: <span className="text-foreground font-medium">{formatNumber(parseFloat(t.quantity_loaded_mt))} L</span>
                       {t.quantity_discharged_mt && (
-                        <> · Discharged: <span className="text-foreground font-medium">{formatNumber(parseFloat(t.quantity_discharged_mt))} MT</span></>
+                        <> · Discharged: <span className="text-foreground font-medium">{formatNumber(parseFloat(t.quantity_discharged_mt))} L</span></>
                       )}
                     </p>
                   )}
@@ -391,7 +391,7 @@ function OperationContext({ op }: { op: OperationContext }) {
                 {BDN_STATUS_CONFIG[op.bdn.status]?.label ?? op.bdn.status}
               </p>
               <p className="text-muted-foreground">
-                <span className="text-foreground font-medium">{formatNumber(parseFloat(op.bdn.quantity_delivered_mt))} MT</span> delivered
+                <span className="text-foreground font-medium">{formatNumber(parseFloat(op.bdn.quantity_delivered_mt))} L</span> delivered
               </p>
               {op.bdn.delivery_date && (
                 <p className="text-muted-foreground">
@@ -599,13 +599,13 @@ export default function VesselProfilePage({
                   {vessel.capacity_mt && (
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <Package className="w-3.5 h-3.5 shrink-0" />
-                      <span>Capacity: <span className="font-semibold text-foreground">{formatNumber(parseFloat(vessel.capacity_mt))} MT</span></span>
+                      <span>Capacity: <span className="font-semibold text-foreground">{formatNumber(parseFloat(vessel.capacity_mt))} L</span></span>
                     </div>
                   )}
                   {vessel.rob_threshold_mt && (
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <Gauge className="w-3.5 h-3.5 shrink-0" />
-                      <span>Alert threshold: <span className={`font-semibold ${belowThreshold ? "text-red-500" : "text-foreground"}`}>{formatNumber(parseFloat(vessel.rob_threshold_mt))} MT</span></span>
+                      <span>Alert threshold: <span className={`font-semibold ${belowThreshold ? "text-red-500" : "text-foreground"}`}>{formatNumber(parseFloat(vessel.rob_threshold_mt))} L</span></span>
                     </div>
                   )}
                 </div>
@@ -629,12 +629,12 @@ export default function VesselProfilePage({
           <StatPill label="Total Deliveries" value={totalCount} color="blue" />
           <StatPill
             label="Total Delivered"
-            value={`${formatNumber(parseFloat(totalDelivered))} MT`}
+            value={`${formatNumber(parseFloat(totalDelivered))} L`}
             color="emerald"
           />
           <StatPill
             label="Current ROB"
-            value={`${formatNumber(currentRob)} MT`}
+            value={`${formatNumber(currentRob)} L`}
             color={belowThreshold ? "red" : "blue"}
             sub={belowThreshold ? "Below alert threshold" : undefined}
           />
@@ -705,7 +705,7 @@ export default function VesselProfilePage({
                         <div className="flex flex-wrap gap-4 text-xs mb-2">
                           <div className="flex items-center gap-1.5 text-muted-foreground">
                             <Droplets className="w-3.5 h-3.5 text-blue-400" />
-                            <span>Delivered: <span className="font-semibold text-foreground">{formatNumber(parseFloat(bdn.quantity_delivered_mt))} MT</span></span>
+                            <span>Delivered: <span className="font-semibold text-foreground">{formatNumber(parseFloat(bdn.quantity_delivered_mt))} L</span></span>
                           </div>
                           {bdn.product_type && <span className="text-muted-foreground">Product: <span className="font-medium text-foreground">{bdn.product_type}</span></span>}
                           {bdn.fuel_type && <span className="text-muted-foreground">Fuel: <span className="font-medium text-foreground">{bdn.fuel_type}</span></span>}
@@ -752,20 +752,20 @@ export default function VesselProfilePage({
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div className="rounded-xl border bg-emerald-50 border-emerald-100 p-3">
                   <p className="text-[11px] font-medium text-emerald-700/70">Total Replenished</p>
-                  <p className="text-lg font-bold tabular-nums text-emerald-700">+{formatNumber(parseFloat(ledgerSummary.total_replenishments_mt))} MT</p>
+                  <p className="text-lg font-bold tabular-nums text-emerald-700">+{formatNumber(parseFloat(ledgerSummary.total_replenishments_mt))} L</p>
                 </div>
                 <div className="rounded-xl border bg-red-50 border-red-100 p-3">
                   <p className="text-[11px] font-medium text-red-700/70">Total Discharged</p>
-                  <p className="text-lg font-bold tabular-nums text-red-700">−{formatNumber(parseFloat(ledgerSummary.total_discharges_mt))} MT</p>
+                  <p className="text-lg font-bold tabular-nums text-red-700">−{formatNumber(parseFloat(ledgerSummary.total_discharges_mt))} L</p>
                 </div>
                 <div className="rounded-xl border bg-blue-50 border-blue-100 p-3">
                   <p className="text-[11px] font-medium text-blue-700/70">Current ROB</p>
-                  <p className="text-lg font-bold tabular-nums text-blue-700">{formatNumber(parseFloat(ledgerSummary.current_rob_mt))} MT</p>
+                  <p className="text-lg font-bold tabular-nums text-blue-700">{formatNumber(parseFloat(ledgerSummary.current_rob_mt))} L</p>
                 </div>
                 {ledgerSummary.capacity_mt && (
                   <div className="rounded-xl border bg-gray-50 border-gray-100 p-3">
                     <p className="text-[11px] font-medium text-gray-600/70">Capacity</p>
-                    <p className="text-lg font-bold tabular-nums text-gray-700">{formatNumber(parseFloat(ledgerSummary.capacity_mt))} MT</p>
+                    <p className="text-lg font-bold tabular-nums text-gray-700">{formatNumber(parseFloat(ledgerSummary.capacity_mt))} L</p>
                   </div>
                 )}
               </div>

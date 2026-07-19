@@ -144,7 +144,7 @@ export default function PortalOperationDetailPage({
                 <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Expected Volume</p>
                 <p className="mt-0.5">
                   {op.expected_volume_mt
-                    ? `${parseFloat(op.expected_volume_mt).toLocaleString()} MT`
+                    ? `${parseFloat(op.expected_volume_mt).toLocaleString()} L`
                     : "—"}
                 </p>
               </div>
@@ -152,7 +152,7 @@ export default function PortalOperationDetailPage({
                 <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Actual Volume</p>
                 <p className="mt-0.5">
                   {op.actual_volume_mt
-                    ? `${parseFloat(op.actual_volume_mt).toLocaleString()} MT`
+                    ? `${parseFloat(op.actual_volume_mt).toLocaleString()} L`
                     : "—"}
                 </p>
               </div>
@@ -190,7 +190,7 @@ export default function PortalOperationDetailPage({
                     <div>
                       <p className="text-sm font-mono font-semibold">{bdn.bdn_number}</p>
                       <p className="text-xs text-muted-foreground mt-0.5">
-                        {parseFloat(bdn.quantity_delivered_mt).toLocaleString()} MT
+                        {parseFloat(bdn.quantity_delivered_mt).toLocaleString()} L
                         {bdn.product_type ? ` · ${bdn.product_type}` : ""}
                         {" · "}{formatDate(bdn.delivery_date)}
                       </p>

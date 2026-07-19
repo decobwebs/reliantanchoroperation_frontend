@@ -99,7 +99,7 @@ export default function TruckDetailPage({
             <Badge variant="destructive" className="text-sm">Inactive</Badge>
           )}
           <span className="text-sm text-muted-foreground">
-            Capacity: {parseFloat(truck.capacity_mt).toLocaleString()} MT
+            Capacity: {parseFloat(truck.capacity_mt).toLocaleString()} L
           </span>
         </div>
 
@@ -118,7 +118,7 @@ export default function TruckDetailPage({
               </CardHeader>
               <CardContent className="p-5 pt-0 space-y-3">
                 <InfoRow icon={<Truck className="w-3.5 h-3.5" />} label="Truck No." value={truck.truck_number} mono />
-                <InfoRow icon={<Package className="w-3.5 h-3.5" />} label="Capacity" value={`${parseFloat(truck.capacity_mt).toLocaleString()} MT`} />
+                <InfoRow icon={<Package className="w-3.5 h-3.5" />} label="Capacity" value={`${parseFloat(truck.capacity_mt).toLocaleString()} L`} />
                 {truck.driver_name && (
                   <InfoRow icon={<User className="w-3.5 h-3.5" />} label="Driver" value={truck.driver_name} />
                 )}
@@ -147,12 +147,12 @@ export default function TruckDetailPage({
               </CardHeader>
               <CardContent className="p-5 pt-0 grid grid-cols-2 gap-3">
                 <StatBox label="Operations" value={String(stats.total_operations)} />
-                <StatBox label="Loaded (MT)" value={parseFloat(stats.total_loaded_mt || "0").toLocaleString()} />
-                <StatBox label="Discharged (MT)" value={parseFloat(stats.total_discharged_mt || "0").toLocaleString()} />
-                <StatBox label="Variance (MT)" value={parseFloat(stats.total_variance_mt || "0").toLocaleString()} />
+                <StatBox label="Loaded (L)" value={parseFloat(stats.total_loaded_mt || "0").toLocaleString()} />
+                <StatBox label="Discharged (L)" value={parseFloat(stats.total_discharged_mt || "0").toLocaleString()} />
+                <StatBox label="Variance (L)" value={parseFloat(stats.total_variance_mt || "0").toLocaleString()} />
                 {parseFloat(stats.total_spillage_mt || "0") > 0 && (
                   <StatBox
-                    label="Spillage (MT)"
+                    label="Spillage (L)"
                     value={parseFloat(stats.total_spillage_mt).toLocaleString()}
                     warn
                   />
@@ -198,15 +198,15 @@ export default function TruckDetailPage({
 
                         <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-muted-foreground">
                           {entry.quantity_loaded_mt && (
-                            <span>Loaded: {parseFloat(entry.quantity_loaded_mt).toLocaleString()} MT</span>
+                            <span>Loaded: {parseFloat(entry.quantity_loaded_mt).toLocaleString()} L</span>
                           )}
                           {entry.quantity_discharged_mt && (
-                            <span>Discharged: {parseFloat(entry.quantity_discharged_mt).toLocaleString()} MT</span>
+                            <span>Discharged: {parseFloat(entry.quantity_discharged_mt).toLocaleString()} L</span>
                           )}
                           {entry.spillage_mt && parseFloat(entry.spillage_mt) > 0 && (
                             <span className="text-amber-600 flex items-center gap-0.5">
                               <AlertTriangle className="w-2.5 h-2.5" />
-                              Spillage: {entry.spillage_mt} MT
+                              Spillage: {entry.spillage_mt} L
                             </span>
                           )}
                           {entry.loading_location && <span>From: {entry.loading_location}</span>}

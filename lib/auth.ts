@@ -26,6 +26,24 @@ export async function login(email: string, password: string): Promise<User> {
   return extractData(meRes);
 }
 
+/**
+ * Persist a session from tokens we already hold (e.g. the recovery tokens
+ * Supabase appends to the /set-password redirect) — same effect as login(),
+ * without re-submitting credentials.
+ */
+export async function completeSession(
+  accessToken: string,
+  refreshToken?: string | null
+): Promise<User> {
+  setAccessToken(accessToken);
+  await fetch("/api/auth/session", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ access_token: accessToken, refresh_token: refreshToken }),
+  });
+  return fetchMe();
+}
+
 export async function logout(): Promise<void> {
   try {
     await api.post("/auth/logout");

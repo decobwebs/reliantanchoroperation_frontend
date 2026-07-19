@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const PUBLIC_PATHS = ["/login", "/api/auth", "/privacy", "/terms", "/cookies"];
+const PUBLIC_PATHS = ["/login", "/set-password", "/api/auth", "/privacy", "/terms", "/cookies"];
 // Static assets served from /public (logo, images, fonts, etc.) — must never be
 // gated behind auth, or unauthenticated pages (e.g. /login) can't load them.
 const PUBLIC_FILE = /\.(?:svg|png|jpe?g|gif|webp|ico|txt|xml|json|webmanifest|woff2?|ttf|otf)$/i;

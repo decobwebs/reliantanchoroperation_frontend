@@ -57,7 +57,6 @@ const createUserSchema = z.object({
   full_name: z.string().min(2, "Name must be at least 2 characters"),
   email: z.string().email("Invalid email"),
   role: z.enum(STAFF_ROLES),
-  password: z.string().min(8, "Password must be at least 8 characters"),
 });
 
 type CreateUserForm = z.infer<typeof createUserSchema>;
@@ -86,8 +85,16 @@ function CreateUserDialog() {
       });
       return res.data;
     },
-    onSuccess: () => {
-      toast.success("User created successfully");
+    onSuccess: (res) => {
+      const emailSent = res?.data?.email_sent;
+      if (emailSent === false) {
+        toast.warning(
+          "User created, but the password-setup email could not be sent. " +
+          "Check email configuration and ask them to use “Forgot password” instead."
+        );
+      } else {
+        toast.success("User created — a password-setup email has been sent");
+      }
       qc.invalidateQueries({ queryKey: ["admin-users"] });
       reset();
       setPhone("");
@@ -173,17 +180,9 @@ function CreateUserDialog() {
             </p>
           </div>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="password">Temporary Password</Label>
-            <Input
-              id="password"
-              type="password"
-              placeholder="Min 8 characters"
-              {...register("password")}
-            />
-            {errors.password && (
-              <p className="text-xs text-destructive">{errors.password.message}</p>
-            )}
+          <div className="rounded-md border border-primary/20 bg-primary/5 px-3 py-2.5 text-[11px] text-muted-foreground">
+            No password is set here. Once created, this person will receive an email
+            with a secure link to choose their own password.
           </div>
 
           <div className="flex justify-end gap-2 pt-2">

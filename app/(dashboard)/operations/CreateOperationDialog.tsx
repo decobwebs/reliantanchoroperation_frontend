@@ -89,26 +89,19 @@ const pfiAllocationSchema = z.object({
   quantity_litres: z.number().positive("Must be positive"),
 });
 
-const schema = z
-  .object({
-    type:               z.enum(["full_operation", "vessel_only", "truck_only"]),
-    products:            z.array(productSchema).min(1, "At least one product is required"),
-    client_id:          z.string().min(1, "Select a client"),
-    vessel_id:          z.string().optional(),
-    loading_location:   z.string().optional(),
-    discharge_location: z.string().optional(),
-    currency:           z.string().min(3).max(3),
-    notes:              z.string().optional(),
-    assignments:        z.array(assignmentSchema),
-    pfi_allocations:    z.array(pfiAllocationSchema).optional(),
-  })
-  .refine(
-    (d) => {
-      if (d.type !== "truck_only" && !d.vessel_id) return false;
-      return true;
-    },
-    { message: "Vessel is required for this operation type", path: ["vessel_id"] }
-  );
+const schema = z.object({
+  type:               z.enum(["full_operation", "vessel_only", "truck_only"]),
+  products:            z.array(productSchema).min(1, "At least one product is required"),
+  // Client and vessel are optional at creation — BM can come back and fill
+  // them in later from the operation detail page.
+  client_id:          z.string().optional(),
+  vessel_id:          z.string().optional(),
+  loading_location:   z.string().optional(),
+  discharge_location: z.string().optional(),
+  notes:              z.string().optional(),
+  assignments:        z.array(assignmentSchema),
+  pfi_allocations:    z.array(pfiAllocationSchema).optional(),
+});
 
 type FormData = z.infer<typeof schema>;
 
@@ -514,7 +507,6 @@ export function CreateOperationDialog({ open, onClose, onCreated }: Props) {
     resolver: zodResolver(schema),
     defaultValues: {
       type:            "full_operation",
-      currency:        "USD",
       products:        [],
       assignments:     [],
       pfi_allocations: [],
@@ -607,11 +599,10 @@ export function CreateOperationDialog({ open, onClose, onCreated }: Props) {
       const payload = {
         type:               data.type,
         products:           data.products,
-        client_id:          data.client_id,
+        client_id:          data.client_id || undefined,
         vessel_id:          data.vessel_id || undefined,
         loading_location:   data.loading_location?.trim() || undefined,
         discharge_location: data.discharge_location?.trim() || undefined,
-        currency:           data.currency,
         notes:              data.notes?.trim() || undefined,
         assignments:        data.assignments.length > 0 ? data.assignments : undefined,
         pfi_allocations:    data.pfi_allocations?.length ? data.pfi_allocations : undefined,
@@ -710,7 +701,10 @@ export function CreateOperationDialog({ open, onClose, onCreated }: Props) {
 
             {/* Client */}
             <div className="space-y-1.5">
-              <Label>Client <span className="text-destructive">*</span></Label>
+              <Label>
+                Client
+                <span className="ml-1 text-xs font-normal text-muted-foreground">(optional — can be set later)</span>
+              </Label>
               <Select value={watch("client_id") ?? ""} onValueChange={(v) => setValue("client_id", v)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select client…" />
@@ -724,19 +718,14 @@ export function CreateOperationDialog({ open, onClose, onCreated }: Props) {
                   ))}
                 </SelectContent>
               </Select>
-              {errors.client_id && (
-                <p className="text-xs text-destructive">{errors.client_id.message}</p>
-              )}
             </div>
 
             {/* Vessel (conditional) */}
             {needsVessel && (
               <div className="space-y-1.5">
                 <Label>
-                  Vessel <span className="text-destructive">*</span>
-                  <span className="ml-1 text-xs font-normal text-muted-foreground">
-                    (required for {opType === "vessel_only" ? "Vessel Only" : "Full Operation"})
-                  </span>
+                  Vessel
+                  <span className="ml-1 text-xs font-normal text-muted-foreground">(optional — can be set later)</span>
                 </Label>
                 <Select value={watch("vessel_id") ?? ""} onValueChange={(v) => setValue("vessel_id", v)}>
                   <SelectTrigger>
@@ -753,9 +742,6 @@ export function CreateOperationDialog({ open, onClose, onCreated }: Props) {
                     ))}
                   </SelectContent>
                 </Select>
-                {errors.vessel_id && (
-                  <p className="text-xs text-destructive">{errors.vessel_id.message}</p>
-                )}
               </div>
             )}
 
@@ -781,22 +767,6 @@ export function CreateOperationDialog({ open, onClose, onCreated }: Props) {
                   {...register("discharge_location")}
                 />
               </div>
-            </div>
-
-            {/* Currency */}
-            <div className="space-y-1.5">
-              <Label>Currency</Label>
-              <Select defaultValue="USD" onValueChange={(v) => setValue("currency", v)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="USD">USD</SelectItem>
-                  <SelectItem value="NGN">NGN</SelectItem>
-                  <SelectItem value="EUR">EUR</SelectItem>
-                  <SelectItem value="GBP">GBP</SelectItem>
-                </SelectContent>
-              </Select>
             </div>
           </div>
 

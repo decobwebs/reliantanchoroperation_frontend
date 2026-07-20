@@ -1,11 +1,18 @@
 "use client";
 
-import { Bell } from "lucide-react";
+import { Bell, UserCog } from "lucide-react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { useAuth } from "@/hooks/useAuth";
+import { ROLE_LABELS } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { MobileNav } from "@/components/layout/MobileNav";
 import type { ApiResponse, PaginatedData, Notification } from "@/types";
 
@@ -16,6 +23,7 @@ interface HeaderProps {
 }
 
 export function Header({ title, subtitle, actions }: HeaderProps) {
+  const { user, effectiveRole, isActingAs } = useAuth();
   const { data } = useQuery({
     queryKey: ["notifications-unread-count"],
     queryFn: async () => {
@@ -43,6 +51,30 @@ export function Header({ title, subtitle, actions }: HeaderProps) {
       </div>
 
       <div className="flex items-center gap-1.5 md:gap-2 shrink-0">
+        {user && (
+          <Tooltip delayDuration={200}>
+            <TooltipTrigger asChild>
+              <Badge
+                variant="outline"
+                className={
+                  isActingAs
+                    ? "gap-1.5 h-7 px-2.5 border-amber-300 bg-amber-50 text-amber-800 font-medium"
+                    : "gap-1.5 h-7 px-2.5 border-border bg-muted/50 text-foreground/80 font-medium hidden sm:flex"
+                }
+              >
+                <UserCog className="w-3.5 h-3.5" />
+                {isActingAs
+                  ? `Acting as ${ROLE_LABELS[effectiveRole ?? ""] ?? effectiveRole}`
+                  : ROLE_LABELS[effectiveRole ?? ""] ?? effectiveRole}
+              </Badge>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              {isActingAs
+                ? `Real role: ${ROLE_LABELS[user.role] ?? user.role} — you're currently acting as ${ROLE_LABELS[effectiveRole ?? ""] ?? effectiveRole}`
+                : `You're signed in as ${ROLE_LABELS[user.role] ?? user.role}`}
+            </TooltipContent>
+          </Tooltip>
+        )}
         {actions}
         <Button variant="ghost" size="icon" className="relative" asChild>
           <Link href="/notifications">

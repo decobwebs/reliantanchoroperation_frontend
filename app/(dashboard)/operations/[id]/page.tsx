@@ -87,6 +87,7 @@ import type {
   TruckOperation,
   Truck as TruckRecord,
   PFI,
+  PfiAllocation,
   Voucher,
   Payment,
   Invoice,
@@ -426,15 +427,15 @@ export default function OperationDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
-  const { user } = useAuth();
+  const { user, effectiveRole } = useAuth();
   const router   = useRouter();
   const qc       = useQueryClient();
 
-  const isBM = user?.role === "bunker_manager";
-  const isFM = user?.role === "finance_manager";
-  const isLO = user?.role === "logistics_officer";
-  const isMM = user?.role === "marine_manager";
-  const isOS = user?.role === "ops_supervisor";
+  const isBM = effectiveRole === "bunker_manager";
+  const isFM = effectiveRole === "finance_manager";
+  const isLO = effectiveRole === "logistics_officer";
+  const isMM = effectiveRole === "marine_manager";
+  const isOS = effectiveRole === "ops_supervisor";
 
   const canSeeTasks            = isBM || isOS || isLO || isMM;
   const canSeeBDN              = isBM || isMM;
@@ -574,6 +575,17 @@ export default function OperationDetailPage({
       return res.data.data ?? [];
     },
     enabled: canSeeFinance && (isBM || isOS),
+    staleTime: 0,
+  });
+
+  // Allocations drawn against this operation (a PFI's volume can be split across several operations)
+  const { data: allocations, refetch: refetchAllocations } = useQuery({
+    queryKey: ["operation-pfi-allocations", id],
+    queryFn: async () => {
+      const res = await api.get<ApiResponse<PfiAllocation[]>>(`/operations/${id}/pfis/allocations`);
+      return res.data.data ?? [];
+    },
+    enabled: canSeeFinance,
     staleTime: 0,
   });
 
@@ -847,18 +859,46 @@ export default function OperationDetailPage({
     onError: (err) => toast.error(getErrorMessage(err)),
   });
 
-  // ── Link PFI (BM or Ops Supervisor picks an existing unlinked PFI — simple 1:1, no quantity)
+  // ── Link PFI (BM or Ops Supervisor allocates some of a PFI's volume to this operation —
+  // a PFI can be allocated across several operations)
   const [linkPfiId, setLinkPfiId] = useState("");
+  const [linkQuantity, setLinkQuantity] = useState("");
+
+  const selectedUnlinkedPfi = unlinkedPfis?.find((p) => p.id === linkPfiId);
 
   const linkExistingPfiMutation = useMutation({
     mutationFn: async () => {
-      await api.post(`/operations/${id}/pfis/${linkPfiId}/link`);
+      await api.post(`/operations/${id}/pfis/${linkPfiId}/allocations`, {
+        quantity_litres: parseFloat(linkQuantity),
+      });
     },
     onSuccess: () => {
-      toast.success("PFI linked to this operation");
+      toast.success("PFI allocated to this operation");
       setLinkPfiId("");
+      setLinkQuantity("");
       refetchPfis();
       refetchUnlinkedPfis();
+      refetchAllocations();
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const [removeAllocationId, setRemoveAllocationId] = useState<string | null>(null);
+  const [removeAllocationReason, setRemoveAllocationReason] = useState("");
+
+  const removeAllocationMutation = useMutation({
+    mutationFn: async (allocationId: string) => {
+      await api.delete(`/pfi-allocations/${allocationId}`, {
+        data: { reason: removeAllocationReason.trim() },
+      });
+    },
+    onSuccess: () => {
+      toast.success("Allocation removed");
+      setRemoveAllocationId(null);
+      setRemoveAllocationReason("");
+      refetchPfis();
+      refetchUnlinkedPfis();
+      refetchAllocations();
     },
     onError: (err) => toast.error(getErrorMessage(err)),
   });
@@ -1625,11 +1665,12 @@ export default function OperationDetailPage({
   // CSV export of activity log
   const exportActivityCsv = () => {
     if (!activityLog?.length) return;
-    const header = ["Timestamp", "User", "Role", "Action", "Entity", "Details"];
+    const header = ["Timestamp", "User", "Role", "Acted As", "Action", "Entity", "Details"];
     const rows = activityLog.map((e) => [
       new Date(e.created_at).toLocaleString(),
       e.user_name,
       e.user_role,
+      e.acted_as_role ?? "",
       e.action.replace(/_/g, " "),
       e.entity_type.replace(/_/g, " "),
       e.changes ? JSON.stringify(e.changes) : "",
@@ -1661,6 +1702,8 @@ export default function OperationDetailPage({
     END_DISCHARGE:               "Discharge completed",
     APPROVE_DISCHARGE:           "Discharge approved by BM",
     BM_EDITED_DISCHARGE_RECORD:  "Discharge record edited by BM",
+    ACT_AS_ROLE_SWITCH:          "Switched Role",
+    ACT_AS_ROLE_CLEAR:           "Switched Back to BM",
   };
 
   const ACTION_COLOR: Record<string, string> = {
@@ -1674,6 +1717,8 @@ export default function OperationDetailPage({
     UPDATE_TRUCK_OPERATION:     "text-indigo-600",
     APPROVE_DISCHARGE:          "text-emerald-700",
     BM_EDITED_DISCHARGE_RECORD: "text-orange-600",
+    ACT_AS_ROLE_SWITCH:         "text-slate-600",
+    ACT_AS_ROLE_CLEAR:          "text-slate-600",
   };
 
   // Initialize TruckOperation records from approved feedback truck_ids, applying
@@ -2245,9 +2290,9 @@ export default function OperationDetailPage({
                 )}
 
                 <TabsTrigger value="documents">
-                  <Lock className="w-3 h-3 mr-1 opacity-60" />
+                  <FileText className="w-3 h-3 mr-1 opacity-60" />
                   Docs
-                  {isBM && docs?.length ? (
+                  {docs?.length ? (
                     <Badge variant="secondary" className="ml-1.5 h-4 px-1.5 text-[10px]">
                       {docs.length}
                     </Badge>
@@ -2445,18 +2490,32 @@ export default function OperationDetailPage({
               {/* ── Feedback tab */}
               {canSeeFeedback && (
                 <TabsContent value="feedback" className="mt-4 space-y-3">
-                  {/* LO submission form */}
-                  {isLO && (
+                  {/* LO submission form — also reachable by BM (unrestricted edit power: BM can add
+                      truck nominations at any point in the lifecycle, not just awaiting_feedback) */}
+                  {(isLO || isBM) && (
                     <Card className="border-0 shadow-sm">
                       <CardContent className="p-5 space-y-4">
-                        {op.status !== "awaiting_feedback" ? (
+                        {op.status !== "awaiting_feedback" && !isBM ? (
                           <div className="flex flex-col items-center py-6 text-muted-foreground">
                             <Truck className="w-8 h-8 mb-2 opacity-30" />
-                            <p className="text-sm font-medium">Feedback not yet requested</p>
-                            <p className="text-xs mt-1 text-center max-w-xs">
-                              The Bunker Manager must move the operation to{" "}
-                              <span className="font-mono">Awaiting Feedback</span> before you can submit.
-                            </p>
+                            {["draft", "tasks_assigned"].includes(op.status) ? (
+                              <>
+                                <p className="text-sm font-medium">Feedback not yet requested</p>
+                                <p className="text-xs mt-1 text-center max-w-xs">
+                                  The Bunker Manager must move the operation to{" "}
+                                  <span className="font-mono">Awaiting Feedback</span> before you can submit.
+                                </p>
+                              </>
+                            ) : (
+                              <>
+                                <p className="text-sm font-medium">
+                                  {feedbacks?.length ?? 0} submission{(feedbacks?.length ?? 0) === 1 ? "" : "s"} already made
+                                </p>
+                                <p className="text-xs mt-1 text-center max-w-xs">
+                                  Feedback was already submitted for this operation — see your submissions below.
+                                </p>
+                              </>
+                            )}
                           </div>
                         ) : (
                           <>
@@ -4336,25 +4395,11 @@ export default function OperationDetailPage({
                 </TabsContent>
               )}
 
-              {/* ── Documents tab */}
+              {/* ── Documents tab (visible/read-only to all roles who can see the tab; upload/delete stays BM-only) */}
               <TabsContent value="documents" className="mt-4 space-y-4">
-                {!isBM ? (
-                  <Card className="border-0 shadow-sm">
-                    <CardContent className="p-0">
-                      <div className="flex flex-col items-center py-14 text-muted-foreground gap-3">
-                        <Lock className="w-8 h-8 opacity-30" />
-                        <div className="text-center">
-                          <p className="text-sm font-medium">Documents are restricted</p>
-                          <p className="text-xs mt-1 text-muted-foreground/70 max-w-xs">
-                            Contact your Bunker Manager to request access to operation documents.
-                          </p>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ) : (
-                  <>
-                    {/* Upload form */}
+                <>
+                    {/* Upload form (BM-only) */}
+                    {isBM && (
                     <Card className="border-0 shadow-sm">
                       <CardHeader className="pb-3 pt-4 px-5">
                         <div className="flex items-center justify-between">
@@ -4425,8 +4470,9 @@ export default function OperationDetailPage({
                         </CardContent>
                       )}
                     </Card>
+                    )}
 
-                    {/* Document list */}
+                    {/* Document list — visible/read-only to all roles who can see this tab */}
                     <Card className="border-0 shadow-sm">
                       <CardContent className="p-0">
                         {docs?.length ? (
@@ -4469,7 +4515,6 @@ export default function OperationDetailPage({
                       </CardContent>
                     </Card>
                   </>
-                )}
               </TabsContent>
 
               {/* ── Activity feed (BM only) */}
@@ -4505,6 +4550,9 @@ export default function OperationDetailPage({
                             const label = ACTION_LABELS[entry.action] ?? entry.action.replace(/_/g, " ");
                             const colorCls = ACTION_COLOR[entry.action] ?? "text-foreground";
                             const roleLabel = ROLE_LABELS[entry.user_role] ?? entry.user_role;
+                            const actedAsLabel = entry.acted_as_role
+                              ? ROLE_LABELS[entry.acted_as_role] ?? entry.acted_as_role
+                              : null;
                             return (
                               <div key={entry.id} className="flex items-start gap-3 px-4 py-3 hover:bg-muted/20">
                                 <div className="w-7 h-7 rounded-full bg-primary/8 flex items-center justify-center shrink-0 mt-0.5">
@@ -4516,6 +4564,9 @@ export default function OperationDetailPage({
                                       <span className={`text-xs font-semibold ${colorCls}`}>{label}</span>
                                       <span className="text-xs text-muted-foreground ml-2">by {entry.user_name}</span>
                                       <span className="text-[10px] text-muted-foreground/60 ml-1">({roleLabel})</span>
+                                      {actedAsLabel && (
+                                        <span className="text-[10px] text-muted-foreground/60 ml-1">, acting as {actedAsLabel}</span>
+                                      )}
                                     </div>
                                     <span className="text-[10px] text-muted-foreground/60 shrink-0 whitespace-nowrap">
                                       {formatDateTime(entry.created_at)}
@@ -4724,33 +4775,51 @@ export default function OperationDetailPage({
                     </Card>
                   </div>
 
-                  {/* ── Link PFI (simple pick, no quantity) ── */}
-                  {(isBM || isOS) && (
+                  {/* ── Link PFI (BM-only correction affordance — PFIs are now linked at operation
+                      creation; post-creation add/remove is a BM edit-power correction, not a routine
+                      Ops Supervisor workflow step) ── */}
+                  {isBM && (
                     <div className="space-y-3">
                       <div className="flex items-center gap-2">
                         <FileText className="w-4 h-4 text-primary" />
                         <h3 className="text-sm font-semibold">Link PFI</h3>
+                        <Badge variant="outline" className="text-[10px] h-4 px-1.5 text-muted-foreground font-normal">
+                          BM correction
+                        </Badge>
                       </div>
                       <Card className="border-0 shadow-sm">
-                        <CardContent className="p-4">
-                          <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2 items-end">
+                        <CardContent className="p-4 space-y-3">
+                          <div className="grid grid-cols-1 sm:grid-cols-[1fr_140px_auto] gap-2 items-end">
                             <div className="space-y-1.5">
-                              <Label className="text-xs">Select an unlinked PFI</Label>
-                              <Select value={linkPfiId} onValueChange={setLinkPfiId}>
+                              <Label className="text-xs">Select a PFI</Label>
+                              <Select value={linkPfiId} onValueChange={(v) => { setLinkPfiId(v); setLinkQuantity(""); }}>
                                 <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select PFI…" /></SelectTrigger>
                                 <SelectContent>
                                   {unlinkedPfis?.map((p) => (
                                     <SelectItem key={p.id} value={p.id} className="text-xs">
                                       {p.pfi_number} — {p.currency} {parseFloat(p.amount).toLocaleString()}
+                                      {p.remaining_litres != null ? ` (${parseFloat(p.remaining_litres).toLocaleString()} L left)` : ""}
                                     </SelectItem>
                                   ))}
                                 </SelectContent>
                               </Select>
                             </div>
+                            <div className="space-y-1.5">
+                              <Label className="text-xs">Quantity (L)</Label>
+                              <Input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                className="h-8 text-xs"
+                                placeholder="Litres"
+                                value={linkQuantity}
+                                onChange={(e) => setLinkQuantity(e.target.value)}
+                              />
+                            </div>
                             <Button
                               size="sm"
                               className="h-8 gap-1.5"
-                              disabled={!linkPfiId || linkExistingPfiMutation.isPending}
+                              disabled={!linkPfiId || !linkQuantity || parseFloat(linkQuantity) <= 0 || linkExistingPfiMutation.isPending}
                               onClick={() => linkExistingPfiMutation.mutate()}
                             >
                               {linkExistingPfiMutation.isPending
@@ -4759,9 +4828,66 @@ export default function OperationDetailPage({
                               Link
                             </Button>
                           </div>
-                          {!unlinkedPfis?.length && (
-                            <p className="text-xs text-muted-foreground/70 mt-2">No unlinked PFIs available.</p>
+                          {selectedUnlinkedPfi?.remaining_litres != null && (
+                            <p className="text-xs text-muted-foreground">
+                              {parseFloat(selectedUnlinkedPfi.remaining_litres).toLocaleString()} L remaining on {selectedUnlinkedPfi.pfi_number}
+                            </p>
                           )}
+                          {!unlinkedPfis?.length && (
+                            <p className="text-xs text-muted-foreground/70">No PFIs with remaining volume available.</p>
+                          )}
+
+                          {allocations?.length ? (
+                            <div className="divide-y border-t pt-2 mt-1">
+                              {allocations.map((a) => (
+                                <div key={a.id} className="py-2 text-xs space-y-1.5">
+                                  <div className="flex items-center justify-between">
+                                    <span>
+                                      <span className="font-mono font-medium">{a.pfi_number}</span>
+                                      {" — "}{parseFloat(a.quantity_litres).toLocaleString()} L
+                                      {a.notes ? <span className="text-muted-foreground"> · {a.notes}</span> : null}
+                                    </span>
+                                    {removeAllocationId !== a.id && (
+                                      <Button
+                                        size="sm" variant="ghost"
+                                        className="h-6 px-2 text-[11px] text-destructive hover:text-destructive"
+                                        onClick={() => { setRemoveAllocationId(a.id); setRemoveAllocationReason(""); }}
+                                      >
+                                        Remove
+                                      </Button>
+                                    )}
+                                  </div>
+                                  {removeAllocationId === a.id && (
+                                    <div className="flex items-center gap-1.5">
+                                      <Input
+                                        className="h-7 text-[11px]"
+                                        placeholder="Reason for removing this allocation…"
+                                        value={removeAllocationReason}
+                                        onChange={(e) => setRemoveAllocationReason(e.target.value)}
+                                      />
+                                      <Button
+                                        size="sm" variant="destructive"
+                                        className="h-7 px-2 text-[11px]"
+                                        disabled={!removeAllocationReason.trim() || removeAllocationMutation.isPending}
+                                        onClick={() => removeAllocationMutation.mutate(a.id)}
+                                      >
+                                        {removeAllocationMutation.isPending
+                                          ? <Loader2 className="w-3 h-3 animate-spin" />
+                                          : "Confirm"}
+                                      </Button>
+                                      <Button
+                                        size="sm" variant="ghost"
+                                        className="h-7 px-2 text-[11px]"
+                                        onClick={() => setRemoveAllocationId(null)}
+                                      >
+                                        Cancel
+                                      </Button>
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          ) : null}
                         </CardContent>
                       </Card>
                     </div>
@@ -5717,7 +5843,7 @@ export default function OperationDetailPage({
           </DialogHeader>
           <div className="space-y-3 mt-1">
             <div className="space-y-1.5">
-              <Label className="text-xs">Waiver / Regulatory Number <span className="text-destructive">*</span></Label>
+              <Label className="text-xs">Truck Waybill Number <span className="text-destructive">*</span></Label>
               <Select value={waybillWaiverId} onValueChange={setWaybillWaiverId}>
                 <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select an available waiver number…" /></SelectTrigger>
                 <SelectContent>

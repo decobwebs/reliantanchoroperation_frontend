@@ -28,7 +28,7 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { useState } from "react";
-import type { ApiResponse, User, Vessel, ProductType, OperationType } from "@/types";
+import type { ApiResponse, User, Vessel, PFI, ProductType, OperationType } from "@/types";
 import { PRODUCT_TYPE_LABELS } from "@/types";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -79,18 +79,28 @@ const assignmentSchema = z.object({
   instructions: z.string().optional(),
 });
 
+const productSchema = z.object({
+  product_type: z.string().min(1, "Select a product type"),
+  quantity_mt:  z.number().positive("Must be positive"),
+});
+
+const pfiAllocationSchema = z.object({
+  pfi_id:          z.string().min(1, "Select a PFI"),
+  quantity_litres: z.number().positive("Must be positive"),
+});
+
 const schema = z
   .object({
     type:               z.enum(["full_operation", "vessel_only", "truck_only"]),
-    product_type:       z.string().min(1, "Select a product type"),
+    products:            z.array(productSchema).min(1, "At least one product is required"),
     client_id:          z.string().min(1, "Select a client"),
     vessel_id:          z.string().optional(),
     loading_location:   z.string().optional(),
     discharge_location: z.string().optional(),
-    expected_volume_mt: z.number().positive("Must be positive").optional(),
     currency:           z.string().min(3).max(3),
     notes:              z.string().optional(),
     assignments:        z.array(assignmentSchema),
+    pfi_allocations:    z.array(pfiAllocationSchema).optional(),
   })
   .refine(
     (d) => {
@@ -291,6 +301,204 @@ function AssignmentRow({
   );
 }
 
+// ─── Product row ──────────────────────────────────────────────────────────────
+
+function ProductRow({
+  index,
+  onRemove,
+  showRemove,
+  register,
+  setValue,
+  watch,
+  errors,
+}: {
+  index: number;
+  onRemove: () => void;
+  showRemove: boolean;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  register: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  setValue: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  watch: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  errors: any;
+}) {
+  const productType = watch(`products.${index}.product_type`);
+  const rowErrors = errors?.products?.[index];
+
+  return (
+    <div className="rounded-lg border bg-muted/30 p-3 space-y-2.5">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+          Product {index + 1}
+        </span>
+        {showRemove && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 text-muted-foreground hover:text-destructive"
+            onClick={onRemove}
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </Button>
+        )}
+      </div>
+
+      <div className="grid grid-cols-2 gap-2">
+        <div className="space-y-1">
+          <Label className="text-xs">Product Type *</Label>
+          <Select
+            value={productType ?? ""}
+            onValueChange={(v) => setValue(`products.${index}.product_type`, v)}
+          >
+            <SelectTrigger className="h-8 text-xs">
+              <SelectValue placeholder="Select product…" />
+            </SelectTrigger>
+            <SelectContent>
+              {PRODUCT_TYPES.map((pt) => (
+                <SelectItem key={pt} value={pt} className="text-xs">
+                  {PRODUCT_TYPE_LABELS[pt]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {rowErrors?.product_type && (
+            <p className="text-[10px] text-destructive">{rowErrors.product_type.message}</p>
+          )}
+        </div>
+
+        <div className="space-y-1">
+          <Label className="text-xs">Quantity (MT) *</Label>
+          <Input
+            type="number"
+            step="0.001"
+            className="h-8 text-xs"
+            placeholder="e.g. 500"
+            {...register(`products.${index}.quantity_mt`, {
+              setValueAs: (v: string) =>
+                v === "" || v === null || v === undefined ? undefined : Number(v),
+            })}
+          />
+          {rowErrors?.quantity_mt && (
+            <p className="text-[10px] text-destructive">{rowErrors.quantity_mt.message}</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── PFI allocation row ───────────────────────────────────────────────────────
+
+function PfiAllocationRow({
+  index,
+  onRemove,
+  unlinkedPfis,
+  isPfisLoading,
+  register,
+  setValue,
+  watch,
+  errors,
+}: {
+  index: number;
+  onRemove: () => void;
+  unlinkedPfis: PFI[];
+  isPfisLoading: boolean;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  register: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  setValue: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  watch: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  errors: any;
+}) {
+  const pfiId = watch(`pfi_allocations.${index}.pfi_id`);
+  const rowErrors = errors?.pfi_allocations?.[index];
+  const selectedPfi = unlinkedPfis.find((p) => p.id === pfiId);
+
+  return (
+    <div className="rounded-lg border bg-muted/30 p-3 space-y-2.5">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+          PFI {index + 1}
+        </span>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-6 w-6 text-muted-foreground hover:text-destructive"
+          onClick={onRemove}
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+        </Button>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2">
+        <div className="space-y-1">
+          <Label className="text-xs">PFI *</Label>
+          <Select
+            value={pfiId ?? ""}
+            onValueChange={(v) => setValue(`pfi_allocations.${index}.pfi_id`, v)}
+          >
+            <SelectTrigger className="h-8 text-xs">
+              <SelectValue placeholder="Select PFI…" />
+            </SelectTrigger>
+            <SelectContent>
+              {isPfisLoading ? (
+                <div className="px-3 py-2 text-xs text-muted-foreground flex items-center gap-1.5">
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  Loading PFIs…
+                </div>
+              ) : unlinkedPfis.length === 0 ? (
+                <div className="px-3 py-2 text-xs text-muted-foreground">
+                  No PFIs with remaining volume available
+                </div>
+              ) : (
+                unlinkedPfis.map((p) => (
+                  <SelectItem key={p.id} value={p.id} className="text-xs">
+                    {p.pfi_number} — {p.currency} {parseFloat(p.amount).toLocaleString()}
+                    {p.remaining_litres != null
+                      ? ` (${parseFloat(p.remaining_litres).toLocaleString()} L left)`
+                      : ""}
+                  </SelectItem>
+                ))
+              )}
+            </SelectContent>
+          </Select>
+          {rowErrors?.pfi_id && (
+            <p className="text-[10px] text-destructive">{rowErrors.pfi_id.message}</p>
+          )}
+        </div>
+
+        <div className="space-y-1">
+          <Label className="text-xs">Quantity (L) *</Label>
+          <Input
+            type="number"
+            step="0.001"
+            className="h-8 text-xs"
+            placeholder="e.g. 5000"
+            {...register(`pfi_allocations.${index}.quantity_litres`, {
+              setValueAs: (v: string) =>
+                v === "" || v === null || v === undefined ? undefined : Number(v),
+            })}
+          />
+          {rowErrors?.quantity_litres && (
+            <p className="text-[10px] text-destructive">{rowErrors.quantity_litres.message}</p>
+          )}
+          {selectedPfi?.remaining_litres != null && (
+            <p className="text-[10px] text-muted-foreground">
+              {parseFloat(selectedPfi.remaining_litres).toLocaleString()} L remaining
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Dialog ─────────────────────────────────────────────────────────────
 
 export function CreateOperationDialog({ open, onClose, onCreated }: Props) {
@@ -305,15 +513,36 @@ export function CreateOperationDialog({ open, onClose, onCreated }: Props) {
   } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
-      type:        "full_operation",
-      currency:    "USD",
-      assignments: [],
+      type:            "full_operation",
+      currency:        "USD",
+      products:        [],
+      assignments:     [],
+      pfi_allocations: [],
     },
   });
 
   const { fields, append, remove } = useFieldArray({ control, name: "assignments" });
+  const {
+    fields: productFields,
+    append: appendProduct,
+    remove: removeProduct,
+  } = useFieldArray({ control, name: "products" });
+  const {
+    fields: pfiAllocationFields,
+    append: appendPfiAllocation,
+    remove: removePfiAllocation,
+  } = useFieldArray({ control, name: "pfi_allocations" });
 
   const opType = watch("type") as OperationType;
+
+  // Seed one empty product row when the dialog opens, so the form isn't
+  // empty-by-default requiring an extra click.
+  useEffect(() => {
+    if (open && productFields.length === 0) {
+      appendProduct({ product_type: "", quantity_mt: undefined as unknown as number });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   // Reset assignments when op type changes (roles may no longer be eligible)
   const prevType = watch("type");
@@ -363,19 +592,29 @@ export function CreateOperationDialog({ open, onClose, onCreated }: Props) {
     enabled: open && opType !== "truck_only",
   });
 
+  // ── Unlinked PFIs query (source for the optional PFI-allocations picker)
+  const { data: unlinkedPfis = [], isLoading: isPfisLoading } = useQuery({
+    queryKey: ["pfis-unlinked"],
+    queryFn: async () => {
+      const res = await api.get<ApiResponse<PFI[]>>("/pfis", { params: { unlinked_only: true } });
+      return res.data.data ?? [];
+    },
+    enabled: open,
+  });
+
   const mutation = useMutation({
     mutationFn: async (data: FormData) => {
       const payload = {
         type:               data.type,
-        product_type:       data.product_type,
+        products:           data.products,
         client_id:          data.client_id,
         vessel_id:          data.vessel_id || undefined,
         loading_location:   data.loading_location?.trim() || undefined,
         discharge_location: data.discharge_location?.trim() || undefined,
-        expected_volume_mt: data.expected_volume_mt,
         currency:           data.currency,
         notes:              data.notes?.trim() || undefined,
         assignments:        data.assignments.length > 0 ? data.assignments : undefined,
+        pfi_allocations:    data.pfi_allocations?.length ? data.pfi_allocations : undefined,
       };
       const res = await api.post("/operations", payload);
       return extractData(res);
@@ -395,6 +634,14 @@ export function CreateOperationDialog({ open, onClose, onCreated }: Props) {
 
   const addAssignment = () => {
     append({ assigned_to: "", task_type: "", priority: "normal", instructions: "" });
+  };
+
+  const addProduct = () => {
+    appendProduct({ product_type: "", quantity_mt: undefined as unknown as number });
+  };
+
+  const addPfiAllocation = () => {
+    appendPfiAllocation({ pfi_id: "", quantity_litres: undefined as unknown as number });
   };
 
   const needsVessel = opType !== "truck_only";
@@ -433,23 +680,31 @@ export function CreateOperationDialog({ open, onClose, onCreated }: Props) {
               {errors.type && <p className="text-xs text-destructive">{errors.type.message}</p>}
             </div>
 
-            {/* Product Type */}
+            {/* Products */}
             <div className="space-y-1.5">
-              <Label>Product Type <span className="text-destructive">*</span></Label>
-              <Select value={watch("product_type") ?? ""} onValueChange={(v) => setValue("product_type", v)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select product…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {PRODUCT_TYPES.map((pt) => (
-                    <SelectItem key={pt} value={pt}>
-                      {PRODUCT_TYPE_LABELS[pt]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {errors.product_type && (
-                <p className="text-xs text-destructive">{errors.product_type.message}</p>
+              <div className="flex items-center justify-between">
+                <Label>Products <span className="text-destructive">*</span></Label>
+                <Button type="button" variant="outline" size="sm" className="h-7 text-xs" onClick={addProduct}>
+                  <Plus className="w-3.5 h-3.5 mr-1" />
+                  Add Product
+                </Button>
+              </div>
+              <div className="space-y-2.5">
+                {productFields.map((field, i) => (
+                  <ProductRow
+                    key={field.id}
+                    index={i}
+                    showRemove={productFields.length > 1}
+                    onRemove={() => removeProduct(i)}
+                    register={register}
+                    setValue={setValue}
+                    watch={watch}
+                    errors={errors}
+                  />
+                ))}
+              </div>
+              {errors.products?.message && (
+                <p className="text-xs text-destructive">{errors.products.message}</p>
               )}
             </div>
 
@@ -528,39 +783,20 @@ export function CreateOperationDialog({ open, onClose, onCreated }: Props) {
               </div>
             </div>
 
-            {/* Volume + Currency */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label>Expected Volume (L)</Label>
-                <Input
-                  type="number"
-                  step="0.001"
-                  placeholder="e.g. 500"
-                  {...register("expected_volume_mt", {
-                    // Empty optional field must become undefined, not NaN (which fails
-                    // z.number().positive().optional() and blocks submit).
-                    setValueAs: (v) =>
-                      v === "" || v === null || v === undefined ? undefined : Number(v),
-                  })}
-                />
-                {errors.expected_volume_mt && (
-                  <p className="text-xs text-destructive">{errors.expected_volume_mt.message}</p>
-                )}
-              </div>
-              <div className="space-y-1.5">
-                <Label>Currency</Label>
-                <Select defaultValue="USD" onValueChange={(v) => setValue("currency", v)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="USD">USD</SelectItem>
-                    <SelectItem value="NGN">NGN</SelectItem>
-                    <SelectItem value="EUR">EUR</SelectItem>
-                    <SelectItem value="GBP">GBP</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+            {/* Currency */}
+            <div className="space-y-1.5">
+              <Label>Currency</Label>
+              <Select defaultValue="USD" onValueChange={(v) => setValue("currency", v)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="USD">USD</SelectItem>
+                  <SelectItem value="NGN">NGN</SelectItem>
+                  <SelectItem value="EUR">EUR</SelectItem>
+                  <SelectItem value="GBP">GBP</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
@@ -600,6 +836,50 @@ export function CreateOperationDialog({ open, onClose, onCreated }: Props) {
                     isStaffLoading={isStaffLoading}
                     onRemove={() => remove(i)}
                     control={control}
+                    setValue={setValue}
+                    watch={watch}
+                    errors={errors}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* ── Section 2b: PFI Allocations ──────────────────────────── */}
+          <div className="space-y-3 border-t pt-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    PFI Allocations
+                  </span>
+                  <Badge variant="secondary" className="text-[10px] normal-case">optional</Badge>
+                </div>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Draw volume from existing PFIs now, or link them later.
+                </p>
+              </div>
+              <Button type="button" variant="outline" size="sm" className="h-7 text-xs" onClick={addPfiAllocation}>
+                <Plus className="w-3.5 h-3.5 mr-1" />
+                Add PFI
+              </Button>
+            </div>
+
+            {pfiAllocationFields.length === 0 ? (
+              <div className="rounded-lg border border-dashed px-4 py-5 text-center text-xs text-muted-foreground">
+                No PFIs linked yet — click &ldquo;Add PFI&rdquo; to allocate volume now,
+                or do it later from the operation detail page.
+              </div>
+            ) : (
+              <div className="space-y-2.5">
+                {pfiAllocationFields.map((field, i) => (
+                  <PfiAllocationRow
+                    key={field.id}
+                    index={i}
+                    onRemove={() => removePfiAllocation(i)}
+                    unlinkedPfis={unlinkedPfis}
+                    isPfisLoading={isPfisLoading}
+                    register={register}
                     setValue={setValue}
                     watch={watch}
                     errors={errors}

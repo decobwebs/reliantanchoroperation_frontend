@@ -168,18 +168,29 @@ export default function PfiPage() {
                         <Badge className={`text-[10px] h-4 px-1.5 capitalize border ${STATUS_COLOR[pfi.status] ?? "border"}`}>
                           {pfi.status.replace(/_/g, " ")}
                         </Badge>
-                        {pfi.operation_id ? (
+                        {pfi.operation_id && (
                           <Link href={`/operations/${pfi.operation_id}`} className="text-[10px] text-primary underline flex items-center gap-0.5">
                             Linked <ExternalLink className="w-2.5 h-2.5" />
                           </Link>
-                        ) : (
-                          <Badge variant="outline" className="text-[10px] h-4 px-1.5">Unlinked</Badge>
                         )}
+                        {pfi.quantity_litres ? (
+                          parseFloat(pfi.remaining_litres ?? pfi.quantity_litres) > 0 ? (
+                            <Badge variant="outline" className="text-[10px] h-4 px-1.5 border-emerald-300 text-emerald-700 bg-emerald-50">
+                              {parseFloat(pfi.remaining_litres ?? pfi.quantity_litres).toLocaleString()} L available
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-[10px] h-4 px-1.5">Fully allocated</Badge>
+                          )
+                        ) : !pfi.operation_id ? (
+                          <Badge variant="outline" className="text-[10px] h-4 px-1.5">No volume set</Badge>
+                        ) : null}
                       </div>
                       <p className="text-xs text-muted-foreground mt-0.5">
                         <span className="font-semibold">{pfi.currency} {parseFloat(pfi.amount).toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
                         {pfi.supplier_name && <span className="ml-2">· {pfi.supplier_name}</span>}
-                        {pfi.quantity_litres && <span className="ml-2">· {parseFloat(pfi.quantity_litres).toLocaleString()} L</span>}
+                        {pfi.quantity_litres && (
+                          <span className="ml-2">· {parseFloat(pfi.allocated_litres || "0").toLocaleString()} / {parseFloat(pfi.quantity_litres).toLocaleString()} L allocated</span>
+                        )}
                       </p>
                       <p className="text-[10px] text-muted-foreground/60 mt-0.5">{formatDateTime(pfi.created_at)}</p>
                     </div>

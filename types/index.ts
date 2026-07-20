@@ -17,6 +17,7 @@ export interface User {
   role: UserRole;
   is_active: boolean;
   created_at: string;
+  acting_as_role?: string | null;
 }
 
 export interface AuthTokens {
@@ -196,6 +197,18 @@ export interface PFI {
   confirmed_by?: string;
   confirmed_at?: string;
   created_at: string;
+}
+
+export interface PfiAllocation {
+  id: string;
+  pfi_id: string;
+  operation_id: string;
+  quantity_litres: string;
+  linked_by: string;
+  notes?: string;
+  created_at: string;
+  pfi_number?: string;
+  operation_number?: string;
 }
 
 export interface Voucher {
@@ -643,6 +656,7 @@ export interface AuditLogEntry {
   user_id: string;
   user_name: string;
   user_role: string;
+  acted_as_role?: string | null;
   action: string;
   entity_type: string;
   entity_id?: string;

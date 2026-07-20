@@ -8,15 +8,19 @@ import React, {
   useCallback,
 } from "react";
 import { useRouter } from "next/navigation";
-import { setAccessToken } from "@/lib/api";
+import { api, setAccessToken } from "@/lib/api";
 import { login as apiLogin, logout as apiLogout, fetchMe } from "@/lib/auth";
 import type { User } from "@/types";
 
 interface AuthContextValue {
   user: User | null;
   loading: boolean;
+  effectiveRole: string | null;
+  isActingAs: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  actAs: (role: string) => Promise<void>;
+  clearActAs: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -70,14 +74,55 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [router]
   );
 
+  // Re-fetches /auth/me so `user` (and therefore `effectiveRole`) reflects the
+  // latest acting-as state. Shared by actAs/clearActAs.
+  const refreshUser = useCallback(async () => {
+    const me = await fetchMe();
+    setUser(me);
+    return me;
+  }, []);
+
+  const actAs = useCallback(
+    async (role: string) => {
+      await api.post("/auth/act-as", { role });
+      await refreshUser();
+    },
+    [refreshUser]
+  );
+
+  const clearActAs = useCallback(async () => {
+    await api.post("/auth/act-as/clear");
+    await refreshUser();
+  }, [refreshUser]);
+
   const logout = useCallback(async () => {
+    try {
+      // Best-effort — a failed clear shouldn't block logout.
+      await clearActAs();
+    } catch {
+      // ignore
+    }
     await apiLogout();
     setUser(null);
     router.push("/login");
-  }, [router]);
+  }, [router, clearActAs]);
+
+  const effectiveRole = user?.acting_as_role ?? user?.role ?? null;
+  const isActingAs = !!user?.acting_as_role;
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        loading,
+        effectiveRole,
+        isActingAs,
+        login,
+        logout,
+        actAs,
+        clearActAs,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

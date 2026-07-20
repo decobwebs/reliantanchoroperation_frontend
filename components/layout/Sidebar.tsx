@@ -18,6 +18,8 @@ import {
   ScrollText,
   Bell,
   BadgeCheck,
+  UserCog,
+  Check,
 } from "lucide-react";
 import { useState } from "react";
 import { cn, getInitials } from "@/lib/utils";
@@ -26,7 +28,23 @@ import { useAuth } from "@/hooks/useAuth";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import type { UserRole } from "@/types";
+
+// The 4 roles a Bunker Manager may temporarily act as.
+const ACT_AS_ROLES: { value: string; label: string }[] = [
+  { value: "ops_supervisor", label: "Ops Supervisor" },
+  { value: "logistics_officer", label: "Logistics Officer" },
+  { value: "marine_manager", label: "Marine Manager" },
+  { value: "finance_manager", label: "Finance Manager" },
+];
 
 export interface NavItem {
   href: string;
@@ -125,11 +143,34 @@ export const NAV_ITEMS: NavItem[] = [
 ];
 
 export function Sidebar() {
-  const { user, logout } = useAuth();
+  const { user, logout, effectiveRole, isActingAs, actAs, clearActAs } = useAuth();
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
+  const [switching, setSwitching] = useState(false);
 
   if (!user) return null;
+
+  // The switcher itself must always be reachable by the real BM, even while
+  // acting as another role — so this checks the real role, not effectiveRole.
+  const isRealBM = user.role === "bunker_manager";
+
+  const handleActAs = async (role: string) => {
+    try {
+      setSwitching(true);
+      await actAs(role);
+    } finally {
+      setSwitching(false);
+    }
+  };
+
+  const handleClearActAs = async () => {
+    try {
+      setSwitching(true);
+      await clearActAs();
+    } finally {
+      setSwitching(false);
+    }
+  };
 
   const visibleItems = NAV_ITEMS.filter((item) =>
     item.roles.includes(user.role as UserRole)
@@ -233,9 +274,60 @@ export function Sidebar() {
                 {user.full_name}
               </p>
               <p className="text-[10px] text-sidebar-foreground/50 truncate">
-                {ROLE_LABELS[user.role]}
+                {isActingAs ? (
+                  <>
+                    {ROLE_LABELS[user.role]}
+                    <span className="text-amber-400"> → {ROLE_LABELS[effectiveRole ?? ""] ?? effectiveRole}</span>
+                  </>
+                ) : (
+                  ROLE_LABELS[user.role]
+                )}
               </p>
             </div>
+          )}
+          {!collapsed && isRealBM && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent"
+                  disabled={switching}
+                  title={isActingAs ? "Switch acted role" : "Act as another role"}
+                >
+                  <UserCog className="w-3.5 h-3.5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel className="text-xs text-muted-foreground">
+                  {isActingAs ? "Switch acted role" : "Act as…"}
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {ACT_AS_ROLES.map((r) => (
+                  <DropdownMenuItem
+                    key={r.value}
+                    disabled={switching}
+                    onClick={() => handleActAs(r.value)}
+                    className="text-xs justify-between"
+                  >
+                    {r.label}
+                    {effectiveRole === r.value && <Check className="w-3.5 h-3.5" />}
+                  </DropdownMenuItem>
+                ))}
+                {isActingAs && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      disabled={switching}
+                      onClick={handleClearActAs}
+                      className="text-xs text-amber-700 focus:text-amber-700 focus:bg-amber-50"
+                    >
+                      Switch back to Bunker Manager
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
           {!collapsed && (
             <Button

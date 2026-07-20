@@ -1,19 +1,31 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { ROLE_LABELS } from "@/lib/auth";
+import { Loader2, UserCog } from "lucide-react";
 
 export default function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const { user, loading } = useAuth();
+  const { user, loading, effectiveRole, isActingAs, clearActAs } = useAuth();
   const router = useRouter();
+  const [clearing, setClearing] = useState(false);
+
+  const handleSwitchBack = async () => {
+    try {
+      setClearing(true);
+      await clearActAs();
+    } finally {
+      setClearing(false);
+    }
+  };
 
   useEffect(() => {
     if (!loading && !user) {
@@ -40,6 +52,29 @@ export default function DashboardLayout({
       <div className="flex h-screen overflow-hidden">
         <Sidebar />
         <main className="flex-1 flex flex-col overflow-hidden">
+          {isActingAs && (
+            <div className="flex items-center justify-between gap-3 px-4 md:px-6 py-2 bg-amber-50 border-b border-amber-200 text-amber-800 shrink-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <UserCog className="w-4 h-4 shrink-0" />
+                <p className="text-xs md:text-sm font-medium truncate">
+                  Acting as{" "}
+                  <span className="font-semibold">
+                    {ROLE_LABELS[effectiveRole ?? ""] ?? effectiveRole}
+                  </span>
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 shrink-0 text-xs border-amber-300 bg-white/70 text-amber-800 hover:bg-amber-100 hover:text-amber-900"
+                onClick={handleSwitchBack}
+                disabled={clearing}
+              >
+                {clearing && <Loader2 className="w-3 h-3 mr-1.5 animate-spin" />}
+                Switch back to Bunker Manager
+              </Button>
+            </div>
+          )}
           <div className="flex-1 overflow-y-auto">{children}</div>
         </main>
       </div>

@@ -16,9 +16,9 @@ import { formatDateTime } from "@/lib/utils";
 import type { ApiResponse, TruckWaiver } from "@/types";
 
 export default function WaiversPage() {
-  const { user } = useAuth();
+  const { user, effectiveRole } = useAuth();
   const qc = useQueryClient();
-  const canAdd = user?.role === "bunker_manager";
+  const canAdd = effectiveRole === "bunker_manager";
   const [bulkText, setBulkText] = useState("");
 
   const { data: waivers, isLoading } = useQuery({

@@ -34,10 +34,10 @@ const STATUS_COLOR: Record<string, string> = {
 };
 
 export default function PfiPage() {
-  const { user } = useAuth();
+  const { user, effectiveRole } = useAuth();
   const qc = useQueryClient();
-  const isBM = user?.role === "bunker_manager";
-  const isFM = user?.role === "finance_manager";
+  const isBM = effectiveRole === "bunker_manager";
+  const isFM = effectiveRole === "finance_manager";
   const canManage = isBM || isFM;
 
   const { data: pfis, isLoading } = useQuery({

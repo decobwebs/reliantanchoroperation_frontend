@@ -38,12 +38,12 @@ export default function TruckDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
-  const { user } = useAuth();
+  const { user, effectiveRole } = useAuth();
   const router  = useRouter();
 
-  const isBM = user?.role === "bunker_manager";
-  const isLO = user?.role === "logistics_officer";
-  const isOS = user?.role === "ops_supervisor";
+  const isBM = effectiveRole === "bunker_manager";
+  const isLO = effectiveRole === "logistics_officer";
+  const isOS = effectiveRole === "ops_supervisor";
 
   const canView = isBM || isLO || isOS;
 

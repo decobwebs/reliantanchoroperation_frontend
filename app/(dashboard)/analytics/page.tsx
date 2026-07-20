@@ -19,8 +19,8 @@ import type { ApiResponse, AnalyticsDashboard, OperationStatus } from "@/types";
 const MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
 export default function AnalyticsPage() {
-  const { user } = useAuth();
-  const canSee = user ? canAccessAnalytics(user.role) : true;
+  const { user, effectiveRole } = useAuth();
+  const canSee = user && effectiveRole ? canAccessAnalytics(effectiveRole) : true;
 
   const { data: analytics, isLoading, isError, error, refetch } = useQuery({
     queryKey: ["analytics-dashboard"],

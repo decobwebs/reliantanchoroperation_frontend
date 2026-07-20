@@ -201,8 +201,8 @@ function CreateUserDialog() {
 }
 
 export default function AdminPage() {
-  const { user } = useAuth();
-  const isBM = user?.role === "bunker_manager";
+  const { user, effectiveRole } = useAuth();
+  const isBM = effectiveRole === "bunker_manager";
 
   const { data: users, isLoading, isError, error, refetch } = useQuery({
     queryKey: ["admin-users"],

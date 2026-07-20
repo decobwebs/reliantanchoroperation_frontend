@@ -137,10 +137,10 @@ function CreateVesselDialog({
 }
 
 export default function VesselsPage() {
-  const { user } = useAuth();
+  const { user, effectiveRole } = useAuth();
   const qc = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
-  const isBM = user?.role === "bunker_manager";
+  const isBM = effectiveRole === "bunker_manager";
 
   const { data: vessels, isLoading } = useQuery({
     queryKey: ["vessels"],

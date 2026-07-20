@@ -9,7 +9,7 @@ import { MarineManagerDashboard } from "./_dashboards/MarineManagerDashboard";
 import { FinanceManagerDashboard } from "./_dashboards/FinanceManagerDashboard";
 
 export default function DashboardPage() {
-  const { user, loading } = useAuth();
+  const { user, loading, effectiveRole } = useAuth();
 
   if (loading || !user) {
     return (
@@ -19,7 +19,7 @@ export default function DashboardPage() {
     );
   }
 
-  switch (user.role) {
+  switch (effectiveRole) {
     case "bunker_manager":
       return <BunkerManagerDashboard />;
     case "ops_supervisor":

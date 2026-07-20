@@ -18,14 +18,14 @@ import type { UserRole } from "@/types";
  * Sidebar is shown). Reuses the exact same role-scoped NAV_ITEMS.
  */
 export function MobileNav() {
-  const { user, logout } = useAuth();
+  const { user, logout, effectiveRole, isActingAs } = useAuth();
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
 
   if (!user) return null;
 
   const visibleItems = NAV_ITEMS.filter((item) =>
-    item.roles.includes(user.role as UserRole)
+    item.roles.includes((effectiveRole ?? user.role) as UserRole)
   );
 
   const isActive = (href: string) =>
@@ -89,7 +89,16 @@ export function MobileNav() {
             </Avatar>
             <div className="flex-1 min-w-0">
               <p className="text-xs font-medium truncate text-sidebar-foreground">{user.full_name}</p>
-              <p className="text-[10px] text-sidebar-foreground/50 truncate">{ROLE_LABELS[user.role]}</p>
+              <p className="text-[10px] text-sidebar-foreground/50 truncate">
+                {isActingAs ? (
+                  <>
+                    {ROLE_LABELS[user.role]}
+                    <span className="text-amber-400"> → {ROLE_LABELS[effectiveRole ?? ""] ?? effectiveRole}</span>
+                  </>
+                ) : (
+                  ROLE_LABELS[user.role]
+                )}
+              </p>
             </div>
             <Button
               variant="ghost"

@@ -117,7 +117,7 @@ async function downloadCSV(search: string, statusFilter: string, typeFilter: str
 }
 
 export default function OperationsPage() {
-  const { user } = useAuth();
+  const { user, effectiveRole } = useAuth();
   const router = useRouter();
   const [page, setPage] = useState(1);
   const [searchInput, setSearchInput] = useState("");
@@ -154,7 +154,7 @@ export default function OperationsPage() {
     },
   });
 
-  const isBM = user?.role === "bunker_manager";
+  const isBM = effectiveRole === "bunker_manager";
   const totalPages = data ? Math.ceil(data.total / 15) : 0;
 
   return (

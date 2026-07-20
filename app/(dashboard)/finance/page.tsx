@@ -74,11 +74,11 @@ interface AnalyticsDashboard {
 }
 
 export default function FinancePage() {
-  const { user } = useAuth();
-  const canSee = user ? canManageFinance(user.role) : true;
+  const { user, effectiveRole } = useAuth();
+  const canSee = user && effectiveRole ? canManageFinance(effectiveRole) : true;
   // Page is BM+FM, but the create endpoints are FM-only — don't show a BM
   // buttons that would 403.
-  const isFM = user?.role === "finance_manager";
+  const isFM = effectiveRole === "finance_manager";
   const [showInvoice, setShowInvoice] = useState(false);
   const [showVoucher, setShowVoucher] = useState(false);
 

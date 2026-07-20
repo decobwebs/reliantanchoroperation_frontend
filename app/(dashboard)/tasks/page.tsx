@@ -335,13 +335,13 @@ function MarkVesselReadyDialog({
 // ─── Main Tasks Page ──────────────────────────────────────────────────────────
 
 export default function TasksPage() {
-  const { user } = useAuth();
+  const { user, effectiveRole } = useAuth();
   const qc = useQueryClient();
   const [readinessTask, setReadinessTask] = useState<Task | null>(null);
   const [vesselReadyTask, setVesselReadyTask] = useState<Task | null>(null);
 
-  const isLO = user?.role === "logistics_officer";
-  const isMM = user?.role === "marine_manager";
+  const isLO = effectiveRole === "logistics_officer";
+  const isMM = effectiveRole === "marine_manager";
 
   const { data: tasks, isLoading } = useQuery({
     queryKey: ["my-tasks"],

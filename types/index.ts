@@ -198,16 +198,6 @@ export interface PFI {
   created_at: string;
 }
 
-export interface PfiAllocation {
-  id: string;
-  pfi_id: string;
-  operation_id: string;
-  quantity_litres: string;
-  linked_by: string;
-  notes?: string;
-  created_at: string;
-}
-
 export interface Voucher {
   id: string;
   voucher_number: string;
@@ -302,6 +292,11 @@ export interface TruckWaiver {
   status: TruckWaiverStatus;
   added_by: string;
   created_at: string;
+  linked_truck_number?: string;
+  linked_operation_id?: string;
+  linked_operation_number?: string;
+  linked_driver_name?: string;
+  linked_at?: string;
 }
 
 export interface TruckEvent {

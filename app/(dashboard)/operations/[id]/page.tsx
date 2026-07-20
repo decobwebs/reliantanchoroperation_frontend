@@ -98,7 +98,6 @@ import type {
   AuditPhase,
   AuditLogEntry,
   AuditWaiver,
-  PfiAllocation,
   TruckWaiver,
 } from "@/types";
 import { PRODUCT_TYPE_LABELS } from "@/types";
@@ -462,6 +461,18 @@ export default function OperationDetailPage({
   const [loSelectedTrucks, setLoSelectedTrucks] = useState<string[]>([]);
   const [loSummary,         setLoSummary]         = useState("");
   const [loNotes,           setLoNotes]           = useState("");
+  // Per-truck driver/vendor captured at sourcing time (keyed by truck id), carried
+  // in the feedback's truck_details and applied when TruckOperation rows get
+  // created at approval time.
+  const [loTruckDetails, setLoTruckDetails] = useState<Record<string, { driver_name: string; driver_phone: string; vendor_name: string }>>({});
+  const [plateSearch, setPlateSearch] = useState("");
+  const [showCreateTruckDialog, setShowCreateTruckDialog] = useState(false);
+
+  const setLoTruckDetail = (truckId: string, field: "driver_name" | "driver_phone" | "vendor_name", value: string) =>
+    setLoTruckDetails((prev) => {
+      const existing = prev[truckId] ?? { driver_name: "", driver_phone: "", vendor_name: "" };
+      return { ...prev, [truckId]: { ...existing, [field]: value } };
+    });
 
   // ── Marine Supervisor state
   const [showAssignActivityForm, setShowAssignActivityForm] = useState(false);
@@ -555,23 +566,14 @@ export default function OperationDetailPage({
     staleTime: 0,
   });
 
-  const { data: activePfis } = useQuery({
-    queryKey: ["pfis-active"],
+  // Unlinked PFIs — the dropdown source for the simple "Link PFI" pick (BM or Ops Supervisor)
+  const { data: unlinkedPfis, refetch: refetchUnlinkedPfis } = useQuery({
+    queryKey: ["pfis-unlinked"],
     queryFn: async () => {
-      const res = await api.get<ApiResponse<PFI[]>>(`/pfis/active`);
+      const res = await api.get<ApiResponse<PFI[]>>(`/pfis`, { params: { unlinked_only: true } });
       return res.data.data ?? [];
     },
-    enabled: canSeeFinance && isBM,
-    staleTime: 0,
-  });
-
-  const { data: pfiAllocations, refetch: refetchPfiAllocations } = useQuery({
-    queryKey: ["operation-pfi-allocations", id],
-    queryFn: async () => {
-      const res = await api.get<ApiResponse<PfiAllocation[]>>(`/operations/${id}/pfis/allocations`);
-      return res.data.data ?? [];
-    },
-    enabled: canSeeFinance,
+    enabled: canSeeFinance && (isBM || isOS),
     staleTime: 0,
   });
 
@@ -653,6 +655,65 @@ export default function OperationDetailPage({
       return res.data.data;
     },
     enabled: !!(op?.parent_operation_id || (op?.version && op.version > 1)),
+  });
+
+  // ── Create a new truck inline while sourcing (LO), then add it to the nomination list
+  const [newTruckNumber,   setNewTruckNumber]   = useState("");
+  const [newTruckCapacity, setNewTruckCapacity] = useState("");
+  const [newTruckChassis,  setNewTruckChassis]  = useState("");
+  const [newTruckDriver,   setNewTruckDriver]   = useState("");
+  const [newTruckPhone,    setNewTruckPhone]    = useState("");
+  const [newTruckVendor,   setNewTruckVendor]   = useState("");
+  const [newTruckPhotoFile,      setNewTruckPhotoFile]      = useState<File | null>(null);
+  const [newTruckLicenceFile,    setNewTruckLicenceFile]    = useState<File | null>(null);
+  const [newTruckCalibrationFile, setNewTruckCalibrationFile] = useState<File | null>(null);
+
+  const resetCreateTruckForm = () => {
+    setNewTruckNumber(""); setNewTruckCapacity(""); setNewTruckChassis("");
+    setNewTruckDriver(""); setNewTruckPhone(""); setNewTruckVendor("");
+    setNewTruckPhotoFile(null); setNewTruckLicenceFile(null); setNewTruckCalibrationFile(null);
+  };
+
+  const createTruckMutation = useMutation({
+    mutationFn: async () => {
+      const res = await api.post<{ data: { id: string; truck_number: string } }>("/trucks", {
+        truck_number: newTruckNumber.trim(),
+        capacity_mt: parseFloat(newTruckCapacity),
+        chassis_number: newTruckChassis.trim() || undefined,
+      });
+      const truckId = res.data.data.id;
+
+      const uploads: Promise<unknown>[] = [];
+      if (newTruckPhotoFile) {
+        const form = new FormData();
+        form.append("file", newTruckPhotoFile);
+        uploads.push(api.post(`/trucks/${truckId}/photo`, form, { headers: { "Content-Type": "multipart/form-data" } }));
+      }
+      if (newTruckLicenceFile) {
+        const form = new FormData();
+        form.append("file", newTruckLicenceFile);
+        uploads.push(api.post(`/trucks/${truckId}/documents/licence`, form, { headers: { "Content-Type": "multipart/form-data" } }));
+      }
+      if (newTruckCalibrationFile) {
+        const form = new FormData();
+        form.append("file", newTruckCalibrationFile);
+        uploads.push(api.post(`/trucks/${truckId}/documents/calibration_cert`, form, { headers: { "Content-Type": "multipart/form-data" } }));
+      }
+      await Promise.all(uploads);
+      return { id: truckId, truck_number: res.data.data.truck_number };
+    },
+    onSuccess: (truck) => {
+      toast.success(`Truck ${truck.truck_number} created`);
+      setLoSelectedTrucks((prev) => prev.includes(truck.id) ? prev : [...prev, truck.id]);
+      setLoTruckDetail(truck.id, "driver_name", newTruckDriver.trim());
+      setLoTruckDetail(truck.id, "driver_phone", newTruckPhone.trim());
+      setLoTruckDetail(truck.id, "vendor_name", newTruckVendor.trim());
+      qc.invalidateQueries({ queryKey: ["fleet-trucks"] });
+      setShowCreateTruckDialog(false);
+      setPlateSearch("");
+      resetCreateTruckForm();
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
   });
 
   const { data: fleetTrucks } = useQuery({
@@ -763,10 +824,13 @@ export default function OperationDetailPage({
 
   const submitFeedbackMutation = useMutation({
     mutationFn: async () => {
+      const truck_details: Record<string, unknown> = {};
+      if (loNotes.trim()) truck_details.notes = loNotes.trim();
+      if (Object.keys(loTruckDetails).length) truck_details.driverInfo = loTruckDetails;
       const res = await api.post(`/operations/${id}/feedback`, {
         truck_ids:        loSelectedTrucks,
         readiness_summary: loSummary.trim(),
-        truck_details:    loNotes.trim() ? { notes: loNotes.trim() } : {},
+        truck_details,
       });
       return res.data;
     },
@@ -775,6 +839,7 @@ export default function OperationDetailPage({
       setLoSelectedTrucks([]);
       setLoSummary("");
       setLoNotes("");
+      setLoTruckDetails({});
       refetchFeedbacks();
       qc.invalidateQueries({ queryKey: ["operation", id] });
       qc.invalidateQueries({ queryKey: ["operation-timeline", id] });
@@ -782,64 +847,18 @@ export default function OperationDetailPage({
     onError: (err) => toast.error(getErrorMessage(err)),
   });
 
-  // ── PFI state & mutations
-  const [showPfiDialog, setShowPfiDialog] = useState(false);
-  const [pfiMode,     setPfiMode]     = useState<"generate" | "upload">("generate");
-  // Upload form
-  const [pfiAmount,   setPfiAmount]   = useState("");
-  const [pfiCurrency, setPfiCurrency] = useState("NGN");
-  const [pfiQuantity, setPfiQuantity] = useState("");
-  const [pfiSupplier, setPfiSupplier] = useState("");
-  const [pfiDesc,     setPfiDesc]     = useState("");
-  const [pfiDocFile,  setPfiDocFile]  = useState<File | null>(null);
-  const pfiDocFileRef = useRef<HTMLInputElement>(null);
-  // Generate form
-  const [genRate,       setGenRate]       = useState("");
-  const [genValidity,   setGenValidity]   = useState("7");
-  const [genTax,        setGenTax]        = useState("0");
-  const [genExchange,   setGenExchange]   = useState("");
-  const [genQuantity,   setGenQuantity]   = useState("");
-  const [genSupplier,   setGenSupplier]   = useState("");
-  const [genDesc,       setGenDesc]       = useState("");
-  const [genNotes,      setGenNotes]      = useState("");
+  // ── Link PFI (BM or Ops Supervisor picks an existing unlinked PFI — simple 1:1, no quantity)
+  const [linkPfiId, setLinkPfiId] = useState("");
 
-  const closePfiDialog = () => {
-    setShowPfiDialog(false);
-    setPfiAmount(""); setPfiCurrency("NGN"); setPfiQuantity(""); setPfiSupplier(""); setPfiDesc("");
-    setPfiDocFile(null);
-    setGenRate(""); setGenValidity("7"); setGenTax("0"); setGenExchange(""); setGenQuantity("");
-    setGenSupplier(""); setGenDesc(""); setGenNotes("");
-  };
-
-  // ── PFI allocation (BM links an active PFI to this operation, volume drawdown)
-  const [allocPfiId,    setAllocPfiId]    = useState("");
-  const [allocQuantity, setAllocQuantity] = useState("");
-  const [allocNotes,    setAllocNotes]    = useState("");
-
-  const allocatePfiMutation = useMutation({
+  const linkExistingPfiMutation = useMutation({
     mutationFn: async () => {
-      await api.post(`/operations/${id}/pfis/${allocPfiId}/allocations`, {
-        quantity_litres: parseFloat(allocQuantity),
-        notes: allocNotes.trim() || undefined,
-      });
+      await api.post(`/operations/${id}/pfis/${linkPfiId}/link`);
     },
     onSuccess: () => {
-      toast.success("PFI allocated to this operation");
-      setAllocPfiId(""); setAllocQuantity(""); setAllocNotes("");
-      refetchPfiAllocations();
-      qc.invalidateQueries({ queryKey: ["pfis-active"] });
-    },
-    onError: (err) => toast.error(getErrorMessage(err)),
-  });
-
-  const deleteAllocationMutation = useMutation({
-    mutationFn: async ({ allocationId, reason }: { allocationId: string; reason: string }) => {
-      await api.delete(`/pfi-allocations/${allocationId}`, { params: { reason } });
-    },
-    onSuccess: () => {
-      toast.success("Allocation removed");
-      refetchPfiAllocations();
-      qc.invalidateQueries({ queryKey: ["pfis-active"] });
+      toast.success("PFI linked to this operation");
+      setLinkPfiId("");
+      refetchPfis();
+      refetchUnlinkedPfis();
     },
     onError: (err) => toast.error(getErrorMessage(err)),
   });
@@ -881,62 +900,7 @@ export default function OperationDetailPage({
       toast.success("PFI updated");
       closeEditPfiDialog();
       refetchPfis();
-      qc.invalidateQueries({ queryKey: ["pfis-active"] });
-    },
-    onError: (err) => toast.error(getErrorMessage(err)),
-  });
-
-  const linkPfiMutation = useMutation({
-    mutationFn: async () => {
-      let document_url: string | undefined;
-
-      if (pfiDocFile) {
-        const form = new FormData();
-        form.append("file", pfiDocFile);
-        form.append("document_type", "pfi");
-        if (pfiSupplier.trim()) form.append("description", `PFI document — ${pfiSupplier.trim()}`);
-        const upRes = await api.post<{ success: boolean; data: { file_url: string } }>(
-          `/operations/${id}/documents/upload`,
-          form,
-          { headers: { "Content-Type": "multipart/form-data" } },
-        );
-        document_url = upRes.data.data.file_url;
-      }
-
-      await api.post(`/operations/${id}/pfis`, {
-        amount:        parseFloat(pfiAmount),
-        currency:      pfiCurrency,
-        quantity_litres: pfiQuantity ? parseFloat(pfiQuantity) : undefined,
-        supplier_name: pfiSupplier.trim() || undefined,
-        description:   pfiDesc.trim()    || undefined,
-        document_url,
-      });
-    },
-    onSuccess: () => {
-      toast.success("PFI linked successfully");
-      closePfiDialog();
-      refetchPfis();
-    },
-    onError: (err) => toast.error(getErrorMessage(err)),
-  });
-
-  const generatePfiMutation = useMutation({
-    mutationFn: async () => {
-      await api.post(`/operations/${id}/pfis/generate`, {
-        rate_per_mt:   parseFloat(genRate),
-        validity_days: parseInt(genValidity) || 7,
-        tax_rate:      parseFloat(genTax) || 0,
-        exchange_rate: genExchange ? parseFloat(genExchange) : undefined,
-        quantity_litres: genQuantity ? parseFloat(genQuantity) : undefined,
-        supplier_name: genSupplier.trim() || undefined,
-        description:   genDesc.trim()    || undefined,
-        notes:         genNotes.trim()   || undefined,
-      });
-    },
-    onSuccess: () => {
-      toast.success("PFI generated and linked — Finance Manager notified");
-      closePfiDialog();
-      refetchPfis();
+      refetchUnlinkedPfis();
     },
     onError: (err) => toast.error(getErrorMessage(err)),
   });
@@ -1712,13 +1676,20 @@ export default function OperationDetailPage({
     BM_EDITED_DISCHARGE_RECORD: "text-orange-600",
   };
 
-  // Initialize TruckOperation records from approved feedback truck_ids
+  // Initialize TruckOperation records from approved feedback truck_ids, applying
+  // the driver/vendor info the LO captured at nomination time (see truck_details.driverInfo).
   const initTrucksMutation = useMutation({
-    mutationFn: async (truckIds: string[]) => {
+    mutationFn: async ({ truckIds, driverInfo }: { truckIds: string[]; driverInfo?: Record<string, { driver_name?: string; driver_phone?: string; vendor_name?: string }> }) => {
       const alreadyInitialized = new Set(truckOps?.map((to) => to.truck_id) ?? []);
       const newIds = truckIds.filter((tid) => !alreadyInitialized.has(tid));
       for (const truck_id of newIds) {
-        await api.post(`/operations/${id}/trucks`, { truck_id });
+        const info = driverInfo?.[truck_id];
+        await api.post(`/operations/${id}/trucks`, {
+          truck_id,
+          driver_name: info?.driver_name || undefined,
+          driver_phone: info?.driver_phone || undefined,
+          vendor_name: info?.vendor_name || undefined,
+        });
       }
     },
     onSuccess: () => {
@@ -2087,23 +2058,14 @@ export default function OperationDetailPage({
               </Card>
             ) : (
               <Card className="border-amber-200 bg-amber-50/40 border-0 shadow-sm">
-                <CardContent className="p-4 flex items-center justify-between gap-4">
-                  <div className="flex items-start gap-3">
-                    <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-                    <div>
-                      <p className="text-sm font-semibold text-amber-800">PFI Required</p>
-                      <p className="text-xs text-amber-700 mt-0.5">
-                        Link a Proforma Invoice before this operation can be activated.
-                      </p>
-                    </div>
+                <CardContent className="p-4 flex items-start gap-3">
+                  <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-semibold text-amber-800">PFI Required</p>
+                    <p className="text-xs text-amber-700 mt-0.5">
+                      Link a Proforma Invoice before this operation can be activated — use &quot;Link PFI&quot; in the Finance tab.
+                    </p>
                   </div>
-                  <Button
-                    size="sm"
-                    className="shrink-0 bg-amber-600 hover:bg-amber-700"
-                    onClick={() => setShowPfiDialog(true)}
-                  >
-                    Link PFI
-                  </Button>
                 </CardContent>
               </Card>
             );
@@ -2136,16 +2098,7 @@ export default function OperationDetailPage({
                     variant={t.destructive ? "destructive" : "default"}
                     disabled={transitionMutation.isPending || pfiMissing}
                     title={pfiMissing ? "Link a PFI first" : undefined}
-                    onClick={() => {
-                      // "Link PFI" must go through the Finance tab PFI dialog.
-                      // The backend auto-advances the operation status when PFI is saved,
-                      // so the manual transition is unnecessary and bypasses the PFI record.
-                      if (t.to === "pfi_linked") {
-                        setShowPfiDialog(true);
-                      } else {
-                        setShowTransitionConfirm(t);
-                      }
-                    }}
+                    onClick={() => setShowTransitionConfirm(t)}
                   >
                     {transitionMutation.isPending
                       ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
@@ -2518,43 +2471,103 @@ export default function OperationDetailPage({
                               <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                                 Nominate Trucks *
                               </Label>
-                              {!fleetTrucks ? (
-                                <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
-                                  <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading fleet…
-                                </div>
-                              ) : !fleetTrucks.length ? (
-                                <p className="text-xs text-muted-foreground italic">No active trucks in fleet.</p>
-                              ) : (
-                                <div className="space-y-1 max-h-44 overflow-y-auto border rounded-md p-2">
-                                  {fleetTrucks.map((truck) => {
-                                    const checked = loSelectedTrucks.includes(truck.id);
-                                    const cap = truck.capacity_mt ? `${parseFloat(truck.capacity_mt).toLocaleString()} L` : "";
+
+                              {/* Search-or-create by plate number */}
+                              <div className="relative">
+                                <Input
+                                  placeholder="Type a plate number to find or add a truck…"
+                                  value={plateSearch}
+                                  onChange={(e) => setPlateSearch(e.target.value)}
+                                  disabled={!fleetTrucks}
+                                />
+                                {plateSearch.trim() && (
+                                  <div className="absolute z-10 mt-1 w-full rounded-md border bg-popover shadow-md max-h-52 overflow-y-auto">
+                                    {(() => {
+                                      const q = plateSearch.trim().toLowerCase();
+                                      const matches = (fleetTrucks ?? []).filter(
+                                        (t) => t.truck_number.toLowerCase().includes(q) && !loSelectedTrucks.includes(t.id)
+                                      );
+                                      return (
+                                        <>
+                                          {matches.map((t) => (
+                                            <button
+                                              key={t.id}
+                                              type="button"
+                                              className="w-full text-left px-3 py-2 text-sm hover:bg-muted flex items-center justify-between gap-2"
+                                              onClick={() => {
+                                                setLoSelectedTrucks((prev) => [...prev, t.id]);
+                                                setPlateSearch("");
+                                              }}
+                                            >
+                                              <span className="font-medium">{t.truck_number}</span>
+                                              {t.capacity_mt && (
+                                                <span className="text-xs text-muted-foreground">{parseFloat(t.capacity_mt).toLocaleString()} L</span>
+                                              )}
+                                            </button>
+                                          ))}
+                                          {matches.length === 0 && (
+                                            <div className="px-3 py-2 text-xs text-muted-foreground">No matching truck in fleet.</div>
+                                          )}
+                                          <button
+                                            type="button"
+                                            className="w-full text-left px-3 py-2 text-sm text-primary hover:bg-muted border-t flex items-center gap-1.5"
+                                            onClick={() => {
+                                              setNewTruckNumber(plateSearch.trim());
+                                              setShowCreateTruckDialog(true);
+                                            }}
+                                          >
+                                            <PlusCircle className="w-3.5 h-3.5" />
+                                            Create new truck &quot;{plateSearch.trim()}&quot;
+                                          </button>
+                                        </>
+                                      );
+                                    })()}
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Selected trucks — driver captured inline, per truck */}
+                              {loSelectedTrucks.length > 0 && (
+                                <div className="space-y-2 mt-2">
+                                  {loSelectedTrucks.map((truckId) => {
+                                    const truck = fleetTrucks?.find((t) => t.id === truckId);
+                                    const details = loTruckDetails[truckId] ?? { driver_name: "", driver_phone: "", vendor_name: "" };
                                     return (
-                                      <label key={truck.id} className="flex items-center gap-2.5 cursor-pointer text-sm px-1.5 py-1 rounded hover:bg-muted">
-                                        <input
-                                          type="checkbox"
-                                          className="rounded"
-                                          checked={checked}
-                                          onChange={(e) =>
-                                            setLoSelectedTrucks(e.target.checked
-                                              ? [...loSelectedTrucks, truck.id]
-                                              : loSelectedTrucks.filter((i) => i !== truck.id))
-                                          }
+                                      <div key={truckId} className="border rounded-md p-2.5 space-y-1.5">
+                                        <div className="flex items-center justify-between">
+                                          <span className="text-sm font-semibold">{truck?.truck_number ?? "New truck"}</span>
+                                          <button
+                                            type="button"
+                                            className="text-muted-foreground hover:text-destructive"
+                                            onClick={() => setLoSelectedTrucks((prev) => prev.filter((i) => i !== truckId))}
+                                          >
+                                            <Trash2 className="w-3.5 h-3.5" />
+                                          </button>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-2">
+                                          <Input
+                                            className="h-8 text-xs" placeholder="Driver name"
+                                            value={details.driver_name}
+                                            onChange={(e) => setLoTruckDetail(truckId, "driver_name", e.target.value)}
+                                          />
+                                          <Input
+                                            className="h-8 text-xs" placeholder="Driver phone"
+                                            value={details.driver_phone}
+                                            onChange={(e) => setLoTruckDetail(truckId, "driver_phone", e.target.value)}
+                                          />
+                                        </div>
+                                        <Input
+                                          className="h-8 text-xs" placeholder="Vendor (optional)"
+                                          value={details.vendor_name}
+                                          onChange={(e) => setLoTruckDetail(truckId, "vendor_name", e.target.value)}
                                         />
-                                        <span className="font-medium">{truck.truck_number}</span>
-                                        {cap && <span className="text-xs text-muted-foreground">· {cap}</span>}
-                                        {truck.driver_name && (
-                                          <span className="text-xs text-muted-foreground ml-auto">{truck.driver_name}</span>
-                                        )}
-                                      </label>
+                                      </div>
                                     );
                                   })}
+                                  <p className="text-xs text-emerald-600 font-medium">
+                                    {loSelectedTrucks.length} truck{loSelectedTrucks.length > 1 ? "s" : ""} nominated
+                                  </p>
                                 </div>
-                              )}
-                              {loSelectedTrucks.length > 0 && (
-                                <p className="text-xs text-emerald-600 font-medium">
-                                  {loSelectedTrucks.length} truck{loSelectedTrucks.length > 1 ? "s" : ""} nominated
-                                </p>
                               )}
                             </div>
 
@@ -3764,7 +3777,10 @@ export default function OperationDetailPage({
                                 <Button
                                   size="sm"
                                   disabled={initTrucksMutation.isPending}
-                                  onClick={() => initTrucksMutation.mutate(fbTruckIds)}
+                                  onClick={() => initTrucksMutation.mutate({
+                                    truckIds: fbTruckIds,
+                                    driverInfo: (approvedFb?.truck_details as { driverInfo?: Record<string, { driver_name?: string; driver_phone?: string; vendor_name?: string }> } | undefined)?.driverInfo,
+                                  })}
                                 >
                                   {initTrucksMutation.isPending
                                     ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
@@ -4604,10 +4620,12 @@ export default function OperationDetailPage({
                         ) : null}
                       </div>
                       {(isBM || isFM) && (
-                        <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setShowPfiDialog(true)}>
-                          <PlusCircle className="w-3.5 h-3.5" />
-                          {isFM ? "Create PFI" : "Add PFI"}
-                        </Button>
+                        <Link href="/pfi">
+                          <Button size="sm" variant="outline" className="gap-1.5">
+                            <PlusCircle className="w-3.5 h-3.5" />
+                            Create PFI
+                          </Button>
+                        </Link>
                       )}
                     </div>
                     <Card className="border-0 shadow-sm">
@@ -4695,14 +4713,9 @@ export default function OperationDetailPage({
                           <div className="flex flex-col items-center py-8 text-muted-foreground gap-1">
                             <FileText className="w-7 h-7 mb-1 opacity-25" />
                             <p className="text-sm font-medium">No PFI document uploaded yet</p>
-                            {isBM && (
+                            {(isBM || isFM) && (
                               <p className="text-xs text-muted-foreground/70 text-center max-w-xs">
-                                The Finance Manager will create the PFI. You can also use &quot;Add PFI&quot; above to upload one directly.
-                              </p>
-                            )}
-                            {isFM && (
-                              <p className="text-xs text-muted-foreground/70 text-center max-w-xs">
-                                Click &quot;Create PFI&quot; above to generate or upload the proforma invoice for this operation.
+                                Create a PFI on the <Link href="/pfi" className="underline">PFI page</Link>, then link it to this operation below.
                               </p>
                             )}
                           </div>
@@ -4711,79 +4724,43 @@ export default function OperationDetailPage({
                     </Card>
                   </div>
 
-                  {/* ── PFI Allocations (volume drawdown) ── */}
-                  {isBM && (
+                  {/* ── Link PFI (simple pick, no quantity) ── */}
+                  {(isBM || isOS) && (
                     <div className="space-y-3">
                       <div className="flex items-center gap-2">
                         <FileText className="w-4 h-4 text-primary" />
-                        <h3 className="text-sm font-semibold">PFI Allocations</h3>
-                        {pfiAllocations?.length ? (
-                          <Badge variant="secondary" className="text-[10px] h-4 px-1.5">{pfiAllocations.length}</Badge>
-                        ) : null}
+                        <h3 className="text-sm font-semibold">Link PFI</h3>
                       </div>
                       <Card className="border-0 shadow-sm">
-                        <CardContent className="p-4 space-y-3">
-                          <div className="grid grid-cols-1 sm:grid-cols-[1fr_140px_auto] gap-2 items-end">
+                        <CardContent className="p-4">
+                          <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2 items-end">
                             <div className="space-y-1.5">
-                              <Label className="text-xs">Active PFI</Label>
-                              <Select value={allocPfiId} onValueChange={setAllocPfiId}>
+                              <Label className="text-xs">Select an unlinked PFI</Label>
+                              <Select value={linkPfiId} onValueChange={setLinkPfiId}>
                                 <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select PFI…" /></SelectTrigger>
                                 <SelectContent>
-                                  {activePfis?.map((p) => (
+                                  {unlinkedPfis?.map((p) => (
                                     <SelectItem key={p.id} value={p.id} className="text-xs">
-                                      {p.pfi_number} — {parseFloat(p.remaining_litres ?? "0").toLocaleString()} L remaining
+                                      {p.pfi_number} — {p.currency} {parseFloat(p.amount).toLocaleString()}
                                     </SelectItem>
                                   ))}
                                 </SelectContent>
                               </Select>
                             </div>
-                            <div className="space-y-1.5">
-                              <Label className="text-xs">Quantity (L)</Label>
-                              <Input type="number" step="0.01" className="h-8 text-xs" placeholder="e.g. 42000"
-                                value={allocQuantity} onChange={(e) => setAllocQuantity(e.target.value)} />
-                            </div>
                             <Button
                               size="sm"
                               className="h-8 gap-1.5"
-                              disabled={!allocPfiId || !allocQuantity || parseFloat(allocQuantity) <= 0 || allocatePfiMutation.isPending}
-                              onClick={() => allocatePfiMutation.mutate()}
+                              disabled={!linkPfiId || linkExistingPfiMutation.isPending}
+                              onClick={() => linkExistingPfiMutation.mutate()}
                             >
-                              {allocatePfiMutation.isPending
+                              {linkExistingPfiMutation.isPending
                                 ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
                                 : <PlusCircle className="w-3.5 h-3.5" />}
-                              Allocate
+                              Link
                             </Button>
                           </div>
-
-                          {pfiAllocations?.length ? (
-                            <div className="divide-y border-t pt-2">
-                              {pfiAllocations.map((a) => {
-                                const sourcePfi = pfis?.find((p) => p.id === a.pfi_id) ?? activePfis?.find((p) => p.id === a.pfi_id);
-                                return (
-                                  <div key={a.id} className="flex items-center justify-between gap-3 py-2 text-xs">
-                                    <div className="min-w-0">
-                                      <span className="font-mono font-semibold">{sourcePfi?.pfi_number ?? a.pfi_id.slice(0, 8)}</span>
-                                      <span className="ml-2 text-muted-foreground">{parseFloat(a.quantity_litres).toLocaleString()} L</span>
-                                      {a.notes && <span className="ml-2 text-muted-foreground/70">· {a.notes}</span>}
-                                    </div>
-                                    <Button
-                                      size="sm" variant="ghost"
-                                      className="h-6 text-[10px] text-destructive hover:text-destructive gap-1 shrink-0"
-                                      onClick={() => {
-                                        const reason = window.prompt("Reason for removing this allocation?");
-                                        if (reason && reason.trim()) {
-                                          deleteAllocationMutation.mutate({ allocationId: a.id, reason: reason.trim() });
-                                        }
-                                      }}
-                                    >
-                                      <Trash2 className="w-3 h-3" />Remove
-                                    </Button>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          ) : (
-                            <p className="text-xs text-muted-foreground/70 text-center py-2">No PFI allocated to this operation yet.</p>
+                          {!unlinkedPfis?.length && (
+                            <p className="text-xs text-muted-foreground/70 mt-2">No unlinked PFIs available.</p>
                           )}
                         </CardContent>
                       </Card>
@@ -4889,7 +4866,7 @@ export default function OperationDetailPage({
                       <div className="rounded-lg border border-amber-200 bg-amber-50/40 px-4 py-3 flex items-center gap-3">
                         <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
                         <p className="text-xs text-amber-700">
-                          Create the PFI document first (use &quot;Create PFI&quot; above) before recording a payment.
+                          Create and link a PFI first before recording a payment.
                         </p>
                       </div>
                     )}
@@ -5484,239 +5461,6 @@ export default function OperationDetailPage({
         </DialogContent>
       </Dialog>
 
-      {/* ── PFI dialog (hybrid: generate or upload) */}
-      <Dialog open={showPfiDialog} onOpenChange={(v) => { if (!v) closePfiDialog(); }}>
-        <DialogContent className="sm:max-w-lg" aria-describedby={undefined}>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <FileText className="w-4 h-4 text-primary" />
-              Proforma Invoice (PFI)
-            </DialogTitle>
-          </DialogHeader>
-
-          <Tabs value={pfiMode} onValueChange={(v) => setPfiMode(v as "generate" | "upload")} className="mt-1">
-            <TabsList className="w-full h-9">
-              <TabsTrigger value="generate" className="flex-1 text-xs gap-1.5">
-                <ClipboardCheck className="w-3.5 h-3.5" />
-                Generate from Operation
-              </TabsTrigger>
-              <TabsTrigger value="upload" className="flex-1 text-xs gap-1.5">
-                <UploadCloud className="w-3.5 h-3.5" />
-                Manual Upload
-              </TabsTrigger>
-            </TabsList>
-
-            {/* ── GENERATE tab ── */}
-            <TabsContent value="generate" className="mt-3 space-y-3">
-              {(() => {
-                const st   = op?.status;
-                // Money-first: a PFI is generated when the operation goes Active,
-                // for every operation type (backend allows generation from 'active').
-                const needsState = "active";
-                const postPfi = ["pfi_linked","payment_processing","payment_confirmed","vessel_operations","bdn_pending","bdn_approved","invoiced","completed","archived"];
-                const isReady    = st === needsState;
-                const isPastPfi  = postPfi.includes(st ?? "");
-                const isBlocked  = !isReady && !isPastPfi;
-
-                return isBlocked ? (
-                  <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5 text-xs text-amber-800 flex items-start gap-2">
-                    <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                    <span>
-                      Operation is currently <strong>{st?.replace(/_/g, " ")}</strong>.
-                      {needsState && <> A PFI can only be generated once the operation reaches <strong>{needsState.replace(/_/g, " ")}</strong>.</>}
-                      {" "}Use the <strong>Manual Upload</strong> tab to attach an existing PFI document instead.
-                    </span>
-                  </div>
-                ) : null;
-              })()}
-              {!op?.expected_volume_mt && (
-                <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5 text-xs text-amber-800 flex items-start gap-2">
-                  <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                  <span>This operation has no <strong>expected volume</strong> set. Set it in the Overview tab before generating a PFI.</span>
-                </div>
-              )}
-              <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2.5 text-xs text-blue-800">
-                The system will pull <span className="font-semibold">operation details, client info, product, route, and volume</span>{" "}
-                to generate a branded PDF. Enter the pricing details below.
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Rate per L ({op?.currency}) <span className="text-destructive">*</span></Label>
-                  <Input type="number" step="0.01" placeholder="e.g. 450.00"
-                    value={genRate} onChange={(e) => setGenRate(e.target.value)} />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Validity (days)</Label>
-                  <Input type="number" min="1" placeholder="7"
-                    value={genValidity} onChange={(e) => setGenValidity(e.target.value)} />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Tax Rate (%)</Label>
-                  <Input type="number" step="0.1" min="0" max="100" placeholder="0"
-                    value={genTax} onChange={(e) => setGenTax(e.target.value)} />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Exchange Rate (to NGN) <span className="text-muted-foreground font-normal">optional</span></Label>
-                  <Input type="number" step="0.01" placeholder={op?.currency !== "NGN" ? "e.g. 1580" : "N/A"}
-                    disabled={op?.currency === "NGN"}
-                    value={genExchange} onChange={(e) => setGenExchange(e.target.value)} />
-                </div>
-                <div className="space-y-1.5 col-span-2">
-                  <Label className="text-xs">Quantity (litres) <span className="text-muted-foreground font-normal">optional — for volume drawdown</span></Label>
-                  <Input type="number" step="0.01" placeholder="e.g. 252000"
-                    value={genQuantity} onChange={(e) => setGenQuantity(e.target.value)} />
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label className="text-xs">Supplier Name <span className="text-muted-foreground font-normal">optional</span></Label>
-                <Input placeholder="Defaults to Reliant Anchor Logistics Ltd"
-                  value={genSupplier} onChange={(e) => setGenSupplier(e.target.value)} />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs">Service Description <span className="text-muted-foreground font-normal">optional</span></Label>
-                <Input placeholder="Auto-generated from product type if blank"
-                  value={genDesc} onChange={(e) => setGenDesc(e.target.value)} />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs">Additional Notes <span className="text-muted-foreground font-normal">optional</span></Label>
-                <Textarea rows={2} className="resize-none text-sm"
-                  placeholder="Special payment terms, conditions…"
-                  value={genNotes} onChange={(e) => setGenNotes(e.target.value)} />
-              </div>
-
-              {/* Live amount preview */}
-              {genRate && op?.expected_volume_mt && (
-                <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2.5 text-xs">
-                  <div className="flex justify-between items-center">
-                    <span className="text-emerald-700">Estimated Amount</span>
-                    <span className="font-bold text-emerald-800 font-mono">
-                      {op.currency}{" "}
-                      {(parseFloat(genRate) * parseFloat(op.expected_volume_mt) * (1 + (parseFloat(genTax) || 0) / 100)).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </span>
-                  </div>
-                  <p className="text-emerald-600 mt-0.5">
-                    {parseFloat(op.expected_volume_mt).toLocaleString()} L × {op.currency} {parseFloat(genRate).toLocaleString()} /L
-                    {parseFloat(genTax) > 0 && ` + ${genTax}% tax`}
-                  </p>
-                </div>
-              )}
-
-              <DialogFooter>
-                <Button variant="outline" onClick={closePfiDialog}>Cancel</Button>
-                <Button
-                  disabled={(() => {
-                    if (!genRate || parseFloat(genRate) <= 0 || !op?.expected_volume_mt || generatePfiMutation.isPending) return true;
-                    // Money-first: PFI is generated when the operation goes Active (all types).
-                    const postPfi = ["pfi_linked","payment_processing","payment_confirmed","vessel_operations","bdn_pending","bdn_approved","invoiced","completed","archived"];
-                    return op?.status !== "active" && !postPfi.includes(op?.status ?? "");
-                  })()}
-                  onClick={() => generatePfiMutation.mutate()}
-                  className="gap-1.5"
-                >
-                  {generatePfiMutation.isPending
-                    ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    : <FileText className="w-3.5 h-3.5" />}
-                  Generate PFI PDF
-                </Button>
-              </DialogFooter>
-            </TabsContent>
-
-            {/* ── UPLOAD tab ── */}
-            <TabsContent value="upload" className="mt-3 space-y-3">
-              <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5 text-xs text-amber-800">
-                Manually enter the PFI details if you have a supplier-issued document. The system will still record all operation references.
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5 col-span-2 sm:col-span-1">
-                  <Label className="text-xs">Total Amount <span className="text-destructive">*</span></Label>
-                  <Input type="number" step="0.01" placeholder="e.g. 5000000"
-                    value={pfiAmount} onChange={(e) => setPfiAmount(e.target.value)} />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Currency</Label>
-                  <Select value={pfiCurrency} onValueChange={setPfiCurrency}>
-                    <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="NGN">NGN</SelectItem>
-                      <SelectItem value="USD">USD</SelectItem>
-                      <SelectItem value="EUR">EUR</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1.5 col-span-2">
-                  <Label className="text-xs">Quantity (litres) <span className="text-muted-foreground font-normal">optional — for volume drawdown</span></Label>
-                  <Input type="number" step="0.01" placeholder="e.g. 252000"
-                    value={pfiQuantity} onChange={(e) => setPfiQuantity(e.target.value)} />
-                </div>
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs">Supplier Name <span className="text-muted-foreground font-normal">optional</span></Label>
-                <Input placeholder="e.g. NNPC, Ardova…" value={pfiSupplier} onChange={(e) => setPfiSupplier(e.target.value)} />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs">Description <span className="text-muted-foreground font-normal">optional</span></Label>
-                <Textarea rows={2} className="resize-none text-sm"
-                  placeholder="Brief description of the PFI…"
-                  value={pfiDesc} onChange={(e) => setPfiDesc(e.target.value)} />
-              </div>
-
-              {/* ── File attachment */}
-              <div className="space-y-1.5">
-                <Label className="text-xs">
-                  Attach PFI Document <span className="text-muted-foreground font-normal">optional — PDF or image</span>
-                </Label>
-                <input
-                  ref={pfiDocFileRef}
-                  type="file"
-                  accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx"
-                  className="hidden"
-                  onChange={(e) => setPfiDocFile(e.target.files?.[0] ?? null)}
-                />
-                {pfiDocFile ? (
-                  <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
-                    <FileText className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                    <span className="text-xs text-emerald-800 flex-1 truncate">{pfiDocFile.name}</span>
-                    <button
-                      type="button"
-                      className="text-emerald-600 hover:text-red-500 text-xs"
-                      onClick={() => { setPfiDocFile(null); if (pfiDocFileRef.current) pfiDocFileRef.current.value = ""; }}
-                    >
-                      ✕
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => pfiDocFileRef.current?.click()}
-                    className="w-full flex items-center justify-center gap-2 rounded-lg border border-dashed border-border bg-muted/30 px-3 py-3 text-xs text-muted-foreground hover:border-primary hover:text-primary transition-colors"
-                  >
-                    <UploadCloud className="w-3.5 h-3.5" />
-                    Click to attach document
-                  </button>
-                )}
-              </div>
-
-              <DialogFooter>
-                <Button variant="outline" onClick={closePfiDialog}>Cancel</Button>
-                <Button
-                  disabled={!pfiAmount || parseFloat(pfiAmount) <= 0 || linkPfiMutation.isPending}
-                  onClick={() => linkPfiMutation.mutate()}
-                  className="gap-1.5"
-                >
-                  {linkPfiMutation.isPending
-                    ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    : <UploadCloud className="w-3.5 h-3.5" />}
-                  Link PFI
-                </Button>
-              </DialogFooter>
-            </TabsContent>
-          </Tabs>
-        </DialogContent>
-      </Dialog>
-
       {/* ── Safety Audit dialog */}
       <Dialog open={!!auditDialogTruckOpId} onOpenChange={(v) => { if (!v) setAuditDialogTruckOpId(null); }}>
         <DialogContent className="sm:max-w-lg" aria-describedby={undefined}>
@@ -5817,6 +5561,88 @@ export default function OperationDetailPage({
             >
               {submitAuditMutation.isPending && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
               Submit Audit
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── LO: Create new truck inline while sourcing (no matching plate found) */}
+      <Dialog open={showCreateTruckDialog} onOpenChange={(v) => { if (!v) { setShowCreateTruckDialog(false); resetCreateTruckForm(); } }}>
+        <DialogContent className="sm:max-w-md" aria-describedby={undefined}>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Truck className="w-4 h-4 text-primary" />
+              Create New Truck
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 mt-1 max-h-[70vh] overflow-y-auto pr-1">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Plate Number <span className="text-destructive">*</span></Label>
+                <Input value={newTruckNumber} onChange={(e) => setNewTruckNumber(e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Capacity (L) <span className="text-destructive">*</span></Label>
+                <Input type="number" step="0.01" value={newTruckCapacity} onChange={(e) => setNewTruckCapacity(e.target.value)} />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Chassis Number <span className="text-muted-foreground font-normal">optional</span></Label>
+              <Input value={newTruckChassis} onChange={(e) => setNewTruckChassis(e.target.value)} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Driver Name <span className="text-destructive">*</span></Label>
+                <Input value={newTruckDriver} onChange={(e) => setNewTruckDriver(e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Driver Phone <span className="text-destructive">*</span></Label>
+                <Input value={newTruckPhone} onChange={(e) => setNewTruckPhone(e.target.value)} />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Vendor <span className="text-muted-foreground font-normal">optional</span></Label>
+              <Input value={newTruckVendor} onChange={(e) => setNewTruckVendor(e.target.value)} />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Photo <span className="text-muted-foreground font-normal">optional</span></Label>
+                <label className="flex items-center justify-center rounded-md border border-dashed px-2 py-2 text-[11px] text-muted-foreground hover:border-primary hover:text-primary cursor-pointer truncate">
+                  {newTruckPhotoFile ? newTruckPhotoFile.name : "Upload"}
+                  <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden"
+                    onChange={(e) => setNewTruckPhotoFile(e.target.files?.[0] ?? null)} />
+                </label>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Licence (PDF) <span className="text-muted-foreground font-normal">optional</span></Label>
+                <label className="flex items-center justify-center rounded-md border border-dashed px-2 py-2 text-[11px] text-muted-foreground hover:border-primary hover:text-primary cursor-pointer truncate">
+                  {newTruckLicenceFile ? newTruckLicenceFile.name : "Upload"}
+                  <input type="file" accept="application/pdf" className="hidden"
+                    onChange={(e) => setNewTruckLicenceFile(e.target.files?.[0] ?? null)} />
+                </label>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Calibration Cert (PDF) <span className="text-muted-foreground font-normal">optional</span></Label>
+                <label className="flex items-center justify-center rounded-md border border-dashed px-2 py-2 text-[11px] text-muted-foreground hover:border-primary hover:text-primary cursor-pointer truncate">
+                  {newTruckCalibrationFile ? newTruckCalibrationFile.name : "Upload"}
+                  <input type="file" accept="application/pdf" className="hidden"
+                    onChange={(e) => setNewTruckCalibrationFile(e.target.files?.[0] ?? null)} />
+                </label>
+              </div>
+            </div>
+          </div>
+          <DialogFooter className="mt-4">
+            <Button variant="outline" onClick={() => { setShowCreateTruckDialog(false); resetCreateTruckForm(); }}>Cancel</Button>
+            <Button
+              disabled={
+                !newTruckNumber.trim() || !newTruckCapacity || parseFloat(newTruckCapacity) <= 0 ||
+                !newTruckDriver.trim() || !newTruckPhone.trim() ||
+                createTruckMutation.isPending
+              }
+              onClick={() => createTruckMutation.mutate()}
+            >
+              {createTruckMutation.isPending && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
+              Create & Nominate
             </Button>
           </DialogFooter>
         </DialogContent>

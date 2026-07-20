@@ -17,6 +17,7 @@ import {
   ChevronRight,
   ScrollText,
   Bell,
+  BadgeCheck,
 } from "lucide-react";
 import { useState } from "react";
 import { cn, getInitials } from "@/lib/utils";
@@ -70,6 +71,12 @@ export const NAV_ITEMS: NavItem[] = [
     roles: ["bunker_manager", "ops_supervisor", "logistics_officer"],
   },
   {
+    href: "/fleet/waivers",
+    label: "Waivers",
+    icon: BadgeCheck,
+    roles: ["bunker_manager", "ops_supervisor", "logistics_officer"],
+  },
+  {
     href: "/fleet/vessels",
     label: "Vessels",
     icon: Ship,
@@ -81,6 +88,12 @@ export const NAV_ITEMS: NavItem[] = [
     href: "/finance",
     label: "Finance",
     icon: DollarSign,
+    roles: ["bunker_manager", "finance_manager"],
+  },
+  {
+    href: "/pfi",
+    label: "PFI",
+    icon: FileText,
     roles: ["bunker_manager", "finance_manager"],
   },
 

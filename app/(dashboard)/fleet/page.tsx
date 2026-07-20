@@ -253,7 +253,6 @@ export default function FleetPage() {
   const qc = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
   const isBM = user?.role === "bunker_manager";
-  const isOpsSupervisor = user?.role === "ops_supervisor";
 
   const { data: trucks, isLoading } = useQuery({
     queryKey: ["trucks"],
@@ -273,19 +272,12 @@ export default function FleetPage() {
         title="Fleet — Trucks"
         subtitle="Manage truck fleet"
         actions={
-          <div className="flex items-center gap-2">
-            {(isBM || isOpsSupervisor) && (
-              <Link href="/fleet/waivers">
-                <Button size="sm" variant="outline">Waiver Numbers</Button>
-              </Link>
-            )}
-            {isBM && (
-              <Button size="sm" onClick={() => setShowCreate(true)}>
-                <PlusCircle className="w-4 h-4 mr-1.5" />
-                Add Truck
-              </Button>
-            )}
-          </div>
+          isBM ? (
+            <Button size="sm" onClick={() => setShowCreate(true)}>
+              <PlusCircle className="w-4 h-4 mr-1.5" />
+              Add Truck
+            </Button>
+          ) : undefined
         }
       />
 

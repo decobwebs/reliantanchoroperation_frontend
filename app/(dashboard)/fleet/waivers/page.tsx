@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Loader2, PlusCircle, FileWarning } from "lucide-react";
 import { toast } from "sonner";
@@ -17,7 +18,7 @@ import type { ApiResponse, TruckWaiver } from "@/types";
 export default function WaiversPage() {
   const { user } = useAuth();
   const qc = useQueryClient();
-  const canAdd = user?.role === "ops_supervisor";
+  const canAdd = user?.role === "bunker_manager";
   const [bulkText, setBulkText] = useState("");
 
   const { data: waivers, isLoading } = useQuery({
@@ -114,19 +115,36 @@ export default function WaiversPage() {
             ) : waivers?.length ? (
               <div className="divide-y">
                 {waivers.map((w) => (
-                  <div key={w.id} className="flex items-center justify-between px-5 py-3 text-sm">
-                    <span className="font-mono font-semibold">{w.waybill_truck_number}</span>
-                    <div className="flex items-center gap-3">
-                      <span className="text-xs text-muted-foreground">{formatDateTime(w.created_at)}</span>
-                      <Badge
-                        variant="outline"
-                        className={w.status === "available"
-                          ? "border-emerald-300 text-emerald-700 bg-emerald-50"
-                          : "border-muted text-muted-foreground"}
-                      >
-                        {w.status}
-                      </Badge>
+                  <div key={w.id} className="px-5 py-3 text-sm space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="font-mono font-semibold">{w.waybill_truck_number}</span>
+                      <div className="flex items-center gap-3">
+                        <span className="text-xs text-muted-foreground">{formatDateTime(w.created_at)}</span>
+                        <Badge
+                          variant="outline"
+                          className={w.status === "available"
+                            ? "border-emerald-300 text-emerald-700 bg-emerald-50"
+                            : "border-muted text-muted-foreground"}
+                        >
+                          {w.status}
+                        </Badge>
+                      </div>
                     </div>
+                    {w.status === "linked" && (
+                      <p className="text-xs text-muted-foreground">
+                        Linked to truck <span className="font-mono font-medium text-foreground">{w.linked_truck_number ?? "—"}</span>
+                        {w.linked_driver_name && <> · Driver: {w.linked_driver_name}</>}
+                        {w.linked_operation_id && (
+                          <>
+                            {" · "}
+                            <Link href={`/operations/${w.linked_operation_id}`} className="underline">
+                              {w.linked_operation_number ?? "Operation"}
+                            </Link>
+                          </>
+                        )}
+                        {w.linked_at && <> · {formatDateTime(w.linked_at)}</>}
+                      </p>
+                    )}
                   </div>
                 ))}
               </div>

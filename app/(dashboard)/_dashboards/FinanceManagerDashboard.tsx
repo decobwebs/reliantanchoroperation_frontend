@@ -29,7 +29,7 @@ import { formatCurrency, formatDate, OP_TYPE_LABELS } from "@/lib/utils";
 import type { ApiResponse, PaginatedData, Operation, OperationStatus } from "@/types";
 
 const FINANCE_STATUSES: OperationStatus[] = [
-  "pfi_linked", "payment_processing", "payment_confirmed",
+  "active", "pfi_linked", "payment_processing", "payment_confirmed",
   "vessel_operations", "bdn_pending", "bdn_approved", "invoiced", "completed",
 ];
 

@@ -52,6 +52,7 @@ import type {
 // Finance-relevant statuses — ordered per new commercial flow:
 // PFI (advance) → payment confirmed → ops → BDN → invoice → complete
 const FINANCE_STATUSES: OperationStatus[] = [
+  "active",
   "pfi_linked",
   "payment_processing",
   "payment_confirmed",

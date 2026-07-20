@@ -112,19 +112,19 @@ const STATUS_PIPELINE: Record<string, string[]> = {
   truck_only: [
     "draft","tasks_assigned","awaiting_feedback","feedback_submitted",
     "active",
-    "pfi_linked","payment_processing","payment_confirmed",
+    "payment_processing","payment_confirmed",
     "pending_completion","invoiced","completed",
   ],
   vessel_only: [
     "draft","tasks_assigned","active",
-    "pfi_linked","payment_processing","payment_confirmed",
+    "payment_processing","payment_confirmed",
     "vessel_operations","bdn_pending","bdn_approved",
     "invoiced","completed",
   ],
   full_operation: [
     "draft","tasks_assigned","awaiting_feedback","feedback_submitted",
     "active",
-    "pfi_linked","payment_processing","payment_confirmed",
+    "payment_processing","payment_confirmed",
     "vessel_operations","bdn_pending","bdn_approved",
     "invoiced","completed",
   ],
@@ -226,8 +226,9 @@ function getAvailableTransitions(
     case "feedback_approved":
       return [{ to: "active", label: "Activate Operation" }];
     case "active":
-      // Money-first for ALL types: link the PFI before any operations begin.
-      return [{ to: "pfi_linked", label: "Link PFI" }];
+      // PFI is linked at operation creation now — no manual BM step here.
+      // Finance recording a payment (Finance tab) auto-advances the operation.
+      return [];
     case "payment_confirmed":
       // Truck: deliveries are recorded in the Truck Reports tab. Vessel/Full:
       // the BM kicks off vessel operations now that payment is secured.
@@ -253,6 +254,8 @@ function getAvailableTransitions(
 // Keeps the operation moving without showing buttons that would fail permission.
 function getNextStepHint(op: Operation): { who: string; text: string } | null {
   switch (op.status) {
+    case "active":
+      return { who: "Finance", text: "Finance records the client's payment against the linked PFI in the Finance tab — this moves the operation forward automatically." };
     case "pfi_linked":
       return { who: "Finance", text: "PFI linked. Finance records the client's payment in the Finance tab." };
     case "payment_processing":

@@ -698,8 +698,31 @@ export default function OperationDetailPage({
       const d = res.data.data;
       return Array.isArray(d) ? d : [];
     },
-    enabled: isLO && op?.status === "awaiting_feedback",
+    // Nomination isn't status-gated (trucks can be added any time), and BM
+    // needs this to resolve full truck details for pending submissions too
+    // (before a TruckOperation row exists to read them from instead).
+    enabled: isLO || isBM,
   });
+
+  // Resolves a nominated truck's display details from whichever source has
+  // them: the canonical TruckOperation row (once BM has approved and it
+  // exists), else the fleet master record, else the driver info the LO typed
+  // in at nomination time (fb.truck_details.driverInfo) — so both the LO's
+  // own "Your Submissions" and the BM's review card can show full details
+  // (plate, driver, vendor) even while the submission is still pending.
+  const resolveTruckDisplay = (tid: string, fb?: TruckFeedback) => {
+    const truckOp = truckOps?.find((to) => to.truck_id === tid);
+    const fleetTruck = fleetTrucks?.find((t) => t.id === tid);
+    const driverInfo = (fb?.truck_details as { driverInfo?: Record<string, { driver_name?: string; driver_phone?: string; vendor_name?: string }> } | undefined)
+      ?.driverInfo?.[tid];
+    return {
+      truckNumber: truckOp?.truck?.truck_number ?? fleetTruck?.truck_number ?? null,
+      capacityMt: fleetTruck?.capacity_mt ?? null,
+      driverName: truckOp?.driver_name || driverInfo?.driver_name || fleetTruck?.driver_name || null,
+      driverPhone: truckOp?.driver_phone || driverInfo?.driver_phone || fleetTruck?.driver_phone || null,
+      vendorName: truckOp?.vendor_name || driverInfo?.vendor_name || null,
+    };
+  };
 
   // BM-only: live activity log (poll every 20 s)
   const { data: activityLog, refetch: refetchActivity } = useQuery({
@@ -2366,17 +2389,43 @@ export default function OperationDetailPage({
                         {!!feedbacks?.length && (
                           <div className="pt-4 border-t space-y-2">
                             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Your Submissions</p>
+                            {/* Full details always shown, regardless of approval status —
+                                a submission never collapses to just a status badge. */}
                             {feedbacks.map((fb) => (
-                              <div key={fb.id} className="flex items-center justify-between text-sm px-3 py-2 rounded-md bg-muted/50">
-                                <span className="text-xs text-muted-foreground truncate max-w-50">
-                                  {fb.readiness_summary.slice(0, 60)}{fb.readiness_summary.length > 60 ? "…" : ""}
-                                </span>
-                                <Badge
-                                  variant={fb.status === "approved" ? "default" : fb.status === "rejected" ? "destructive" : "secondary"}
-                                  className="text-xs capitalize ml-2 shrink-0"
-                                >
-                                  {fb.status}
-                                </Badge>
+                              <div key={fb.id} className="rounded-md bg-muted/50 px-3 py-2.5 space-y-2">
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="text-xs text-muted-foreground">
+                                    v{fb.version} · Submitted {formatDateTime(fb.submitted_at)}
+                                  </span>
+                                  <Badge
+                                    variant={fb.status === "approved" ? "default" : fb.status === "rejected" ? "destructive" : "secondary"}
+                                    className="text-xs capitalize shrink-0"
+                                  >
+                                    {fb.status}
+                                  </Badge>
+                                </div>
+                                <p className="text-sm">{fb.readiness_summary}</p>
+                                {Array.isArray(fb.truck_ids) && fb.truck_ids.length > 0 && (
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {(fb.truck_ids as string[]).map((tid) => {
+                                      const t = resolveTruckDisplay(tid, fb);
+                                      return (
+                                        <span
+                                          key={tid}
+                                          className="text-[11px] bg-background border px-2 py-0.5 rounded font-mono"
+                                          title={[t.driverName, t.driverPhone, t.vendorName].filter(Boolean).join(" · ") || undefined}
+                                        >
+                                          {t.truckNumber ?? `${tid.slice(0, 8)}…`}
+                                        </span>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                                {fb.status === "rejected" && fb.rejection_reason && (
+                                  <p className="text-xs text-red-700">
+                                    <span className="font-semibold">Rejection reason:</span> {fb.rejection_reason}
+                                  </p>
+                                )}
                               </div>
                             ))}
                           </div>
@@ -2476,17 +2525,21 @@ export default function OperationDetailPage({
                               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
                                 Trucks ({fb.truck_ids.length})
                               </p>
-                              <div className="flex flex-wrap gap-1.5">
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                                 {(fb.truck_ids as string[]).map((tid) => {
-                                  const truckOp = truckOps?.find((to) => to.truck_id === tid);
-                                  const label   = truckOp?.truck?.truck_number ?? tid.slice(0, 8) + "…";
+                                  const t = resolveTruckDisplay(tid, fb);
                                   return (
                                     <Link
                                       key={tid}
                                       href={`/trucks/${tid}`}
-                                      className="text-[11px] bg-muted hover:bg-primary/10 px-2 py-0.5 rounded font-mono text-primary hover:underline transition-colors"
+                                      className="flex items-center justify-between gap-2 text-xs bg-background hover:bg-primary/5 border px-2.5 py-1.5 rounded-md transition-colors"
                                     >
-                                      {label}
+                                      <span className="font-mono font-semibold text-primary">
+                                        {t.truckNumber ?? `${tid.slice(0, 8)}…`}
+                                      </span>
+                                      <span className="text-muted-foreground truncate text-[11px]">
+                                        {[t.driverName, t.driverPhone, t.vendorName].filter(Boolean).join(" · ") || (t.capacityMt ? `${parseFloat(t.capacityMt).toLocaleString()} L` : "")}
+                                      </span>
                                     </Link>
                                   );
                                 })}

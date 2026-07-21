@@ -1,7 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import Link from "next/link";
 import {
   DollarSign,
@@ -13,8 +16,11 @@ import {
   Loader2,
   PlusCircle,
   Receipt,
+  UserPlus,
+  Phone,
 } from "lucide-react";
-import { api } from "@/lib/api";
+import { toast } from "sonner";
+import { api, getErrorMessage } from "@/lib/api";
 import { Header } from "@/components/layout/Header";
 import { StatCard } from "@/components/shared/StatCard";
 import { StatusBadge } from "@/components/shared/StatusBadge";
@@ -28,6 +34,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { canManageFinance } from "@/lib/auth";
@@ -48,6 +59,102 @@ import type {
   Invoice,
   Voucher,
 } from "@/types";
+
+// ── Create Client (Finance's own standalone profile creation — role is
+// always "client", unlike the Admin page's create-user dialog which picks
+// any staff role) ───────────────────────────────────────────────────────────
+
+const createClientSchema = z.object({
+  full_name: z.string().min(2, "Name must be at least 2 characters"),
+  email: z.string().email("Invalid email"),
+});
+type CreateClientForm = z.infer<typeof createClientSchema>;
+
+function CreateClientDialog() {
+  const [open, setOpen] = useState(false);
+  const [phone, setPhone] = useState("");
+  const qc = useQueryClient();
+  const {
+    register, handleSubmit, reset, formState: { errors },
+  } = useForm<CreateClientForm>({ resolver: zodResolver(createClientSchema) });
+
+  const mutation = useMutation({
+    mutationFn: async (data: CreateClientForm) => {
+      const res = await api.post("/admin/users", {
+        ...data,
+        role: "client",
+        phone: phone.trim() || undefined,
+      });
+      return res.data;
+    },
+    onSuccess: (res) => {
+      const emailSent = res?.data?.email_sent;
+      if (emailSent === false) {
+        toast.warning(
+          "Client created, but the password-setup email could not be sent. " +
+          "Check email configuration and ask them to use “Forgot password” instead."
+        );
+      } else {
+        toast.success("Client profile created — a password-setup email has been sent");
+      }
+      qc.invalidateQueries({ queryKey: ["users-clients"] });
+      reset();
+      setPhone("");
+      setOpen(false);
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm" variant="outline">
+          <UserPlus className="w-4 h-4 sm:mr-1.5" />
+          <span className="hidden sm:inline">New Client</span>
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-md" aria-describedby={undefined}>
+        <DialogHeader>
+          <DialogTitle>Create Client Profile</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit((d) => mutation.mutate(d))} className="space-y-4 mt-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="client_full_name">Full Name</Label>
+            <Input id="client_full_name" placeholder="Client company or contact name" {...register("full_name")} />
+            {errors.full_name && <p className="text-xs text-destructive">{errors.full_name.message}</p>}
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="client_email">Email</Label>
+            <Input id="client_email" type="email" placeholder="client@company.com" {...register("email")} />
+            {errors.email && <p className="text-xs text-destructive">{errors.email.message}</p>}
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="client_phone">
+              WhatsApp Phone <span className="text-muted-foreground font-normal">(optional)</span>
+            </Label>
+            <div className="relative">
+              <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+              <Input
+                id="client_phone" type="tel" placeholder="+2348012345678" className="pl-9"
+                value={phone} onChange={(e) => setPhone(e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="rounded-md border border-primary/20 bg-primary/5 px-3 py-2.5 text-[11px] text-muted-foreground">
+            No password is set here. The client receives an email with a secure link to choose their own.
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+            <Button type="submit" disabled={mutation.isPending}>
+              {mutation.isPending && <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />}
+              Create Client
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 // Finance-relevant statuses — ordered per new commercial flow:
 // PFI (advance) → payment confirmed → ops → BDN → invoice → complete
@@ -162,6 +269,7 @@ export default function FinancePage() {
         actions={
           isFM ? (
             <div className="flex gap-2">
+              <CreateClientDialog />
               <Button size="sm" variant="outline" onClick={() => setShowVoucher(true)}>
                 <Receipt className="w-4 h-4 sm:mr-1.5" />
                 <span className="hidden sm:inline">New Voucher</span>

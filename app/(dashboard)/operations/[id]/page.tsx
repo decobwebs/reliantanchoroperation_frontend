@@ -924,26 +924,51 @@ export default function OperationDetailPage({
     onError: (err) => toast.error(getErrorMessage(err)),
   });
 
-  // ── Truck BDN state & mutations
+  // ── Truck BDN state & mutations — every field is manually entered and
+  // required; nothing is prefilled. The backend independently computes its
+  // own snapshot for comparison, but never feeds it into this form.
+  const TRUCK_BDN_REQUIRED_FIELDS = [
+    "company_name", "product_type", "discharge_location",
+    "quantity_loaded_mt", "quantity_discharged_mt",
+    "density", "temperature_before_loading", "temperature_after_loading",
+    "vcf", "gov", "gsv", "mt_vacuum",
+    "discharge_commenced_at", "discharge_completed_at", "discharge_completion_date",
+  ] as const;
+
   const [showTruckBdnForm,     setShowTruckBdnForm]     = useState(false);
-  const [truckBdnCompanyName,  setTruckBdnCompanyName]  = useState("");
-  const [truckBdnNotes,        setTruckBdnNotes]        = useState("");
+  const [truckBdnForm,         setTruckBdnForm]         = useState<Record<string, string>>({});
   const [rejectTruckBdnId,     setRejectTruckBdnId]     = useState<string | null>(null);
   const [rejectTruckBdnReason, setRejectTruckBdnReason] = useState("");
   const [editTruckBdnId,       setEditTruckBdnId]       = useState<string | null>(null);
   const [editTruckBdnForm,     setEditTruckBdnForm]     = useState<Record<string, string>>({});
   const [editTruckBdnReason,   setEditTruckBdnReason]   = useState("");
 
+  const truckBdnFormComplete = TRUCK_BDN_REQUIRED_FIELDS.every((k) => (truckBdnForm[k] ?? "").trim() !== "");
+
   const closeTruckBdnForm = () => {
     setShowTruckBdnForm(false);
-    setTruckBdnCompanyName(""); setTruckBdnNotes("");
+    setTruckBdnForm({});
   };
 
   const createTruckBdnMutation = useMutation({
     mutationFn: async () => {
       await api.post(`/operations/${id}/truck-bdns`, {
-        company_name: truckBdnCompanyName.trim(),
-        notes:        truckBdnNotes.trim() || undefined,
+        company_name:               truckBdnForm.company_name?.trim(),
+        product_type:               truckBdnForm.product_type?.trim(),
+        discharge_location:         truckBdnForm.discharge_location?.trim(),
+        quantity_loaded_mt:         parseFloat(truckBdnForm.quantity_loaded_mt),
+        quantity_discharged_mt:     parseFloat(truckBdnForm.quantity_discharged_mt),
+        density:                    parseFloat(truckBdnForm.density),
+        temperature_before_loading: parseFloat(truckBdnForm.temperature_before_loading),
+        temperature_after_loading:  parseFloat(truckBdnForm.temperature_after_loading),
+        vcf:                        parseFloat(truckBdnForm.vcf),
+        gov:                        parseFloat(truckBdnForm.gov),
+        gsv:                        parseFloat(truckBdnForm.gsv),
+        mt_vacuum:                  parseFloat(truckBdnForm.mt_vacuum),
+        discharge_commenced_at:     new Date(truckBdnForm.discharge_commenced_at).toISOString(),
+        discharge_completed_at:     new Date(truckBdnForm.discharge_completed_at).toISOString(),
+        discharge_completion_date:  truckBdnForm.discharge_completion_date,
+        notes:                      truckBdnForm.notes?.trim() || undefined,
       });
     },
     onSuccess: () => {
@@ -985,10 +1010,17 @@ export default function OperationDetailPage({
     setEditTruckBdnId(tb.id);
     setEditTruckBdnForm({
       company_name:               tb.company_name,
-      product_type:               tb.product_type ?? "",
-      discharge_location:         tb.discharge_location ?? "",
+      product_type:               tb.product_type,
+      discharge_location:         tb.discharge_location,
       quantity_loaded_mt:         tb.quantity_loaded_mt,
       quantity_discharged_mt:     tb.quantity_discharged_mt,
+      density:                    tb.density,
+      temperature_before_loading: tb.temperature_before_loading,
+      temperature_after_loading:  tb.temperature_after_loading,
+      vcf:                        tb.vcf,
+      gov:                        tb.gov,
+      gsv:                        tb.gsv,
+      mt_vacuum:                  tb.mt_vacuum,
       discharge_commenced_at:     tb.discharge_commenced_at ? tb.discharge_commenced_at.slice(0, 16) : "",
       discharge_completed_at:     tb.discharge_completed_at ? tb.discharge_completed_at.slice(0, 16) : "",
       discharge_completion_date:  tb.discharge_completion_date ?? "",
@@ -1001,16 +1033,23 @@ export default function OperationDetailPage({
     mutationFn: async () => {
       if (!editTruckBdnId) return;
       await api.put(`/truck-bdns/${editTruckBdnId}`, {
-        company_name:              editTruckBdnForm.company_name || undefined,
-        product_type:              editTruckBdnForm.product_type || undefined,
-        discharge_location:        editTruckBdnForm.discharge_location || undefined,
-        quantity_loaded_mt:        editTruckBdnForm.quantity_loaded_mt ? parseFloat(editTruckBdnForm.quantity_loaded_mt) : undefined,
-        quantity_discharged_mt:    editTruckBdnForm.quantity_discharged_mt ? parseFloat(editTruckBdnForm.quantity_discharged_mt) : undefined,
-        discharge_commenced_at:    editTruckBdnForm.discharge_commenced_at ? new Date(editTruckBdnForm.discharge_commenced_at).toISOString() : undefined,
-        discharge_completed_at:    editTruckBdnForm.discharge_completed_at ? new Date(editTruckBdnForm.discharge_completed_at).toISOString() : undefined,
-        discharge_completion_date: editTruckBdnForm.discharge_completion_date || undefined,
-        notes:                     editTruckBdnForm.notes || undefined,
-        reason:                    editTruckBdnReason.trim(),
+        company_name:               editTruckBdnForm.company_name || undefined,
+        product_type:               editTruckBdnForm.product_type || undefined,
+        discharge_location:         editTruckBdnForm.discharge_location || undefined,
+        quantity_loaded_mt:         editTruckBdnForm.quantity_loaded_mt ? parseFloat(editTruckBdnForm.quantity_loaded_mt) : undefined,
+        quantity_discharged_mt:     editTruckBdnForm.quantity_discharged_mt ? parseFloat(editTruckBdnForm.quantity_discharged_mt) : undefined,
+        density:                    editTruckBdnForm.density ? parseFloat(editTruckBdnForm.density) : undefined,
+        temperature_before_loading: editTruckBdnForm.temperature_before_loading ? parseFloat(editTruckBdnForm.temperature_before_loading) : undefined,
+        temperature_after_loading:  editTruckBdnForm.temperature_after_loading ? parseFloat(editTruckBdnForm.temperature_after_loading) : undefined,
+        vcf:                        editTruckBdnForm.vcf ? parseFloat(editTruckBdnForm.vcf) : undefined,
+        gov:                        editTruckBdnForm.gov ? parseFloat(editTruckBdnForm.gov) : undefined,
+        gsv:                        editTruckBdnForm.gsv ? parseFloat(editTruckBdnForm.gsv) : undefined,
+        mt_vacuum:                  editTruckBdnForm.mt_vacuum ? parseFloat(editTruckBdnForm.mt_vacuum) : undefined,
+        discharge_commenced_at:     editTruckBdnForm.discharge_commenced_at ? new Date(editTruckBdnForm.discharge_commenced_at).toISOString() : undefined,
+        discharge_completed_at:     editTruckBdnForm.discharge_completed_at ? new Date(editTruckBdnForm.discharge_completed_at).toISOString() : undefined,
+        discharge_completion_date:  editTruckBdnForm.discharge_completion_date || undefined,
+        notes:                      editTruckBdnForm.notes || undefined,
+        reason:                     editTruckBdnReason.trim(),
       });
     },
     onSuccess: () => {
@@ -2944,21 +2983,13 @@ export default function OperationDetailPage({
               )}
 
               {/* ── Truck BDN tab — truck-only delivery proof, gates completion */}
-              {canSeeTruckBdn && op.type === "truck_only" && (() => {
-                const previewLoaded = (truckOps ?? []).reduce((sum, t) => sum + (parseFloat(t.quantity_loaded_mt ?? "0") || 0), 0);
-                const previewDischarged = (truckOps ?? []).reduce((sum, t) => sum + (parseFloat(t.quantity_discharged_mt ?? "0") || 0), 0);
-                const previewProduct = (truckOps ?? []).find((t) => t.product_type)?.product_type;
-                const previewLocation = (truckOps ?? []).find((t) => t.discharge_location)?.discharge_location;
-                const startTimes = (truckOps ?? []).map((t) => t.discharge_start_at).filter(Boolean) as string[];
-                const endTimes = (truckOps ?? []).map((t) => t.discharge_end_at).filter(Boolean) as string[];
-                const previewCommenced = startTimes.length ? startTimes.sort()[0] : undefined;
-                const previewCompleted = endTimes.length ? endTimes.sort().slice(-1)[0] : undefined;
-
-                return (
+              {canSeeTruckBdn && op.type === "truck_only" && (
                 <TabsContent value="truck-bdns" className="mt-4 space-y-4">
 
-                  {/* OS/LO: Submit Truck BDN form */}
-                  {(isOS || isLO) && !["completed", "cancelled", "archived"].includes(op.status) && (
+                  {/* OS/LO: Submit Truck BDN form — every field manual & required.
+                      Only valid once delivery completion has been submitted (pending_completion) —
+                      that's the only status the state machine allows a Truck BDN submission from. */}
+                  {(isOS || isLO) && op.status === "pending_completion" && (
                     <Card className="border-0 shadow-sm">
                       <CardHeader className="pb-3 pt-4 px-5">
                         <div className="flex items-center justify-between">
@@ -2975,49 +3006,177 @@ export default function OperationDetailPage({
                             </Button>
                           )}
                         </div>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          All fields are entered manually and required. The system separately records its own figures
+                          from this operation's trucks — the Bunker Manager will see both side by side.
+                        </p>
                       </CardHeader>
 
                       {(!truckBdns?.length || showTruckBdnForm) && (
-                        <CardContent className="px-5 pb-5 space-y-3 border-t pt-4">
-                          <div className="rounded-md border bg-muted/30 p-3 space-y-1.5">
-                            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                              Recorded automatically from this operation's trucks
-                            </p>
-                            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-                              <span className="text-muted-foreground">Product Type</span>
-                              <span className="text-right">{previewProduct ?? "—"}</span>
-                              <span className="text-muted-foreground">Discharge Location</span>
-                              <span className="text-right">{previewLocation ?? "—"}</span>
-                              <span className="text-muted-foreground">Quantity Loaded</span>
-                              <span className="text-right">{previewLoaded.toLocaleString(undefined, { minimumFractionDigits: 3 })} L</span>
-                              <span className="text-muted-foreground">Quantity Discharged</span>
-                              <span className="text-right">{previewDischarged.toLocaleString(undefined, { minimumFractionDigits: 3 })} L</span>
-                              <span className="text-muted-foreground">Commenced Discharge</span>
-                              <span className="text-right">{previewCommenced ? formatDateTime(previewCommenced) : "—"}</span>
-                              <span className="text-muted-foreground">Completed Discharge</span>
-                              <span className="text-right">{previewCompleted ? formatDateTime(previewCompleted) : "—"}</span>
+                        <CardContent className="px-5 pb-5 space-y-4 border-t pt-4">
+                          <div className="space-y-3">
+                            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Basic Info</p>
+                            <div className="space-y-1.5">
+                              <Label className="text-xs">Company Name <span className="text-destructive">*</span></Label>
+                              <Input
+                                className="h-8 text-xs"
+                                placeholder="Client company being supplied to…"
+                                value={truckBdnForm.company_name ?? ""}
+                                onChange={(e) => setTruckBdnForm((f) => ({ ...f, company_name: e.target.value }))}
+                              />
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                              <div className="space-y-1.5">
+                                <Label className="text-xs">Product Type <span className="text-destructive">*</span></Label>
+                                <Input
+                                  className="h-8 text-xs"
+                                  value={truckBdnForm.product_type ?? ""}
+                                  onChange={(e) => setTruckBdnForm((f) => ({ ...f, product_type: e.target.value }))}
+                                />
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label className="text-xs">Discharge Location <span className="text-destructive">*</span></Label>
+                                <Input
+                                  className="h-8 text-xs"
+                                  value={truckBdnForm.discharge_location ?? ""}
+                                  onChange={(e) => setTruckBdnForm((f) => ({ ...f, discharge_location: e.target.value }))}
+                                />
+                              </div>
                             </div>
                           </div>
-                          <div className="space-y-1.5">
-                            <Label className="text-xs">Company Name <span className="text-destructive">*</span></Label>
-                            <Input
-                              className="h-8 text-xs"
-                              placeholder="Client company being supplied to…"
-                              value={truckBdnCompanyName}
-                              onChange={(e) => setTruckBdnCompanyName(e.target.value)}
-                            />
+
+                          <div className="space-y-3">
+                            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Quantities</p>
+                            <div className="grid grid-cols-2 gap-3">
+                              <div className="space-y-1.5">
+                                <Label className="text-xs">Quantity Loaded (L) <span className="text-destructive">*</span></Label>
+                                <Input
+                                  type="number" step="0.001" min="0" className="h-8 text-xs"
+                                  value={truckBdnForm.quantity_loaded_mt ?? ""}
+                                  onChange={(e) => setTruckBdnForm((f) => ({ ...f, quantity_loaded_mt: e.target.value }))}
+                                />
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label className="text-xs">Quantity Discharged (L) <span className="text-destructive">*</span></Label>
+                                <Input
+                                  type="number" step="0.001" min="0" className="h-8 text-xs"
+                                  value={truckBdnForm.quantity_discharged_mt ?? ""}
+                                  onChange={(e) => setTruckBdnForm((f) => ({ ...f, quantity_discharged_mt: e.target.value }))}
+                                />
+                              </div>
+                            </div>
                           </div>
+
+                          <div className="space-y-3">
+                            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Product Quality</p>
+                            <div className="grid grid-cols-3 gap-3">
+                              <div className="space-y-1.5">
+                                <Label className="text-xs">Density (kg/m³) <span className="text-destructive">*</span></Label>
+                                <Input
+                                  type="number" step="0.0001" min="0" className="h-8 text-xs"
+                                  value={truckBdnForm.density ?? ""}
+                                  onChange={(e) => setTruckBdnForm((f) => ({ ...f, density: e.target.value }))}
+                                />
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label className="text-xs">Temp. Before Loading (°C) <span className="text-destructive">*</span></Label>
+                                <Input
+                                  type="number" step="0.1" className="h-8 text-xs"
+                                  value={truckBdnForm.temperature_before_loading ?? ""}
+                                  onChange={(e) => setTruckBdnForm((f) => ({ ...f, temperature_before_loading: e.target.value }))}
+                                />
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label className="text-xs">Temp. After Loading (°C) <span className="text-destructive">*</span></Label>
+                                <Input
+                                  type="number" step="0.1" className="h-8 text-xs"
+                                  value={truckBdnForm.temperature_after_loading ?? ""}
+                                  onChange={(e) => setTruckBdnForm((f) => ({ ...f, temperature_after_loading: e.target.value }))}
+                                />
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="space-y-3">
+                            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Delivery Quantity / Method</p>
+                            <div className="grid grid-cols-4 gap-3">
+                              <div className="space-y-1.5">
+                                <Label className="text-xs">VCF <span className="text-destructive">*</span></Label>
+                                <Input
+                                  type="number" step="0.0001" min="0" className="h-8 text-xs"
+                                  value={truckBdnForm.vcf ?? ""}
+                                  onChange={(e) => setTruckBdnForm((f) => ({ ...f, vcf: e.target.value }))}
+                                />
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label className="text-xs">GOV (L) <span className="text-destructive">*</span></Label>
+                                <Input
+                                  type="number" step="0.01" min="0" className="h-8 text-xs"
+                                  value={truckBdnForm.gov ?? ""}
+                                  onChange={(e) => setTruckBdnForm((f) => ({ ...f, gov: e.target.value }))}
+                                />
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label className="text-xs">GSV (L) <span className="text-destructive">*</span></Label>
+                                <Input
+                                  type="number" step="0.01" min="0" className="h-8 text-xs"
+                                  value={truckBdnForm.gsv ?? ""}
+                                  onChange={(e) => setTruckBdnForm((f) => ({ ...f, gsv: e.target.value }))}
+                                />
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label className="text-xs">MTvac <span className="text-destructive">*</span></Label>
+                                <Input
+                                  type="number" step="0.001" min="0" className="h-8 text-xs"
+                                  value={truckBdnForm.mt_vacuum ?? ""}
+                                  onChange={(e) => setTruckBdnForm((f) => ({ ...f, mt_vacuum: e.target.value }))}
+                                />
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="space-y-3">
+                            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Timing</p>
+                            <div className="grid grid-cols-3 gap-3">
+                              <div className="space-y-1.5">
+                                <Label className="text-xs">Commenced Discharge <span className="text-destructive">*</span></Label>
+                                <Input
+                                  type="datetime-local" className="h-8 text-xs"
+                                  value={truckBdnForm.discharge_commenced_at ?? ""}
+                                  onChange={(e) => setTruckBdnForm((f) => ({ ...f, discharge_commenced_at: e.target.value }))}
+                                />
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label className="text-xs">Completed Discharge <span className="text-destructive">*</span></Label>
+                                <Input
+                                  type="datetime-local" className="h-8 text-xs"
+                                  value={truckBdnForm.discharge_completed_at ?? ""}
+                                  onChange={(e) => setTruckBdnForm((f) => ({ ...f, discharge_completed_at: e.target.value }))}
+                                />
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label className="text-xs">Date of Discharge Completion <span className="text-destructive">*</span></Label>
+                                <Input
+                                  type="date" className="h-8 text-xs"
+                                  value={truckBdnForm.discharge_completion_date ?? ""}
+                                  onChange={(e) => setTruckBdnForm((f) => ({ ...f, discharge_completion_date: e.target.value }))}
+                                />
+                              </div>
+                            </div>
+                          </div>
+
                           <div className="space-y-1.5">
                             <Label className="text-xs">Notes</Label>
                             <Textarea
                               className="text-xs min-h-[60px] resize-none"
                               placeholder="Any additional delivery notes…"
-                              value={truckBdnNotes} onChange={(e) => setTruckBdnNotes(e.target.value)}
+                              value={truckBdnForm.notes ?? ""}
+                              onChange={(e) => setTruckBdnForm((f) => ({ ...f, notes: e.target.value }))}
                             />
                           </div>
                           <Button
                             size="sm" className="w-full"
-                            disabled={!truckBdnCompanyName.trim() || createTruckBdnMutation.isPending}
+                            disabled={!truckBdnFormComplete || createTruckBdnMutation.isPending}
                             onClick={() => createTruckBdnMutation.mutate()}
                           >
                             {createTruckBdnMutation.isPending ? "Submitting…" : "Submit Truck BDN"}
@@ -3032,18 +3191,65 @@ export default function OperationDetailPage({
                     <CardContent className="p-0">
                       {truckBdns?.length ? (
                         <div className="divide-y">
-                          {truckBdns.map((tb) => (
-                            <div key={tb.id} className="px-5 py-4 space-y-2">
+                          {truckBdns.map((tb) => {
+                            const norm = (v?: string) => (v ?? "").trim().toLowerCase();
+                            const rows: { label: string; system?: string; submitted: string; mismatch: boolean }[] = [
+                              {
+                                label: "Product Type",
+                                system: tb.system_product_type ?? "—",
+                                submitted: tb.product_type,
+                                mismatch: norm(tb.system_product_type) !== norm(tb.product_type),
+                              },
+                              {
+                                label: "Discharge Location",
+                                system: tb.system_discharge_location ?? "—",
+                                submitted: tb.discharge_location,
+                                mismatch: norm(tb.system_discharge_location) !== norm(tb.discharge_location),
+                              },
+                              {
+                                label: "Quantity Loaded",
+                                system: tb.system_quantity_loaded_mt ? `${parseFloat(tb.system_quantity_loaded_mt).toLocaleString(undefined, { minimumFractionDigits: 3 })} L` : "—",
+                                submitted: `${parseFloat(tb.quantity_loaded_mt).toLocaleString(undefined, { minimumFractionDigits: 3 })} L`,
+                                mismatch: tb.system_quantity_loaded_mt !== undefined && parseFloat(tb.system_quantity_loaded_mt ?? "0") !== parseFloat(tb.quantity_loaded_mt),
+                              },
+                              {
+                                label: "Quantity Discharged",
+                                system: tb.system_quantity_discharged_mt ? `${parseFloat(tb.system_quantity_discharged_mt).toLocaleString(undefined, { minimumFractionDigits: 3 })} L` : "—",
+                                submitted: `${parseFloat(tb.quantity_discharged_mt).toLocaleString(undefined, { minimumFractionDigits: 3 })} L`,
+                                mismatch: tb.system_quantity_discharged_mt !== undefined && parseFloat(tb.system_quantity_discharged_mt ?? "0") !== parseFloat(tb.quantity_discharged_mt),
+                              },
+                              {
+                                label: "Commenced Discharge",
+                                system: tb.system_discharge_commenced_at ? formatDateTime(tb.system_discharge_commenced_at) : "—",
+                                submitted: formatDateTime(tb.discharge_commenced_at),
+                                mismatch: tb.system_discharge_commenced_at !== undefined && tb.system_discharge_commenced_at !== tb.discharge_commenced_at,
+                              },
+                              {
+                                label: "Completed Discharge",
+                                system: tb.system_discharge_completed_at ? formatDateTime(tb.system_discharge_completed_at) : "—",
+                                submitted: formatDateTime(tb.discharge_completed_at),
+                                mismatch: tb.system_discharge_completed_at !== undefined && tb.system_discharge_completed_at !== tb.discharge_completed_at,
+                              },
+                            ];
+                            const mismatchCount = rows.filter((r) => r.mismatch).length;
+
+                            return (
+                            <div key={tb.id} className="px-5 py-4 space-y-3">
                               <div className="flex items-center justify-between">
                                 <div>
                                   <p className="text-sm font-mono font-semibold">{tb.truck_bdn_number}</p>
                                   <p className="text-xs text-muted-foreground">
                                     {tb.company_name}
                                     {" · "}{parseFloat(tb.quantity_discharged_mt).toLocaleString(undefined, { minimumFractionDigits: 3 })} L
-                                    {tb.product_type ? ` · ${tb.product_type}` : ""}
+                                    {" · "}{tb.product_type}
                                   </p>
                                 </div>
                                 <div className="flex items-center gap-1.5">
+                                  {mismatchCount > 0 && (
+                                    <Badge variant="outline" className="text-[10px] gap-1 border-amber-300 text-amber-700 bg-amber-50">
+                                      <AlertTriangle className="w-3 h-3" />{mismatchCount} discrepanc{mismatchCount === 1 ? "y" : "ies"}
+                                    </Badge>
+                                  )}
                                   <Badge
                                     variant={tb.status === "approved" ? "default" : tb.status === "rejected" ? "destructive" : "secondary"}
                                     className="text-xs capitalize"
@@ -3058,13 +3264,39 @@ export default function OperationDetailPage({
                                 </div>
                               </div>
 
-                              <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-[11px] text-muted-foreground">
-                                <span>Discharge Location: {tb.discharge_location ?? "—"}</span>
-                                <span>Loaded: {parseFloat(tb.quantity_loaded_mt).toLocaleString(undefined, { minimumFractionDigits: 3 })} L</span>
-                                <span>Commenced: {tb.discharge_commenced_at ? formatDateTime(tb.discharge_commenced_at) : "—"}</span>
-                                <span>Completed: {tb.discharge_completed_at ? formatDateTime(tb.discharge_completed_at) : "—"}</span>
+                              {/* System recorded vs. Submitted comparison */}
+                              <div className="rounded-md border overflow-hidden">
+                                <div className="grid grid-cols-[1fr_1fr_1fr] bg-muted/40 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                                  <span>Field</span>
+                                  <span>System Recorded</span>
+                                  <span>Submitted</span>
+                                </div>
+                                {rows.map((r) => (
+                                  <div
+                                    key={r.label}
+                                    className={`grid grid-cols-[1fr_1fr_1fr] px-3 py-1.5 text-xs border-t items-center ${r.mismatch ? "bg-amber-50" : ""}`}
+                                  >
+                                    <span className="text-muted-foreground">{r.label}</span>
+                                    <span>{r.system}</span>
+                                    <span className={r.mismatch ? "text-amber-800 font-semibold flex items-center gap-1" : ""}>
+                                      {r.mismatch && <AlertTriangle className="w-3 h-3 shrink-0" />}
+                                      {r.submitted}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+
+                              {/* Product quality / delivery method — submitter-only, no system equivalent */}
+                              <div className="grid grid-cols-3 gap-x-4 gap-y-1 text-[11px] text-muted-foreground bg-muted/20 rounded-md p-2.5">
+                                <span>Density: {parseFloat(tb.density).toLocaleString(undefined, { minimumFractionDigits: 4 })}</span>
+                                <span>Temp Before: {parseFloat(tb.temperature_before_loading).toFixed(1)}°C</span>
+                                <span>Temp After: {parseFloat(tb.temperature_after_loading).toFixed(1)}°C</span>
+                                <span>VCF: {parseFloat(tb.vcf).toLocaleString(undefined, { minimumFractionDigits: 4 })}</span>
+                                <span>GOV: {parseFloat(tb.gov).toLocaleString(undefined, { minimumFractionDigits: 2 })} L</span>
+                                <span>GSV: {parseFloat(tb.gsv).toLocaleString(undefined, { minimumFractionDigits: 2 })} L</span>
+                                <span>MTvac: {parseFloat(tb.mt_vacuum).toLocaleString(undefined, { minimumFractionDigits: 3 })}</span>
                                 {tb.variance_mt && <span>Variance: {parseFloat(tb.variance_mt).toLocaleString(undefined, { minimumFractionDigits: 3 })} L</span>}
-                                {tb.discharge_completion_date && <span>Discharge Completion Date: {formatDate(tb.discharge_completion_date)}</span>}
+                                <span>Completion Date: {formatDate(tb.discharge_completion_date)}</span>
                               </div>
                               {tb.notes && <p className="text-xs text-foreground/80">{tb.notes}</p>}
 
@@ -3122,7 +3354,8 @@ export default function OperationDetailPage({
                                 </p>
                               )}
                             </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       ) : (
                         <p className="text-sm text-muted-foreground text-center py-8">No Truck BDNs yet</p>
@@ -3130,8 +3363,7 @@ export default function OperationDetailPage({
                     </CardContent>
                   </Card>
                 </TabsContent>
-                );
-              })()}
+              )}
 
               {/* ── Marine tab — vessel receipt summary + activity sessions */}
               {canSeeMarine && (
@@ -5271,6 +5503,66 @@ export default function OperationDetailPage({
                   type="number" step="0.001"
                   value={editTruckBdnForm.quantity_discharged_mt ?? ""}
                   onChange={(e) => setEditTruckBdnForm((f) => ({ ...f, quantity_discharged_mt: e.target.value }))}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Density</Label>
+                <Input
+                  type="number" step="0.0001"
+                  value={editTruckBdnForm.density ?? ""}
+                  onChange={(e) => setEditTruckBdnForm((f) => ({ ...f, density: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Temp. Before (°C)</Label>
+                <Input
+                  type="number" step="0.1"
+                  value={editTruckBdnForm.temperature_before_loading ?? ""}
+                  onChange={(e) => setEditTruckBdnForm((f) => ({ ...f, temperature_before_loading: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Temp. After (°C)</Label>
+                <Input
+                  type="number" step="0.1"
+                  value={editTruckBdnForm.temperature_after_loading ?? ""}
+                  onChange={(e) => setEditTruckBdnForm((f) => ({ ...f, temperature_after_loading: e.target.value }))}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-4 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">VCF</Label>
+                <Input
+                  type="number" step="0.0001"
+                  value={editTruckBdnForm.vcf ?? ""}
+                  onChange={(e) => setEditTruckBdnForm((f) => ({ ...f, vcf: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">GOV</Label>
+                <Input
+                  type="number" step="0.01"
+                  value={editTruckBdnForm.gov ?? ""}
+                  onChange={(e) => setEditTruckBdnForm((f) => ({ ...f, gov: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">GSV</Label>
+                <Input
+                  type="number" step="0.01"
+                  value={editTruckBdnForm.gsv ?? ""}
+                  onChange={(e) => setEditTruckBdnForm((f) => ({ ...f, gsv: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">MTvac</Label>
+                <Input
+                  type="number" step="0.001"
+                  value={editTruckBdnForm.mt_vacuum ?? ""}
+                  onChange={(e) => setEditTruckBdnForm((f) => ({ ...f, mt_vacuum: e.target.value }))}
                 />
               </div>
             </div>

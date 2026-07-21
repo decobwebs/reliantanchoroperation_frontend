@@ -82,6 +82,7 @@ import type {
   StatusHistory,
   Task,
   BDN,
+  TruckBdn,
   Document,
   TruckFeedback,
   TruckOperation,
@@ -111,7 +112,7 @@ const STATUS_PIPELINE: Record<string, string[]> = {
   truck_only: [
     "draft","tasks_assigned","awaiting_feedback","feedback_submitted",
     "active",
-    "pending_completion","completed",
+    "pending_completion","bdn_pending","bdn_approved","completed",
   ],
   vessel_only: [
     "draft","tasks_assigned","active",
@@ -211,13 +212,16 @@ function getAvailableTransitions(
         ? []
         : [{ to: "vessel_operations", label: "Start Vessel Ops" }];
     case "pending_completion":
-      // Delivery done — BM can complete the operation directly, independent
-      // of Finance, or bounce it back to Active.
+      // Delivery done — completion no longer happens directly from here.
+      // Ops Supervisor / Logistics Officer must submit the Truck BDN (Truck
+      // BDN tab); BM's only direct action at this stage is to bounce it back
+      // to Active.
       return [
-        { to: "completed", label: "Complete Operation" },
         { to: "active", label: "Return to Active", destructive: true },
       ];
     case "bdn_approved":
+      // Serves both vessel/full (approved via the BDN tab) and, now,
+      // truck-only (approved via the Truck BDN tab).
       return [{ to: "completed", label: "Complete Operation" }];
     // Legacy compat only — no operation reaches "invoiced" going forward,
     // but one already sitting there (pre-redesign) can still be completed.
@@ -424,6 +428,7 @@ export default function OperationDetailPage({
 
   const canSeeTasks            = isBM || isOS || isLO || isMM;
   const canSeeBDN              = isBM || isMM;
+  const canSeeTruckBdn         = isBM || isOS || isLO;
   const canSeeFeedback         = isBM || isLO;
   const canSeeFinance          = isBM || isFM;
   const canSeeMarine           = isBM || isMM;
@@ -519,6 +524,16 @@ export default function OperationDetailPage({
       return res.data.data;
     },
     enabled: canSeeBDN || isFM,  // FM needs approved BDNs to create invoices
+    staleTime: 0,
+  });
+
+  const { data: truckBdns } = useQuery({
+    queryKey: ["operation-truck-bdns", id],
+    queryFn: async () => {
+      const res = await api.get<ApiResponse<TruckBdn[]>>(`/operations/${id}/truck-bdns`);
+      return res.data.data;
+    },
+    enabled: canSeeTruckBdn || isFM,  // FM needs approved Truck BDNs to create invoices
     staleTime: 0,
   });
 
@@ -905,6 +920,103 @@ export default function OperationDetailPage({
       setRejectBdnId(null);
       setRejectBdnReason("");
       qc.invalidateQueries({ queryKey: ["operation-bdns", id] });
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  // ── Truck BDN state & mutations
+  const [showTruckBdnForm,     setShowTruckBdnForm]     = useState(false);
+  const [truckBdnCompanyName,  setTruckBdnCompanyName]  = useState("");
+  const [truckBdnNotes,        setTruckBdnNotes]        = useState("");
+  const [rejectTruckBdnId,     setRejectTruckBdnId]     = useState<string | null>(null);
+  const [rejectTruckBdnReason, setRejectTruckBdnReason] = useState("");
+  const [editTruckBdnId,       setEditTruckBdnId]       = useState<string | null>(null);
+  const [editTruckBdnForm,     setEditTruckBdnForm]     = useState<Record<string, string>>({});
+  const [editTruckBdnReason,   setEditTruckBdnReason]   = useState("");
+
+  const closeTruckBdnForm = () => {
+    setShowTruckBdnForm(false);
+    setTruckBdnCompanyName(""); setTruckBdnNotes("");
+  };
+
+  const createTruckBdnMutation = useMutation({
+    mutationFn: async () => {
+      await api.post(`/operations/${id}/truck-bdns`, {
+        company_name: truckBdnCompanyName.trim(),
+        notes:        truckBdnNotes.trim() || undefined,
+      });
+    },
+    onSuccess: () => {
+      toast.success("Truck BDN submitted — awaiting Bunker Manager approval");
+      closeTruckBdnForm();
+      qc.invalidateQueries({ queryKey: ["operation-truck-bdns", id] });
+      qc.invalidateQueries({ queryKey: ["operation", id] });
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const approveTruckBdnMutation = useMutation({
+    mutationFn: async (truckBdnId: string) => {
+      await api.post(`/truck-bdns/${truckBdnId}/approve`, {});
+    },
+    onSuccess: () => {
+      toast.success("Truck BDN approved");
+      qc.invalidateQueries({ queryKey: ["operation-truck-bdns", id] });
+      qc.invalidateQueries({ queryKey: ["operation", id] });
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const rejectTruckBdnMutation = useMutation({
+    mutationFn: async ({ truckBdnId, reason }: { truckBdnId: string; reason: string }) => {
+      await api.post(`/truck-bdns/${truckBdnId}/reject`, { reason });
+    },
+    onSuccess: () => {
+      toast.success("Truck BDN rejected");
+      setRejectTruckBdnId(null);
+      setRejectTruckBdnReason("");
+      qc.invalidateQueries({ queryKey: ["operation-truck-bdns", id] });
+      qc.invalidateQueries({ queryKey: ["operation", id] });
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const openEditTruckBdn = (tb: TruckBdn) => {
+    setEditTruckBdnId(tb.id);
+    setEditTruckBdnForm({
+      company_name:               tb.company_name,
+      product_type:               tb.product_type ?? "",
+      discharge_location:         tb.discharge_location ?? "",
+      quantity_loaded_mt:         tb.quantity_loaded_mt,
+      quantity_discharged_mt:     tb.quantity_discharged_mt,
+      discharge_commenced_at:     tb.discharge_commenced_at ? tb.discharge_commenced_at.slice(0, 16) : "",
+      discharge_completed_at:     tb.discharge_completed_at ? tb.discharge_completed_at.slice(0, 16) : "",
+      discharge_completion_date:  tb.discharge_completion_date ?? "",
+      notes:                      tb.notes ?? "",
+    });
+    setEditTruckBdnReason("");
+  };
+
+  const editTruckBdnMutation = useMutation({
+    mutationFn: async () => {
+      if (!editTruckBdnId) return;
+      await api.put(`/truck-bdns/${editTruckBdnId}`, {
+        company_name:              editTruckBdnForm.company_name || undefined,
+        product_type:              editTruckBdnForm.product_type || undefined,
+        discharge_location:        editTruckBdnForm.discharge_location || undefined,
+        quantity_loaded_mt:        editTruckBdnForm.quantity_loaded_mt ? parseFloat(editTruckBdnForm.quantity_loaded_mt) : undefined,
+        quantity_discharged_mt:    editTruckBdnForm.quantity_discharged_mt ? parseFloat(editTruckBdnForm.quantity_discharged_mt) : undefined,
+        discharge_commenced_at:    editTruckBdnForm.discharge_commenced_at ? new Date(editTruckBdnForm.discharge_commenced_at).toISOString() : undefined,
+        discharge_completed_at:    editTruckBdnForm.discharge_completed_at ? new Date(editTruckBdnForm.discharge_completed_at).toISOString() : undefined,
+        discharge_completion_date: editTruckBdnForm.discharge_completion_date || undefined,
+        notes:                     editTruckBdnForm.notes || undefined,
+        reason:                    editTruckBdnReason.trim(),
+      });
+    },
+    onSuccess: () => {
+      toast.success("Truck BDN updated");
+      setEditTruckBdnId(null);
+      qc.invalidateQueries({ queryKey: ["operation-truck-bdns", id] });
     },
     onError: (err) => toast.error(getErrorMessage(err)),
   });
@@ -1768,20 +1880,13 @@ export default function OperationDetailPage({
                       No completion notes provided. Review the timeline for details.
                     </p>
                   )}
+                  <p className="text-xs text-orange-700/80 mt-1.5">
+                    Awaiting the Ops Supervisor / Logistics Officer to submit a Truck BDN for this
+                    delivery (Truck BDN tab) — the operation completes once it's approved.
+                  </p>
                 </div>
               </div>
               <div className="flex gap-2 flex-wrap pt-1">
-                <Button
-                  size="sm"
-                  className="bg-emerald-600 hover:bg-emerald-700"
-                  disabled={transitionMutation.isPending}
-                  onClick={() => transitionMutation.mutate({ to_status: "completed", reason: "Completed by BM" })}
-                >
-                  {transitionMutation.isPending
-                    ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
-                    : <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" />}
-                  Complete Operation
-                </Button>
                 <Button
                   size="sm"
                   variant="outline"
@@ -2012,6 +2117,17 @@ export default function OperationDetailPage({
                     {bdns?.length ? (
                       <Badge variant="secondary" className="ml-1.5 h-4 px-1.5 text-[10px]">
                         {bdns.length}
+                      </Badge>
+                    ) : null}
+                  </TabsTrigger>
+                )}
+
+                {canSeeTruckBdn && op.type === "truck_only" && (
+                  <TabsTrigger value="truck-bdns">
+                    Truck BDN
+                    {truckBdns?.length ? (
+                      <Badge variant="secondary" className="ml-1.5 h-4 px-1.5 text-[10px]">
+                        {truckBdns.length}
                       </Badge>
                     ) : null}
                   </TabsTrigger>
@@ -2826,6 +2942,196 @@ export default function OperationDetailPage({
                   </Card>
                 </TabsContent>
               )}
+
+              {/* ── Truck BDN tab — truck-only delivery proof, gates completion */}
+              {canSeeTruckBdn && op.type === "truck_only" && (() => {
+                const previewLoaded = (truckOps ?? []).reduce((sum, t) => sum + (parseFloat(t.quantity_loaded_mt ?? "0") || 0), 0);
+                const previewDischarged = (truckOps ?? []).reduce((sum, t) => sum + (parseFloat(t.quantity_discharged_mt ?? "0") || 0), 0);
+                const previewProduct = (truckOps ?? []).find((t) => t.product_type)?.product_type;
+                const previewLocation = (truckOps ?? []).find((t) => t.discharge_location)?.discharge_location;
+                const startTimes = (truckOps ?? []).map((t) => t.discharge_start_at).filter(Boolean) as string[];
+                const endTimes = (truckOps ?? []).map((t) => t.discharge_end_at).filter(Boolean) as string[];
+                const previewCommenced = startTimes.length ? startTimes.sort()[0] : undefined;
+                const previewCompleted = endTimes.length ? endTimes.sort().slice(-1)[0] : undefined;
+
+                return (
+                <TabsContent value="truck-bdns" className="mt-4 space-y-4">
+
+                  {/* OS/LO: Submit Truck BDN form */}
+                  {(isOS || isLO) && !["completed", "cancelled", "archived"].includes(op.status) && (
+                    <Card className="border-0 shadow-sm">
+                      <CardHeader className="pb-3 pt-4 px-5">
+                        <div className="flex items-center justify-between">
+                          <CardTitle className="text-sm font-semibold">
+                            {truckBdns?.length ? "Submit Another Truck BDN" : "Submit Truck Bunker Delivery Note"}
+                          </CardTitle>
+                          {(truckBdns?.length ?? 0) > 0 && (
+                            <Button
+                              size="sm"
+                              variant={showTruckBdnForm ? "outline" : "default"}
+                              onClick={() => setShowTruckBdnForm((v) => !v)}
+                            >
+                              {showTruckBdnForm ? "Cancel" : <><PlusCircle className="w-3.5 h-3.5 mr-1.5" />New Truck BDN</>}
+                            </Button>
+                          )}
+                        </div>
+                      </CardHeader>
+
+                      {(!truckBdns?.length || showTruckBdnForm) && (
+                        <CardContent className="px-5 pb-5 space-y-3 border-t pt-4">
+                          <div className="rounded-md border bg-muted/30 p-3 space-y-1.5">
+                            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                              Recorded automatically from this operation's trucks
+                            </p>
+                            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                              <span className="text-muted-foreground">Product Type</span>
+                              <span className="text-right">{previewProduct ?? "—"}</span>
+                              <span className="text-muted-foreground">Discharge Location</span>
+                              <span className="text-right">{previewLocation ?? "—"}</span>
+                              <span className="text-muted-foreground">Quantity Loaded</span>
+                              <span className="text-right">{previewLoaded.toLocaleString(undefined, { minimumFractionDigits: 3 })} L</span>
+                              <span className="text-muted-foreground">Quantity Discharged</span>
+                              <span className="text-right">{previewDischarged.toLocaleString(undefined, { minimumFractionDigits: 3 })} L</span>
+                              <span className="text-muted-foreground">Commenced Discharge</span>
+                              <span className="text-right">{previewCommenced ? formatDateTime(previewCommenced) : "—"}</span>
+                              <span className="text-muted-foreground">Completed Discharge</span>
+                              <span className="text-right">{previewCompleted ? formatDateTime(previewCompleted) : "—"}</span>
+                            </div>
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-xs">Company Name <span className="text-destructive">*</span></Label>
+                            <Input
+                              className="h-8 text-xs"
+                              placeholder="Client company being supplied to…"
+                              value={truckBdnCompanyName}
+                              onChange={(e) => setTruckBdnCompanyName(e.target.value)}
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-xs">Notes</Label>
+                            <Textarea
+                              className="text-xs min-h-[60px] resize-none"
+                              placeholder="Any additional delivery notes…"
+                              value={truckBdnNotes} onChange={(e) => setTruckBdnNotes(e.target.value)}
+                            />
+                          </div>
+                          <Button
+                            size="sm" className="w-full"
+                            disabled={!truckBdnCompanyName.trim() || createTruckBdnMutation.isPending}
+                            onClick={() => createTruckBdnMutation.mutate()}
+                          >
+                            {createTruckBdnMutation.isPending ? "Submitting…" : "Submit Truck BDN"}
+                          </Button>
+                        </CardContent>
+                      )}
+                    </Card>
+                  )}
+
+                  {/* Truck BDN list */}
+                  <Card className="border-0 shadow-sm">
+                    <CardContent className="p-0">
+                      {truckBdns?.length ? (
+                        <div className="divide-y">
+                          {truckBdns.map((tb) => (
+                            <div key={tb.id} className="px-5 py-4 space-y-2">
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <p className="text-sm font-mono font-semibold">{tb.truck_bdn_number}</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {tb.company_name}
+                                    {" · "}{parseFloat(tb.quantity_discharged_mt).toLocaleString(undefined, { minimumFractionDigits: 3 })} L
+                                    {tb.product_type ? ` · ${tb.product_type}` : ""}
+                                  </p>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                  <Badge
+                                    variant={tb.status === "approved" ? "default" : tb.status === "rejected" ? "destructive" : "secondary"}
+                                    className="text-xs capitalize"
+                                  >
+                                    {tb.status}
+                                  </Badge>
+                                  {isBM && (
+                                    <Button size="sm" variant="outline" className="h-6 px-1.5" onClick={() => openEditTruckBdn(tb)}>
+                                      <Pencil className="w-3 h-3" />
+                                    </Button>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-[11px] text-muted-foreground">
+                                <span>Discharge Location: {tb.discharge_location ?? "—"}</span>
+                                <span>Loaded: {parseFloat(tb.quantity_loaded_mt).toLocaleString(undefined, { minimumFractionDigits: 3 })} L</span>
+                                <span>Commenced: {tb.discharge_commenced_at ? formatDateTime(tb.discharge_commenced_at) : "—"}</span>
+                                <span>Completed: {tb.discharge_completed_at ? formatDateTime(tb.discharge_completed_at) : "—"}</span>
+                                {tb.variance_mt && <span>Variance: {parseFloat(tb.variance_mt).toLocaleString(undefined, { minimumFractionDigits: 3 })} L</span>}
+                                {tb.discharge_completion_date && <span>Discharge Completion Date: {formatDate(tb.discharge_completion_date)}</span>}
+                              </div>
+                              {tb.notes && <p className="text-xs text-foreground/80">{tb.notes}</p>}
+
+                              {/* BM: approve / reject buttons for pending Truck BDNs */}
+                              {isBM && tb.status === "pending" && (
+                                <div className="pt-1 space-y-2">
+                                  {rejectTruckBdnId === tb.id ? (
+                                    <div className="space-y-2 border rounded-md p-3 bg-muted/30">
+                                      <Label className="text-xs">Rejection reason <span className="text-destructive">*</span></Label>
+                                      <Textarea
+                                        className="text-xs min-h-[60px] resize-none"
+                                        placeholder="Explain why this Truck BDN is being rejected (min 10 characters)…"
+                                        value={rejectTruckBdnReason}
+                                        onChange={(e) => setRejectTruckBdnReason(e.target.value)}
+                                      />
+                                      <div className="flex gap-2">
+                                        <Button
+                                          size="sm" variant="destructive" className="flex-1 text-xs"
+                                          disabled={rejectTruckBdnReason.trim().length < 10 || rejectTruckBdnMutation.isPending}
+                                          onClick={() => rejectTruckBdnMutation.mutate({ truckBdnId: tb.id, reason: rejectTruckBdnReason.trim() })}
+                                        >
+                                          {rejectTruckBdnMutation.isPending ? "Rejecting…" : "Confirm Rejection"}
+                                        </Button>
+                                        <Button
+                                          size="sm" variant="outline" className="flex-1 text-xs"
+                                          onClick={() => { setRejectTruckBdnId(null); setRejectTruckBdnReason(""); }}
+                                        >
+                                          Cancel
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div className="flex gap-2">
+                                      <Button
+                                        size="sm" className="flex-1 text-xs"
+                                        disabled={approveTruckBdnMutation.isPending}
+                                        onClick={() => approveTruckBdnMutation.mutate(tb.id)}
+                                      >
+                                        Approve Truck BDN
+                                      </Button>
+                                      <Button
+                                        size="sm" variant="outline" className="flex-1 text-xs text-destructive border-destructive/30 hover:bg-destructive/10"
+                                        onClick={() => setRejectTruckBdnId(tb.id)}
+                                      >
+                                        Reject
+                                      </Button>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+
+                              {tb.status === "rejected" && tb.rejection_reason && (
+                                <p className="text-xs text-destructive bg-destructive/10 rounded px-2 py-1">
+                                  Rejected: {tb.rejection_reason}
+                                </p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground text-center py-8">No Truck BDNs yet</p>
+                      )}
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+                );
+              })()}
 
               {/* ── Marine tab — vessel receipt summary + activity sessions */}
               {canSeeMarine && (
@@ -4915,6 +5221,113 @@ export default function OperationDetailPage({
             <Button disabled={reopenMutation.isPending} onClick={() => reopenMutation.mutate()}>
               {reopenMutation.isPending && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
               Create Revision
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── BM: Edit Truck BDN dialog */}
+      <Dialog open={!!editTruckBdnId} onOpenChange={(v) => { if (!v) setEditTruckBdnId(null); }}>
+        <DialogContent className="sm:max-w-md" aria-describedby={undefined}>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><Pencil className="w-4 h-4 text-primary" />Edit Truck BDN</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 mt-1 max-h-[70vh] overflow-y-auto pr-1">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Company Name</Label>
+              <Input
+                value={editTruckBdnForm.company_name ?? ""}
+                onChange={(e) => setEditTruckBdnForm((f) => ({ ...f, company_name: e.target.value }))}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Product Type</Label>
+                <Input
+                  value={editTruckBdnForm.product_type ?? ""}
+                  onChange={(e) => setEditTruckBdnForm((f) => ({ ...f, product_type: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Discharge Location</Label>
+                <Input
+                  value={editTruckBdnForm.discharge_location ?? ""}
+                  onChange={(e) => setEditTruckBdnForm((f) => ({ ...f, discharge_location: e.target.value }))}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Quantity Loaded (L)</Label>
+                <Input
+                  type="number" step="0.001"
+                  value={editTruckBdnForm.quantity_loaded_mt ?? ""}
+                  onChange={(e) => setEditTruckBdnForm((f) => ({ ...f, quantity_loaded_mt: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Quantity Discharged (L)</Label>
+                <Input
+                  type="number" step="0.001"
+                  value={editTruckBdnForm.quantity_discharged_mt ?? ""}
+                  onChange={(e) => setEditTruckBdnForm((f) => ({ ...f, quantity_discharged_mt: e.target.value }))}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Commenced Discharge</Label>
+                <Input
+                  type="datetime-local"
+                  value={editTruckBdnForm.discharge_commenced_at ?? ""}
+                  onChange={(e) => setEditTruckBdnForm((f) => ({ ...f, discharge_commenced_at: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Completed Discharge</Label>
+                <Input
+                  type="datetime-local"
+                  value={editTruckBdnForm.discharge_completed_at ?? ""}
+                  onChange={(e) => setEditTruckBdnForm((f) => ({ ...f, discharge_completed_at: e.target.value }))}
+                />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Date of Discharge Completion</Label>
+              <Input
+                type="date"
+                value={editTruckBdnForm.discharge_completion_date ?? ""}
+                onChange={(e) => setEditTruckBdnForm((f) => ({ ...f, discharge_completion_date: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Notes</Label>
+              <Textarea
+                rows={2}
+                className="resize-none text-sm"
+                value={editTruckBdnForm.notes ?? ""}
+                onChange={(e) => setEditTruckBdnForm((f) => ({ ...f, notes: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Reason for edit <span className="text-destructive">*</span></Label>
+              <Textarea
+                rows={2}
+                className="resize-none text-sm"
+                placeholder="Why is this being changed…"
+                value={editTruckBdnReason}
+                onChange={(e) => setEditTruckBdnReason(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter className="mt-4">
+            <Button variant="outline" onClick={() => setEditTruckBdnId(null)}>Cancel</Button>
+            <Button
+              disabled={!editTruckBdnReason.trim() || editTruckBdnMutation.isPending}
+              onClick={() => editTruckBdnMutation.mutate()}
+            >
+              {editTruckBdnMutation.isPending && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
+              Save Changes
             </Button>
           </DialogFooter>
         </DialogContent>

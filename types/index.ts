@@ -254,6 +254,7 @@ export interface Invoice {
   invoice_number: string;
   operation_id?: string;   // absent for standalone (ad-hoc) invoices
   bdn_id?: string;
+  truck_bdn_id?: string;
   client_id?: string;      // absent when billed to a manually-entered client
   client_name?: string;    // manual client name
   client_email?: string;
@@ -583,6 +584,30 @@ export interface BDN {
   product_type?: string;
   fuel_type?: string;
   delivery_date: string;
+  rejection_reason?: string;
+  approved_at?: string;
+  pdf_url?: string;
+  notes?: string;
+  created_at: string;
+}
+
+export interface TruckBdn {
+  id: string;
+  truck_bdn_number: string;
+  operation_id: string;
+  generated_by: string;
+  generated_by_name?: string;
+  reviewed_by?: string;
+  status: string;
+  company_name: string;
+  product_type?: string;
+  discharge_location?: string;
+  quantity_loaded_mt: string;
+  quantity_discharged_mt: string;
+  variance_mt?: string;
+  discharge_commenced_at?: string;
+  discharge_completed_at?: string;
+  discharge_completion_date?: string;
   rejection_reason?: string;
   approved_at?: string;
   pdf_url?: string;

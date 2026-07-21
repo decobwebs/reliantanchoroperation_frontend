@@ -2493,35 +2493,13 @@ export default function OperationDetailPage({
               {/* ── Feedback tab */}
               {canSeeFeedback && (
                 <TabsContent value="feedback" className="mt-4 space-y-3">
-                  {/* LO submission form — also reachable by BM (unrestricted edit power: BM can add
-                      truck nominations at any point in the lifecycle, not just awaiting_feedback) */}
+                  {/* LO submission form — also reachable by BM (unrestricted edit power). Trucks
+                      can be nominated/added at any point in the operation's lifecycle, not just
+                      while awaiting_feedback — no status gate here by design. */}
                   {(isLO || isBM) && (
                     <Card className="border-0 shadow-sm">
                       <CardContent className="p-5 space-y-4">
-                        {op.status !== "awaiting_feedback" && !isBM ? (
-                          <div className="flex flex-col items-center py-6 text-muted-foreground">
-                            <Truck className="w-8 h-8 mb-2 opacity-30" />
-                            {["draft", "tasks_assigned"].includes(op.status) ? (
-                              <>
-                                <p className="text-sm font-medium">Feedback not yet requested</p>
-                                <p className="text-xs mt-1 text-center max-w-xs">
-                                  The Bunker Manager must move the operation to{" "}
-                                  <span className="font-mono">Awaiting Feedback</span> before you can submit.
-                                </p>
-                              </>
-                            ) : (
-                              <>
-                                <p className="text-sm font-medium">
-                                  {feedbacks?.length ?? 0} submission{(feedbacks?.length ?? 0) === 1 ? "" : "s"} already made
-                                </p>
-                                <p className="text-xs mt-1 text-center max-w-xs">
-                                  Feedback was already submitted for this operation — see your submissions below.
-                                </p>
-                              </>
-                            )}
-                          </div>
-                        ) : (
-                          <>
+                        <>
                             <div>
                               <p className="text-sm font-semibold mb-1">Nominate Trucks & Submit Readiness</p>
                               <p className="text-xs text-muted-foreground">
@@ -2668,8 +2646,7 @@ export default function OperationDetailPage({
                                 Submit Feedback
                               </Button>
                             </div>
-                          </>
-                        )}
+                        </>
 
                         {!!feedbacks?.length && (
                           <div className="pt-4 border-t space-y-2">

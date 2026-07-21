@@ -3,15 +3,20 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Loader2, PlusCircle, FileWarning } from "lucide-react";
+import { Loader2, PlusCircle, FileWarning, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { api, getErrorMessage } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { Header } from "@/components/layout/Header";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from "@/components/ui/dialog";
 import { formatDateTime } from "@/lib/utils";
 import type { ApiResponse, TruckWaiver } from "@/types";
 
@@ -50,6 +55,50 @@ export default function WaiversPage() {
           (data.skipped_duplicates.length ? `, ${data.skipped_duplicates.length} duplicate(s) skipped` : ""),
       );
       setBulkText("");
+      qc.invalidateQueries({ queryKey: ["truck-waivers"] });
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  // ── Edit
+  const [editId, setEditId] = useState<string | null>(null);
+  const [editNumber, setEditNumber] = useState("");
+  const [editReason, setEditReason] = useState("");
+
+  const openEdit = (w: TruckWaiver) => {
+    setEditId(w.id);
+    setEditNumber(w.waybill_truck_number);
+    setEditReason("");
+  };
+
+  const editMutation = useMutation({
+    mutationFn: async () => {
+      if (!editId) return;
+      await api.put(`/trucks/waivers/${editId}`, {
+        waybill_truck_number: editNumber.trim(),
+        reason: editReason.trim(),
+      });
+    },
+    onSuccess: () => {
+      toast.success("Waiver number updated");
+      setEditId(null);
+      qc.invalidateQueries({ queryKey: ["truck-waivers"] });
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  // ── Delete
+  const [removeId, setRemoveId] = useState<string | null>(null);
+  const [removeReason, setRemoveReason] = useState("");
+
+  const removeMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await api.delete(`/trucks/waivers/${id}`, { data: { reason: removeReason.trim() } });
+    },
+    onSuccess: () => {
+      toast.success("Waiver number removed");
+      setRemoveId(null);
+      setRemoveReason("");
       qc.invalidateQueries({ queryKey: ["truck-waivers"] });
     },
     onError: (err) => toast.error(getErrorMessage(err)),
@@ -115,11 +164,10 @@ export default function WaiversPage() {
             ) : waivers?.length ? (
               <div className="divide-y">
                 {waivers.map((w) => (
-                  <div key={w.id} className="px-5 py-3 text-sm space-y-1">
-                    <div className="flex items-center justify-between">
-                      <span className="font-mono font-semibold">{w.waybill_truck_number}</span>
-                      <div className="flex items-center gap-3">
-                        <span className="text-xs text-muted-foreground">{formatDateTime(w.created_at)}</span>
+                  <div key={w.id} className="px-5 py-3 text-sm space-y-1.5">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <span className="font-mono font-semibold">{w.waybill_truck_number}</span>
                         <Badge
                           variant="outline"
                           className={w.status === "available"
@@ -128,6 +176,29 @@ export default function WaiversPage() {
                         >
                           {w.status}
                         </Badge>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="text-xs text-muted-foreground">{formatDateTime(w.created_at)}</span>
+                        {canAdd && (
+                          <>
+                            <Button
+                              size="sm" variant="ghost"
+                              className="h-6 px-1.5"
+                              onClick={() => openEdit(w)}
+                            >
+                              <Pencil className="w-3 h-3" />
+                            </Button>
+                            {w.status === "available" && (
+                              <Button
+                                size="sm" variant="ghost"
+                                className="h-6 px-1.5 text-destructive hover:text-destructive"
+                                onClick={() => { setRemoveId(w.id); setRemoveReason(""); }}
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </Button>
+                            )}
+                          </>
+                        )}
                       </div>
                     </div>
                     {w.status === "linked" && (
@@ -145,6 +216,31 @@ export default function WaiversPage() {
                         {w.linked_at && <> · {formatDateTime(w.linked_at)}</>}
                       </p>
                     )}
+                    {removeId === w.id && (
+                      <div className="flex items-center gap-1.5 pt-1">
+                        <Input
+                          className="h-7 text-xs"
+                          placeholder="Reason for removing this waiver number…"
+                          value={removeReason}
+                          onChange={(e) => setRemoveReason(e.target.value)}
+                        />
+                        <Button
+                          size="sm" variant="destructive"
+                          className="h-7 px-2 text-xs shrink-0"
+                          disabled={!removeReason.trim() || removeMutation.isPending}
+                          onClick={() => removeMutation.mutate(w.id)}
+                        >
+                          {removeMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Confirm"}
+                        </Button>
+                        <Button
+                          size="sm" variant="ghost"
+                          className="h-7 px-2 text-xs shrink-0"
+                          onClick={() => setRemoveId(null)}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -157,6 +253,45 @@ export default function WaiversPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* ── Edit dialog */}
+      <Dialog open={!!editId} onOpenChange={(v) => { if (!v) setEditId(null); }}>
+        <DialogContent className="sm:max-w-sm" aria-describedby={undefined}>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><Pencil className="w-4 h-4 text-primary" />Edit Waiver Number</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 mt-1">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Waiver / Regulatory Number</Label>
+              <Input
+                className="font-mono"
+                value={editNumber}
+                onChange={(e) => setEditNumber(e.target.value.toUpperCase())}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Reason for edit <span className="text-destructive">*</span></Label>
+              <Textarea
+                rows={2}
+                className="resize-none text-sm"
+                placeholder="Why is this being changed…"
+                value={editReason}
+                onChange={(e) => setEditReason(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter className="mt-4">
+            <Button variant="outline" onClick={() => setEditId(null)}>Cancel</Button>
+            <Button
+              disabled={!editNumber.trim() || !editReason.trim() || editMutation.isPending}
+              onClick={() => editMutation.mutate()}
+            >
+              {editMutation.isPending && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
+              Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

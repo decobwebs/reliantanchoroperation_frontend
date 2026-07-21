@@ -363,7 +363,7 @@ function ProductRow({
         </div>
 
         <div className="space-y-1">
-          <Label className="text-xs">Quantity (MT) *</Label>
+          <Label className="text-xs">Quantity (L) *</Label>
           <Input
             type="number"
             step="0.001"

@@ -1820,9 +1820,9 @@ export default function OperationDetailPage({
                   <div className="flex items-start gap-3">
                     <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-amber-800">PFI Required</p>
+                      <p className="text-sm font-semibold text-amber-800">No PFI Linked</p>
                       <p className="text-xs text-amber-700 mt-0.5">
-                        Link a Proforma Invoice before this operation can be activated.
+                        Optionally link a Proforma Invoice to this operation.
                       </p>
                     </div>
                     {isBM && !showLinkPfi && (
@@ -1885,16 +1885,12 @@ export default function OperationDetailPage({
                 </p>
               </div>
               <div className="flex gap-2 flex-wrap">
-                {availableTransitions.map((t) => {
-                  const isActivate = t.to === "active";
-                  const pfiMissing = isActivate && op.type !== "truck_only" && (pfis?.length ?? 0) === 0;
-                  return (
+                {availableTransitions.map((t) => (
                   <Button
                     key={t.to}
                     size="sm"
                     variant={t.destructive ? "destructive" : "default"}
-                    disabled={transitionMutation.isPending || pfiMissing}
-                    title={pfiMissing ? "Link a PFI first" : undefined}
+                    disabled={transitionMutation.isPending}
                     onClick={() => setShowTransitionConfirm(t)}
                   >
                     {transitionMutation.isPending
@@ -1902,8 +1898,7 @@ export default function OperationDetailPage({
                       : <ChevronRight className="w-3.5 h-3.5 mr-1.5" />}
                     {t.label}
                   </Button>
-                  );
-                })}
+                ))}
               </div>
             </CardContent>
           </Card>
@@ -3452,7 +3447,6 @@ export default function OperationDetailPage({
                                   {/* ── STEP 4: Discharge ── */}
                                   {activity.status === "active" && (
                                     <div className={`rounded-lg border p-4 space-y-3 ${
-                                      !hasReceipt   ? "border-border opacity-50 pointer-events-none" :
                                       hasDischarge  ? "border-emerald-200 bg-emerald-50/30" :
                                       "border-border"
                                     }`}>
@@ -3463,14 +3457,11 @@ export default function OperationDetailPage({
                                             : <span className="w-4 h-4 rounded-full bg-muted flex items-center justify-center text-[9px] font-bold shrink-0">4</span>}
                                           <p className="text-sm font-semibold">{hasDischarge ? "Discharge Recorded" : "Record Outbound Discharge"}</p>
                                         </div>
-                                        {hasReceipt && !hasDischarge && (
+                                        {!hasDischarge && (
                                           <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">optional</span>
                                         )}
-                                        {!hasReceipt && (
-                                          <span className="text-[10px] text-muted-foreground">complete step 2 first</span>
-                                        )}
                                       </div>
-                                      {hasReceipt && !hasDischarge && (
+                                      {!hasDischarge && (
                                         <>
                                           <div className="grid grid-cols-3 gap-2">
                                             <div className="space-y-1">
@@ -3506,7 +3497,7 @@ export default function OperationDetailPage({
                                   )}
 
                                   {/* ── STEP 5: Complete ── */}
-                                  {activity.status === "active" && hasReceipt && (
+                                  {activity.status === "active" && (
                                     <div className="rounded-lg border border-emerald-300 bg-emerald-50/50 p-4 space-y-3">
                                       <div className="flex items-center gap-2">
                                         <span className="w-4 h-4 rounded-full bg-emerald-600 flex items-center justify-center text-[9px] text-white font-bold shrink-0">5</span>
@@ -4104,8 +4095,8 @@ export default function OperationDetailPage({
                             </div>
                           )}
 
-                          {/* Submit completion — truck_only, after payment is confirmed (money-first flow) */}
-                          {firstPendingIdx === -1 && (isLO || isOS) && op.status === "payment_confirmed" && op.type === "truck_only" && (
+                          {/* Submit completion — truck_only */}
+                          {firstPendingIdx === -1 && (isLO || isOS) && (op.status === "active" || op.status === "payment_confirmed") && op.type === "truck_only" && (
                             <div className="px-5 py-3 border-t bg-green-50/30 flex items-center justify-between gap-3">
                               <div className="flex items-center gap-2">
                                 <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
@@ -4120,13 +4111,6 @@ export default function OperationDetailPage({
                                 {submitCompletionMutation.isPending && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
                                 Submit Completion
                               </Button>
-                            </div>
-                          )}
-                          {/* Deliveries done but payment not yet confirmed — waiting on Finance */}
-                          {firstPendingIdx === -1 && (isLO || isOS) && (op.status === "active" || op.status === "pfi_linked" || op.status === "payment_processing") && op.type === "truck_only" && (
-                            <div className="px-5 py-3 border-t bg-amber-50/40 flex items-center gap-2">
-                              <Loader2 className="w-4 h-4 text-amber-600 shrink-0" />
-                              <p className="text-sm font-medium text-amber-800">All deliveries recorded — awaiting payment confirmation from Finance before completion.</p>
                             </div>
                           )}
                           {/* For full/vessel operations: truck stages done is informational; BM drives vessel ops next */}
@@ -4543,10 +4527,10 @@ export default function OperationDetailPage({
                 })}
               </div>
               {Object.values(auditChecklist).filter((v) => !v).length > 0 && (
-                <div className="mt-2 flex items-center gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-                  <AlertTriangle className="w-3.5 h-3.5 text-red-600 shrink-0" />
-                  <p className="text-xs text-red-700 font-medium">
-                    {Object.values(auditChecklist).filter((v) => !v).length} item(s) failed — BM must waive each failed item before operation can proceed with known issues
+                <div className="mt-2 flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                  <p className="text-xs text-amber-700 font-medium">
+                    {Object.values(auditChecklist).filter((v) => !v).length} item(s) flagged — recorded for visibility, does not block submission
                   </p>
                 </div>
               )}

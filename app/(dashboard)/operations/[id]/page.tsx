@@ -102,29 +102,25 @@ import type {
   TruckWaiver,
 } from "@/types";
 import { PRODUCT_TYPE_LABELS } from "@/types";
-import { VOUCHER_CATEGORY_OPTIONS } from "@/lib/finance";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-// Status pipeline — ordered happy-path stages per operation type.
-// Commercial flow: PFI (advance payment) → Operations → BDN → Invoice (final billing)
+// Status pipeline — ordered happy-path stages per operation type. Finance
+// (PFI/payment/invoice) is a standalone concern now, not part of this pipeline.
 const STATUS_PIPELINE: Record<string, string[]> = {
   truck_only: [
     "draft","tasks_assigned","awaiting_feedback","feedback_submitted",
     "active",
-    "payment_processing","payment_confirmed",
     "pending_completion","invoiced","completed",
   ],
   vessel_only: [
     "draft","tasks_assigned","active",
-    "payment_processing","payment_confirmed",
     "vessel_operations","bdn_pending","bdn_approved",
     "invoiced","completed",
   ],
   full_operation: [
     "draft","tasks_assigned","awaiting_feedback","feedback_submitted",
     "active",
-    "payment_processing","payment_confirmed",
     "vessel_operations","bdn_pending","bdn_approved",
     "invoiced","completed",
   ],
@@ -161,28 +157,6 @@ const PRIORITY_OPTIONS = [
   { value: "urgent", label: "Urgent" },
 ];
 
-// VOUCHER_CATEGORY_OPTIONS now lives in lib/finance.ts (shared with the Finance page).
-
-type VoucherDraft = {
-  category: string;
-  amount: string;
-  currency: string;
-  supplier: string;
-  description: string;
-  paymentDate: string;
-  notes: string;
-};
-
-const newVoucherDraft = (): VoucherDraft => ({
-  category: "port_fees",
-  amount: "",
-  currency: "NGN",
-  supplier: "",
-  description: "",
-  paymentDate: "",
-  notes: "",
-});
-
 const ELIGIBLE_ROLES: Record<string, string[]> = {
   truck_only:     ["ops_supervisor", "logistics_officer"],
   vessel_only:    ["ops_supervisor", "marine_manager"],
@@ -204,10 +178,9 @@ const ELIGIBLE_TASK_TYPES: Record<string, { value: string; label: string }[]> = 
 
 // ─── Transition logic ────────────────────────────────────────────────────────
 
-// BM-actionable milestones only. Money-first for every type: PFI + payment come
-// before operations. Payment, invoicing, BDN and delivery are owned by their own
-// tabs/roles — for those states the BM sees a "next step" hint, not a button that
-// would 422. See getNextStepHint below.
+// BM-actionable milestones only. Finance (PFI/payment/invoicing) is a fully
+// standalone concern now — it never gates or appears in this pipeline. For
+// states not actioned directly by BM, see getNextStepHint below.
 function getAvailableTransitions(
   op: Operation
 ): { to: OperationStatus; label: string; destructive?: boolean }[] {
@@ -226,12 +199,14 @@ function getAvailableTransitions(
     case "feedback_approved":
       return [{ to: "active", label: "Activate Operation" }];
     case "active":
-      // PFI is linked at operation creation now — no manual BM step here.
-      // Finance recording a payment (Finance tab) auto-advances the operation.
-      return [];
+      // Truck-only: delivery completion is submitted by LO/OS in the Truck
+      // Reports tab, not a BM button. Vessel/Full: BM starts vessel ops directly.
+      return op.type !== "truck_only"
+        ? [{ to: "vessel_operations", label: "Start Vessel Ops" }]
+        : [];
+    // Legacy compat only — no operation reaches payment_confirmed going forward,
+    // but one created under the old flow may still be sitting here.
     case "payment_confirmed":
-      // Truck: deliveries are recorded in the Truck Reports tab. Vessel/Full:
-      // the BM kicks off vessel operations now that payment is secured.
       return op.type === "truck_only"
         ? []
         : [{ to: "vessel_operations", label: "Start Vessel Ops" }];
@@ -245,7 +220,8 @@ function getAvailableTransitions(
       return [{ to: "completed", label: "Complete Operation" }];
     default:
       // pfi_linked, payment_processing, vessel_operations, bdn_pending,
-      // bdn_approved → driven by the Finance / BDN tabs. No BM stage button.
+      // bdn_approved → driven by their own tabs / Finance's standalone portal.
+      // No BM stage button.
       return [];
   }
 }
@@ -255,11 +231,15 @@ function getAvailableTransitions(
 function getNextStepHint(op: Operation): { who: string; text: string } | null {
   switch (op.status) {
     case "active":
-      return { who: "Finance", text: "Finance records the client's payment against the linked PFI in the Finance tab — this moves the operation forward automatically." };
+      return op.type === "truck_only"
+        ? { who: "Logistics", text: "Logistics/Ops Supervisor records deliveries in the Truck Reports tab, then submits completion." }
+        : null; // vessel/full gets a direct "Start Vessel Ops" button instead
+    // Legacy compat only — these two hints only apply to an operation that was
+    // already mid-flow under the old payment-gated pipeline before this change.
     case "pfi_linked":
-      return { who: "Finance", text: "PFI linked. Finance records the client's payment in the Finance tab." };
+      return { who: "Finance", text: "PFI linked. Finance records the client's payment from the Finance portal." };
     case "payment_processing":
-      return { who: "Finance", text: "Payment recorded. Finance confirms it in the Finance tab." };
+      return { who: "Finance", text: "Payment recorded. Finance confirms it from the Finance portal." };
     case "payment_confirmed":
       return op.type === "truck_only"
         ? { who: "Logistics", text: "Payment confirmed. Logistics records the deliveries in the Truck Reports tab, then submits completion." }
@@ -269,7 +249,7 @@ function getNextStepHint(op: Operation): { who: string; text: string } | null {
     case "bdn_pending":
       return { who: "Bunker Manager", text: "A BDN has been submitted. Review it in the BDN tab — approve or reject." };
     case "bdn_approved":
-      return { who: "Finance", text: "BDN approved. Finance raises the final invoice in the Finance tab." };
+      return { who: "Finance", text: "BDN approved. Finance raises the final invoice from the Finance portal." };
     default:
       return null;
   }
@@ -570,56 +550,36 @@ export default function OperationDetailPage({
     staleTime: 0,
   });
 
-  // Unlinked PFIs — the dropdown source for the simple "Link PFI" pick (BM or Ops Supervisor)
-  const { data: unlinkedPfis, refetch: refetchUnlinkedPfis } = useQuery({
+  // ── Minimal "Link PFI" affordance for the pre-activation gate — BM only.
+  // PFIs are normally linked at operation creation; this covers the case
+  // where none was picked then and the operation still needs one to activate.
+  const [showLinkPfi, setShowLinkPfi] = useState(false);
+  const [linkPfiId, setLinkPfiId] = useState("");
+  const [linkQuantity, setLinkQuantity] = useState("");
+
+  const { data: unlinkedPfis } = useQuery({
     queryKey: ["pfis-unlinked"],
     queryFn: async () => {
       const res = await api.get<ApiResponse<PFI[]>>(`/pfis`, { params: { unlinked_only: true } });
       return res.data.data ?? [];
     },
-    enabled: canSeeFinance && (isBM || isOS),
-    staleTime: 0,
+    enabled: isBM && showLinkPfi,
   });
 
-  // Allocations drawn against this operation (a PFI's volume can be split across several operations)
-  const { data: allocations, refetch: refetchAllocations } = useQuery({
-    queryKey: ["operation-pfi-allocations", id],
-    queryFn: async () => {
-      const res = await api.get<ApiResponse<PfiAllocation[]>>(`/operations/${id}/pfis/allocations`);
-      return res.data.data ?? [];
+  const linkPfiMutation = useMutation({
+    mutationFn: async () => {
+      await api.post(`/operations/${id}/pfis/${linkPfiId}/allocations`, {
+        quantity_litres: parseFloat(linkQuantity),
+      });
     },
-    enabled: canSeeFinance,
-    staleTime: 0,
-  });
-
-  const { data: payments, refetch: refetchPayments } = useQuery({
-    queryKey: ["operation-payments", id],
-    queryFn: async () => {
-      const res = await api.get<ApiResponse<Payment[]>>(`/operations/${id}/payments`);
-      return res.data.data ?? [];
+    onSuccess: () => {
+      toast.success("PFI linked to this operation");
+      setShowLinkPfi(false);
+      setLinkPfiId("");
+      setLinkQuantity("");
+      refetchPfis();
     },
-    enabled: canSeeFinance,
-    staleTime: 0,
-  });
-
-  const { data: invoices, refetch: refetchInvoices } = useQuery({
-    queryKey: ["operation-invoices", id],
-    queryFn: async () => {
-      const res = await api.get<ApiResponse<Invoice[]>>(`/operations/${id}/invoices`);
-      return res.data.data ?? [];
-    },
-    enabled: canSeeFinance,
-    staleTime: 0,
-  });
-
-  const { data: vouchers, refetch: refetchVouchers } = useQuery({
-    queryKey: ["operation-vouchers", id],
-    queryFn: async () => {
-      const res = await api.get<ApiResponse<Voucher[]>>(`/operations/${id}/vouchers`);
-      return res.data.data ?? [];
-    },
-    enabled: canSeeFinance,
-    staleTime: 0,
+    onError: (err) => toast.error(getErrorMessage(err)),
   });
 
   const { data: feedbacks, refetch: refetchFeedbacks } = useQuery({
@@ -862,202 +822,6 @@ export default function OperationDetailPage({
     onError: (err) => toast.error(getErrorMessage(err)),
   });
 
-  // ── Link PFI (BM or Ops Supervisor allocates some of a PFI's volume to this operation —
-  // a PFI can be allocated across several operations)
-  const [linkPfiId, setLinkPfiId] = useState("");
-  const [linkQuantity, setLinkQuantity] = useState("");
-
-  const selectedUnlinkedPfi = unlinkedPfis?.find((p) => p.id === linkPfiId);
-
-  const linkExistingPfiMutation = useMutation({
-    mutationFn: async () => {
-      await api.post(`/operations/${id}/pfis/${linkPfiId}/allocations`, {
-        quantity_litres: parseFloat(linkQuantity),
-      });
-    },
-    onSuccess: () => {
-      toast.success("PFI allocated to this operation");
-      setLinkPfiId("");
-      setLinkQuantity("");
-      refetchPfis();
-      refetchUnlinkedPfis();
-      refetchAllocations();
-    },
-    onError: (err) => toast.error(getErrorMessage(err)),
-  });
-
-  const [removeAllocationId, setRemoveAllocationId] = useState<string | null>(null);
-  const [removeAllocationReason, setRemoveAllocationReason] = useState("");
-
-  const removeAllocationMutation = useMutation({
-    mutationFn: async (allocationId: string) => {
-      await api.delete(`/pfi-allocations/${allocationId}`, {
-        data: { reason: removeAllocationReason.trim() },
-      });
-    },
-    onSuccess: () => {
-      toast.success("Allocation removed");
-      setRemoveAllocationId(null);
-      setRemoveAllocationReason("");
-      refetchPfis();
-      refetchUnlinkedPfis();
-      refetchAllocations();
-    },
-    onError: (err) => toast.error(getErrorMessage(err)),
-  });
-
-  // ── Edit PFI (BM/FM) ──────────────────────────────────────────────────────
-  const [editPfiId,       setEditPfiId]       = useState<string | null>(null);
-  const [editPfiAmount,   setEditPfiAmount]   = useState("");
-  const [editPfiCurrency, setEditPfiCurrency] = useState("NGN");
-  const [editPfiQuantity, setEditPfiQuantity] = useState("");
-  const [editPfiSupplier, setEditPfiSupplier] = useState("");
-  const [editPfiDesc,     setEditPfiDesc]     = useState("");
-  const [editPfiReason,   setEditPfiReason]   = useState("");
-
-  const openEditPfiDialog = (pfi: PFI) => {
-    setEditPfiId(pfi.id);
-    setEditPfiAmount(pfi.amount ?? "");
-    setEditPfiCurrency(pfi.currency ?? "NGN");
-    setEditPfiQuantity(pfi.quantity_litres ?? "");
-    setEditPfiSupplier(pfi.supplier_name ?? "");
-    setEditPfiDesc(pfi.description ?? "");
-    setEditPfiReason("");
-  };
-
-  const closeEditPfiDialog = () => setEditPfiId(null);
-
-  const editPfiMutation = useMutation({
-    mutationFn: async () => {
-      if (!editPfiId) return;
-      await api.put(`/pfis/${editPfiId}`, {
-        amount: editPfiAmount ? parseFloat(editPfiAmount) : undefined,
-        currency: editPfiCurrency || undefined,
-        quantity_litres: editPfiQuantity ? parseFloat(editPfiQuantity) : undefined,
-        supplier_name: editPfiSupplier.trim() || undefined,
-        description: editPfiDesc.trim() || undefined,
-        reason: editPfiReason.trim(),
-      });
-    },
-    onSuccess: () => {
-      toast.success("PFI updated");
-      closeEditPfiDialog();
-      refetchPfis();
-      refetchUnlinkedPfis();
-    },
-    onError: (err) => toast.error(getErrorMessage(err)),
-  });
-
-  // ── Payment state & mutations (Finance Manager)
-  const [showPaymentForm, setShowPaymentForm] = useState(false);
-  const [payPfiId,        setPayPfiId]        = useState("");
-  const [payAmount,       setPayAmount]       = useState("");
-  const [payCurrency,     setPayCurrency]     = useState("NGN");
-  const [payMethod,       setPayMethod]       = useState("bank_transfer");
-  const [payRef,          setPayRef]          = useState("");
-  const [payDate,         setPayDate]         = useState("");
-  const [payNotes,        setPayNotes]        = useState("");
-
-  const recordPaymentMutation = useMutation({
-    mutationFn: async () => {
-      await api.post(`/operations/${id}/payments`, {
-        pfi_id:           payPfiId,
-        amount:           parseFloat(payAmount),
-        currency:         payCurrency,
-        payment_method:   payMethod || undefined,
-        payment_reference: payRef.trim() || undefined,
-        payment_date:     payDate ? new Date(payDate).toISOString() : new Date().toISOString(),
-        notes:            payNotes.trim() || undefined,
-      });
-    },
-    onSuccess: () => {
-      toast.success("Payment recorded");
-      setShowPaymentForm(false);
-      setPayPfiId(""); setPayAmount(""); setPayRef(""); setPayDate(""); setPayNotes("");
-      refetchPayments();
-      qc.invalidateQueries({ queryKey: ["operation", id] });
-    },
-    onError: (err) => toast.error(getErrorMessage(err)),
-  });
-
-  const confirmPaymentMutation = useMutation({
-    mutationFn: async (paymentId: string) => {
-      await api.post(`/operations/${id}/payments/${paymentId}/confirm`);
-    },
-    onSuccess: () => {
-      toast.success("Payment confirmed — operation advanced");
-      refetchPayments();
-      qc.invalidateQueries({ queryKey: ["operation", id] });
-    },
-    onError: (err) => toast.error(getErrorMessage(err)),
-  });
-
-  // ── Invoice state & mutations (Finance Manager)
-  const [showInvoiceForm, setShowInvoiceForm] = useState(false);
-  const [invBdnId,        setInvBdnId]        = useState("");
-  const [invAmount,       setInvAmount]       = useState("");
-  const [invCurrency,     setInvCurrency]     = useState("USD");
-  const [invTax,          setInvTax]          = useState("0");
-  const [invDueDate,      setInvDueDate]      = useState("");
-  const [invNotes,        setInvNotes]        = useState("");
-
-  const createInvoiceMutation = useMutation({
-    mutationFn: async () => {
-      await api.post(`/operations/${id}/invoices`, {
-        amount:     parseFloat(invAmount),
-        currency:   invCurrency,
-        tax_amount: parseFloat(invTax) || 0,
-        due_date:   invDueDate || undefined,
-        notes:      invNotes.trim() || undefined,
-        bdn_id:     invBdnId || undefined,
-      });
-    },
-    onSuccess: () => {
-      toast.success("Invoice created");
-      setShowInvoiceForm(false);
-      setInvBdnId(""); setInvAmount(""); setInvTax("0"); setInvDueDate(""); setInvNotes("");
-      refetchInvoices();
-      qc.invalidateQueries({ queryKey: ["operation", id] });
-    },
-    onError: (err) => toast.error(getErrorMessage(err)),
-  });
-
-  const markInvoiceSentMutation = useMutation({
-    mutationFn: async (invoiceId: string) => {
-      await api.post(`/invoices/${invoiceId}/send`, {});
-    },
-    onSuccess: () => { toast.success("Invoice marked as sent"); refetchInvoices(); },
-    onError:   (err) => toast.error(getErrorMessage(err)),
-  });
-
-  const generateInvoicePdfMutation = useMutation({
-    mutationFn: async (invoiceId: string) => {
-      await api.post(`/invoices/${invoiceId}/generate-pdf`, {});
-    },
-    onSuccess: () => { toast.success("Invoice PDF generated"); refetchInvoices(); },
-    onError:   (err) => toast.error(getErrorMessage(err)),
-  });
-
-  const markInvoicePaidMutation = useMutation({
-    mutationFn: async (invoiceId: string) => {
-      await api.post(`/invoices/${invoiceId}/mark-paid`, {});
-    },
-    onSuccess: () => {
-      toast.success("Invoice marked as paid — operation completed");
-      refetchInvoices();
-      qc.invalidateQueries({ queryKey: ["operation", id] });
-    },
-    onError: (err) => toast.error(getErrorMessage(err)),
-  });
-
-  const cancelInvoiceMutation = useMutation({
-    mutationFn: async (invoiceId: string) => {
-      await api.post(`/invoices/${invoiceId}/cancel`, {});
-    },
-    onSuccess: () => { toast.success("Invoice cancelled"); refetchInvoices(); },
-    onError:   (err) => toast.error(getErrorMessage(err)),
-  });
-
   // ── BDN state & mutations
   const [showBdnForm,     setShowBdnForm]     = useState(false);
   const [bdnVesselId,     setBdnVesselId]     = useState("");
@@ -1145,83 +909,6 @@ export default function OperationDetailPage({
     },
     onError: (err) => toast.error(getErrorMessage(err)),
   });
-
-  // ── PFI confirm-payment (FM marks PFI as paid, notifies BM)
-  const confirmPfiPaymentMutation = useMutation({
-    mutationFn: async ({ pfiId, receiptUrl }: { pfiId: string; receiptUrl?: string }) => {
-      await api.post(`/pfis/${pfiId}/confirm-payment`, { receipt_url: receiptUrl || undefined });
-    },
-    onSuccess: () => {
-      toast.success("PFI payment confirmed — Bunker Manager notified");
-      refetchPfis();
-      qc.invalidateQueries({ queryKey: ["operation", id] });
-    },
-    onError: (err) => toast.error(getErrorMessage(err)),
-  });
-
-  // ── Voucher state & mutations (Finance Manager records, BM approves)
-  const [showVoucherForm, setShowVoucherForm] = useState(false);
-  const [voucherDrafts, setVoucherDrafts] = useState<VoucherDraft[]>([newVoucherDraft()]);
-  const updateVoucherDraft = (index: number, patch: Partial<VoucherDraft>) => {
-    setVoucherDrafts((rows) => rows.map((row, i) => (i === index ? { ...row, ...patch } : row)));
-  };
-  const addVoucherDraft = () => setVoucherDrafts((rows) => [...rows, newVoucherDraft()]);
-  const removeVoucherDraft = (index: number) => {
-    setVoucherDrafts((rows) => rows.length > 1 ? rows.filter((_, i) => i !== index) : [newVoucherDraft()]);
-  };
-  const resetVoucherDrafts = () => setVoucherDrafts([newVoucherDraft()]);
-  const validVoucherDrafts = voucherDrafts.filter((row) => row.amount && parseFloat(row.amount) > 0);
-
-  const createVoucherMutation = useMutation({
-    mutationFn: async () => {
-      await api.post(`/operations/${id}/vouchers/bulk`, {
-        vouchers: validVoucherDrafts.map((row) => ({
-          category:      row.category,
-          amount:        parseFloat(row.amount),
-          currency:      row.currency,
-          supplier_name: row.supplier.trim() || undefined,
-          description:   row.description.trim() || undefined,
-          payment_date:  row.paymentDate ? new Date(row.paymentDate).toISOString() : undefined,
-          notes:         row.notes.trim() || undefined,
-        })),
-      });
-    },
-    onSuccess: () => {
-      toast.success(`${validVoucherDrafts.length} expense voucher${validVoucherDrafts.length === 1 ? "" : "s"} recorded`);
-      setShowVoucherForm(false);
-      resetVoucherDrafts();
-      refetchVouchers();
-    },
-    onError: (err) => toast.error(getErrorMessage(err)),
-  });
-
-  const submitVoucherMutation = useMutation({
-    mutationFn: async (voucherId: string) => {
-      await api.post(`/vouchers/${voucherId}/submit`, {});
-    },
-    onSuccess: () => { toast.success("Voucher submitted for approval"); refetchVouchers(); },
-    onError:   (err) => toast.error(getErrorMessage(err)),
-  });
-
-  const approveVoucherMutation = useMutation({
-    mutationFn: async (voucherId: string) => {
-      await api.post(`/vouchers/${voucherId}/approve`, {});
-    },
-    onSuccess: () => { toast.success("Voucher approved"); refetchVouchers(); },
-    onError:   (err) => toast.error(getErrorMessage(err)),
-  });
-
-  const rejectVoucherMutation = useMutation({
-    mutationFn: async ({ voucherId, reason }: { voucherId: string; reason: string }) => {
-      await api.post(`/vouchers/${voucherId}/reject`, { reason });
-    },
-    onSuccess: () => { toast.success("Voucher rejected"); refetchVouchers(); },
-    onError:   (err) => toast.error(getErrorMessage(err)),
-  });
-
-  // Inline rejection reason state
-  const [rejectingVoucherId, setRejectingVoucherId] = useState<string | null>(null);
-  const [voucherRejectReason, setVoucherRejectReason] = useState("");
 
   // ── Vessel Activity mutations
   const assignActivityMutation = useMutation({
@@ -2060,7 +1747,7 @@ export default function OperationDetailPage({
               </div>
               <div className="rounded-md bg-orange-100/60 px-3 py-2 text-xs text-orange-800">
                 Next step: <span className="font-semibold">Finance</span> raises the final invoice
-                from the Finance tab (→ Invoiced), then the operation completes when the invoice is
+                from the Finance portal (→ Invoiced), then the operation completes when the invoice is
                 marked paid.
               </div>
               <div className="flex gap-2 flex-wrap pt-1">
@@ -2106,14 +1793,53 @@ export default function OperationDetailPage({
               </Card>
             ) : (
               <Card className="border-amber-200 bg-amber-50/40 border-0 shadow-sm">
-                <CardContent className="p-4 flex items-start gap-3">
-                  <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-sm font-semibold text-amber-800">PFI Required</p>
-                    <p className="text-xs text-amber-700 mt-0.5">
-                      Link a Proforma Invoice before this operation can be activated — use &quot;Link PFI&quot; in the Finance tab.
-                    </p>
+                <CardContent className="p-4 space-y-3">
+                  <div className="flex items-start gap-3">
+                    <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-amber-800">PFI Required</p>
+                      <p className="text-xs text-amber-700 mt-0.5">
+                        Link a Proforma Invoice before this operation can be activated.
+                      </p>
+                    </div>
+                    {isBM && !showLinkPfi && (
+                      <Button size="sm" variant="outline" className="h-7 text-xs shrink-0" onClick={() => setShowLinkPfi(true)}>
+                        Link PFI
+                      </Button>
+                    )}
                   </div>
+                  {isBM && showLinkPfi && (
+                    <div className="grid grid-cols-1 sm:grid-cols-[1fr_120px_auto] gap-2 items-end pt-1 border-t border-amber-200/60">
+                      <div className="space-y-1">
+                        <Label className="text-[10px]">Select a PFI</Label>
+                        <Select value={linkPfiId} onValueChange={setLinkPfiId}>
+                          <SelectTrigger className="h-8 text-xs bg-white"><SelectValue placeholder="Select PFI…" /></SelectTrigger>
+                          <SelectContent>
+                            {unlinkedPfis?.map((p) => (
+                              <SelectItem key={p.id} value={p.id} className="text-xs">
+                                {p.pfi_number} — {p.currency} {parseFloat(p.amount).toLocaleString()}
+                                {p.remaining_litres != null ? ` (${parseFloat(p.remaining_litres).toLocaleString()} L left)` : ""}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-[10px]">Quantity (L)</Label>
+                        <Input
+                          type="number" min="0" step="0.01" className="h-8 text-xs bg-white"
+                          value={linkQuantity} onChange={(e) => setLinkQuantity(e.target.value)}
+                        />
+                      </div>
+                      <Button
+                        size="sm" className="h-8 text-xs"
+                        disabled={!linkPfiId || !linkQuantity || parseFloat(linkQuantity) <= 0 || linkPfiMutation.isPending}
+                        onClick={() => linkPfiMutation.mutate()}
+                      >
+                        {linkPfiMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Link"}
+                      </Button>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             );
@@ -2180,7 +1906,7 @@ export default function OperationDetailPage({
         })()}
 
         {/* ── Full operation: load the vessel via trucks before starting vessel ops */}
-        {isBM && op.type === "full_operation" && op.status === "payment_confirmed" && (
+        {isBM && op.type === "full_operation" && op.status === "active" && (
           <Card className="border-amber-200 bg-amber-50/40 shadow-sm">
             <CardContent className="p-4 flex items-start gap-3">
               <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
@@ -2314,17 +2040,6 @@ export default function OperationDetailPage({
                   </TabsTrigger>
                 )}
 
-                {canSeeFinance && (
-                  <TabsTrigger value="finance">
-                    <TrendingUp className="w-3.5 h-3.5 mr-1" />
-                    Finance
-                    {((pfis?.length ?? 0) + (invoices?.length ?? 0)) > 0 ? (
-                      <Badge variant="secondary" className="ml-1.5 h-4 px-1.5 text-[10px]">
-                        {(pfis?.length ?? 0) + (invoices?.length ?? 0)}
-                      </Badge>
-                    ) : null}
-                  </TabsTrigger>
-                )}
               </TabsList>
 
               {/* ── Overview tab */}
@@ -4579,851 +4294,6 @@ export default function OperationDetailPage({
                   </Card>
                 </TabsContent>
               )}
-              {/* ── Finance tab */}
-              {canSeeFinance && (
-                <TabsContent value="finance" className="mt-4 space-y-6">
-
-                  {/* ── P&L Summary strip */}
-                  {(() => {
-                    const revenue = invoices?.reduce(
-                      (s, inv) => inv.status !== "cancelled" ? s + parseFloat(inv.total_amount ?? "0") : s, 0
-                    ) ?? 0;
-                    const collected = invoices?.reduce(
-                      (s, inv) => inv.status === "paid" ? s + parseFloat(inv.total_amount ?? "0") : s, 0
-                    ) ?? 0;
-                    const expenses = [
-                      ...(payments?.map((p) => parseFloat(p.amount ?? "0")) ?? []),
-                      ...(vouchers?.filter(v => v.status === "approved").map(v => parseFloat(v.amount ?? "0")) ?? []),
-                    ].reduce((s, v) => s + v, 0);
-                    const profit = revenue - expenses;
-                    return (
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="grid grid-cols-2 gap-3 col-span-2 sm:col-span-1">
-                          <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-3 text-center">
-                            <p className="text-[9px] font-semibold uppercase tracking-wide text-emerald-700 mb-0.5">Revenue</p>
-                            <p className="text-sm font-bold text-emerald-800 font-mono">
-                              {revenue.toLocaleString("en-US", { minimumFractionDigits: 2 })}
-                            </p>
-                            <p className="text-[9px] text-emerald-600 mt-0.5">
-                              Collected: {collected.toLocaleString("en-US", { minimumFractionDigits: 2 })}
-                            </p>
-                          </div>
-                          <div className="rounded-xl border border-rose-200 bg-rose-50/60 p-3 text-center">
-                            <p className="text-[9px] font-semibold uppercase tracking-wide text-rose-700 mb-0.5">Expenses</p>
-                            <p className="text-sm font-bold text-rose-800 font-mono">
-                              {expenses.toLocaleString("en-US", { minimumFractionDigits: 2 })}
-                            </p>
-                            <p className="text-[9px] text-rose-600 mt-0.5">
-                              Payments + approved vouchers
-                            </p>
-                          </div>
-                        </div>
-                        <div className={`rounded-xl border p-3 text-center col-span-2 sm:col-span-1 flex flex-col items-center justify-center ${profit >= 0 ? "border-violet-200 bg-violet-50/60" : "border-amber-200 bg-amber-50/60"}`}>
-                          <div className="flex items-center gap-1.5 mb-0.5">
-                            {profit >= 0
-                              ? <TrendingUp className="w-3.5 h-3.5 text-violet-600" />
-                              : <TrendingDown className="w-3.5 h-3.5 text-amber-600" />}
-                            <p className={`text-[9px] font-semibold uppercase tracking-wide ${profit >= 0 ? "text-violet-700" : "text-amber-700"}`}>
-                              {profit >= 0 ? "Gross Profit" : "Gross Loss"}
-                            </p>
-                          </div>
-                          <p className={`text-base font-bold font-mono ${profit >= 0 ? "text-violet-800" : "text-amber-800"}`}>
-                            {Math.abs(profit).toLocaleString("en-US", { minimumFractionDigits: 2 })}
-                          </p>
-                          {revenue > 0 && (
-                            <p className={`text-[9px] mt-0.5 ${profit >= 0 ? "text-violet-600" : "text-amber-600"}`}>
-                              {((profit / revenue) * 100).toFixed(1)}% margin
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })()}
-
-                  {/* ── PFI Section */}
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <FileText className="w-4 h-4 text-primary" />
-                        <h3 className="text-sm font-semibold">Proforma Invoices</h3>
-                        {pfis?.length ? (
-                          <Badge variant="secondary" className="text-[10px] h-4 px-1.5">{pfis.length}</Badge>
-                        ) : null}
-                      </div>
-                      {(isBM || isFM) && (
-                        <Link href="/pfi">
-                          <Button size="sm" variant="outline" className="gap-1.5">
-                            <PlusCircle className="w-3.5 h-3.5" />
-                            Create PFI
-                          </Button>
-                        </Link>
-                      )}
-                    </div>
-                    <Card className="border-0 shadow-sm">
-                      <CardContent className="p-0">
-                        {pfis?.length ? (
-                          <div className="divide-y">
-                            {pfis.map((pfi) => {
-                              const pfiStatusCls =
-                                pfi.status === "paid" || pfi.status === "linked" || pfi.status === "completed"
-                                  ? "bg-emerald-100 text-emerald-800 border-emerald-200"
-                                  : pfi.status === "cancelled"
-                                  ? "bg-muted text-muted-foreground border"
-                                  : "bg-amber-100 text-amber-800 border-amber-200";
-                              return (
-                                <div key={pfi.id} className="px-5 py-3.5 space-y-2">
-                                  <div className="flex items-center justify-between gap-4">
-                                    <div className="min-w-0 flex-1">
-                                      <div className="flex items-center gap-2 flex-wrap">
-                                        <p className="text-sm font-mono font-semibold">{pfi.pfi_number}</p>
-                                        <Badge className={`text-[10px] h-4 px-1.5 capitalize border ${pfiStatusCls}`}>
-                                          {pfi.status.replace(/_/g, " ")}
-                                        </Badge>
-                                        <Badge variant="outline" className={`text-[10px] h-4 px-1.5 ${pfi.pfi_type === "supplier_invoice" ? "border-orange-300 text-orange-700" : "border-sky-300 text-sky-700"}`}>
-                                          {pfi.pfi_type === "supplier_invoice" ? "Supplier Invoice" : "Client Proforma"}
-                                        </Badge>
-                                        {pfi.client_ref && (
-                                          <span className="text-[10px] text-muted-foreground font-mono">ref: {pfi.client_ref}</span>
-                                        )}
-                                      </div>
-                                      <p className="text-xs text-muted-foreground mt-0.5">
-                                        <span className="font-semibold">{pfi.currency} {parseFloat(pfi.amount).toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
-                                        {pfi.supplier_name && <span className="ml-2">· {pfi.supplier_name}</span>}
-                                      </p>
-                                      {pfi.quantity_litres && (
-                                        <p className="text-[10px] text-muted-foreground mt-0.5">
-                                          {parseFloat(pfi.remaining_litres ?? pfi.quantity_litres).toLocaleString()} / {parseFloat(pfi.quantity_litres).toLocaleString()} L remaining
-                                        </p>
-                                      )}
-                                      <p className="text-[10px] text-muted-foreground/60 mt-0.5">{formatDateTime(pfi.created_at)}</p>
-                                    </div>
-                                    <div className="flex items-center gap-2 shrink-0">
-                                      {(isBM || isFM) && (
-                                        <Button
-                                          size="sm" variant="outline"
-                                          className="gap-1 h-7 text-xs"
-                                          onClick={() => openEditPfiDialog(pfi)}
-                                        >
-                                          <Pencil className="w-3 h-3" />Edit
-                                        </Button>
-                                      )}
-                                      {pfi.document_url && (
-                                        <a href={pfi.document_url} target="_blank" rel="noopener noreferrer">
-                                          <Button size="sm" variant="outline" className="gap-1 h-7 text-xs">
-                                            <Download className="w-3 h-3" />PDF
-                                          </Button>
-                                        </a>
-                                      )}
-                                      {pfi.receipt_url && (
-                                        <a href={pfi.receipt_url} target="_blank" rel="noopener noreferrer">
-                                          <Button size="sm" variant="outline" className="gap-1 h-7 text-xs border-emerald-300 text-emerald-700">
-                                            <CheckCircle2 className="w-3 h-3" />Receipt
-                                          </Button>
-                                        </a>
-                                      )}
-                                      {isFM && !["paid","linked","completed","cancelled"].includes(pfi.status) && (
-                                        <Button
-                                          size="sm"
-                                          className="h-7 text-xs gap-1 bg-emerald-600 hover:bg-emerald-700"
-                                          disabled={confirmPfiPaymentMutation.isPending}
-                                          onClick={() => confirmPfiPaymentMutation.mutate({ pfiId: pfi.id })}
-                                        >
-                                          {confirmPfiPaymentMutation.isPending
-                                            ? <Loader2 className="w-3 h-3 animate-spin" />
-                                            : <BadgeCheck className="w-3 h-3" />}
-                                          Confirm Paid
-                                        </Button>
-                                      )}
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        ) : (
-                          <div className="flex flex-col items-center py-8 text-muted-foreground gap-1">
-                            <FileText className="w-7 h-7 mb-1 opacity-25" />
-                            <p className="text-sm font-medium">No PFI document uploaded yet</p>
-                            {(isBM || isFM) && (
-                              <p className="text-xs text-muted-foreground/70 text-center max-w-xs">
-                                Create a PFI on the <Link href="/pfi" className="underline">PFI page</Link>, then link it to this operation below.
-                              </p>
-                            )}
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
-                  </div>
-
-                  {/* ── Link PFI (BM-only correction affordance — PFIs are now linked at operation
-                      creation; post-creation add/remove is a BM edit-power correction, not a routine
-                      Ops Supervisor workflow step) ── */}
-                  {isBM && (
-                    <div className="space-y-3">
-                      <div className="flex items-center gap-2">
-                        <FileText className="w-4 h-4 text-primary" />
-                        <h3 className="text-sm font-semibold">Link PFI</h3>
-                        <Badge variant="outline" className="text-[10px] h-4 px-1.5 text-muted-foreground font-normal">
-                          BM correction
-                        </Badge>
-                      </div>
-                      <Card className="border-0 shadow-sm">
-                        <CardContent className="p-4 space-y-3">
-                          <div className="grid grid-cols-1 sm:grid-cols-[1fr_140px_auto] gap-2 items-end">
-                            <div className="space-y-1.5">
-                              <Label className="text-xs">Select a PFI</Label>
-                              <Select value={linkPfiId} onValueChange={(v) => { setLinkPfiId(v); setLinkQuantity(""); }}>
-                                <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select PFI…" /></SelectTrigger>
-                                <SelectContent>
-                                  {unlinkedPfis?.map((p) => (
-                                    <SelectItem key={p.id} value={p.id} className="text-xs">
-                                      {p.pfi_number} — {p.currency} {parseFloat(p.amount).toLocaleString()}
-                                      {p.remaining_litres != null ? ` (${parseFloat(p.remaining_litres).toLocaleString()} L left)` : ""}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            <div className="space-y-1.5">
-                              <Label className="text-xs">Quantity (L)</Label>
-                              <Input
-                                type="number"
-                                min="0"
-                                step="0.01"
-                                className="h-8 text-xs"
-                                placeholder="Litres"
-                                value={linkQuantity}
-                                onChange={(e) => setLinkQuantity(e.target.value)}
-                              />
-                            </div>
-                            <Button
-                              size="sm"
-                              className="h-8 gap-1.5"
-                              disabled={!linkPfiId || !linkQuantity || parseFloat(linkQuantity) <= 0 || linkExistingPfiMutation.isPending}
-                              onClick={() => linkExistingPfiMutation.mutate()}
-                            >
-                              {linkExistingPfiMutation.isPending
-                                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                : <PlusCircle className="w-3.5 h-3.5" />}
-                              Link
-                            </Button>
-                          </div>
-                          {selectedUnlinkedPfi?.remaining_litres != null && (
-                            <p className="text-xs text-muted-foreground">
-                              {parseFloat(selectedUnlinkedPfi.remaining_litres).toLocaleString()} L remaining on {selectedUnlinkedPfi.pfi_number}
-                            </p>
-                          )}
-                          {!unlinkedPfis?.length && (
-                            <p className="text-xs text-muted-foreground/70">No PFIs with remaining volume available.</p>
-                          )}
-
-                          {allocations?.length ? (
-                            <div className="divide-y border-t pt-2 mt-1">
-                              {allocations.map((a) => (
-                                <div key={a.id} className="py-2 text-xs space-y-1.5">
-                                  <div className="flex items-center justify-between">
-                                    <span>
-                                      <span className="font-mono font-medium">{a.pfi_number}</span>
-                                      {" — "}{parseFloat(a.quantity_litres).toLocaleString()} L
-                                      {a.notes ? <span className="text-muted-foreground"> · {a.notes}</span> : null}
-                                    </span>
-                                    {removeAllocationId !== a.id && (
-                                      <Button
-                                        size="sm" variant="ghost"
-                                        className="h-6 px-2 text-[11px] text-destructive hover:text-destructive"
-                                        onClick={() => { setRemoveAllocationId(a.id); setRemoveAllocationReason(""); }}
-                                      >
-                                        Remove
-                                      </Button>
-                                    )}
-                                  </div>
-                                  {removeAllocationId === a.id && (
-                                    <div className="flex items-center gap-1.5">
-                                      <Input
-                                        className="h-7 text-[11px]"
-                                        placeholder="Reason for removing this allocation…"
-                                        value={removeAllocationReason}
-                                        onChange={(e) => setRemoveAllocationReason(e.target.value)}
-                                      />
-                                      <Button
-                                        size="sm" variant="destructive"
-                                        className="h-7 px-2 text-[11px]"
-                                        disabled={!removeAllocationReason.trim() || removeAllocationMutation.isPending}
-                                        onClick={() => removeAllocationMutation.mutate(a.id)}
-                                      >
-                                        {removeAllocationMutation.isPending
-                                          ? <Loader2 className="w-3 h-3 animate-spin" />
-                                          : "Confirm"}
-                                      </Button>
-                                      <Button
-                                        size="sm" variant="ghost"
-                                        className="h-7 px-2 text-[11px]"
-                                        onClick={() => setRemoveAllocationId(null)}
-                                      >
-                                        Cancel
-                                      </Button>
-                                    </div>
-                                  )}
-                                </div>
-                              ))}
-                            </div>
-                          ) : null}
-                        </CardContent>
-                      </Card>
-                    </div>
-                  )}
-
-                  {/* ── Payments Section (client pays us) */}
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Wallet className="w-4 h-4 text-sky-600" />
-                        <h3 className="text-sm font-semibold">Client Payments Received</h3>
-                        {payments?.length ? (
-                          <Badge variant="secondary" className="text-[10px] h-4 px-1.5">{payments.length}</Badge>
-                        ) : null}
-                      </div>
-                      {isFM && !showPaymentForm && (pfis?.length ?? 0) > 0 && (
-                        <Button size="sm" variant="outline" className="gap-1.5"
-                          onClick={() => { setPayPfiId(pfis![0].id); setShowPaymentForm(true); }}>
-                          <PlusCircle className="w-3.5 h-3.5" />Record Payment
-                        </Button>
-                      )}
-                    </div>
-
-                    {isFM && showPaymentForm && (
-                      <Card className="border border-sky-200 bg-sky-50/30 shadow-sm">
-                        <CardContent className="p-4 space-y-3">
-                          <p className="text-xs font-semibold uppercase tracking-wide text-sky-700">Record Client Payment</p>
-                          <div className="grid grid-cols-2 gap-3">
-                            <div className="space-y-1">
-                              <Label className="text-xs">PFI <span className="text-destructive">*</span></Label>
-                              <Select value={payPfiId} onValueChange={setPayPfiId}>
-                                <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select PFI…" /></SelectTrigger>
-                                <SelectContent>
-                                  {pfis?.map((p) => (
-                                    <SelectItem key={p.id} value={p.id} className="text-xs">
-                                      {p.pfi_number} — {p.currency} {parseFloat(p.amount).toLocaleString()}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            <div className="space-y-1">
-                              <Label className="text-xs">Currency</Label>
-                              <Select value={payCurrency} onValueChange={setPayCurrency}>
-                                <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="NGN">NGN</SelectItem>
-                                  <SelectItem value="USD">USD</SelectItem>
-                                  <SelectItem value="EUR">EUR</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            <div className="space-y-1">
-                              <Label className="text-xs">Amount <span className="text-destructive">*</span></Label>
-                              <Input type="number" step="0.01" placeholder="0.00" className="h-8 text-xs"
-                                value={payAmount} onChange={(e) => setPayAmount(e.target.value)} />
-                            </div>
-                            <div className="space-y-1">
-                              <Label className="text-xs">Method</Label>
-                              <Select value={payMethod} onValueChange={setPayMethod}>
-                                <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
-                                  <SelectItem value="cash">Cash</SelectItem>
-                                  <SelectItem value="cheque">Cheque</SelectItem>
-                                  <SelectItem value="wire_transfer">Wire Transfer</SelectItem>
-                                  <SelectItem value="other">Other</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            <div className="space-y-1">
-                              <Label className="text-xs">Reference</Label>
-                              <Input placeholder="Transfer ref / cheque no." className="h-8 text-xs"
-                                value={payRef} onChange={(e) => setPayRef(e.target.value)} />
-                            </div>
-                            <div className="space-y-1">
-                              <Label className="text-xs">Payment Date <span className="text-destructive">*</span></Label>
-                              <Input type="datetime-local" className="h-8 text-xs"
-                                value={payDate} onChange={(e) => setPayDate(e.target.value)} />
-                            </div>
-                          </div>
-                          <div className="space-y-1">
-                            <Label className="text-xs">Notes</Label>
-                            <Textarea rows={2} className="resize-none text-xs" placeholder="Any notes…"
-                              value={payNotes} onChange={(e) => setPayNotes(e.target.value)} />
-                          </div>
-                          <div className="flex justify-end gap-2 pt-1">
-                            <Button size="sm" variant="outline" onClick={() => setShowPaymentForm(false)}>Cancel</Button>
-                            <Button size="sm"
-                              disabled={!payPfiId || !payAmount || parseFloat(payAmount) <= 0 || !payDate || recordPaymentMutation.isPending}
-                              onClick={() => recordPaymentMutation.mutate()}
-                              className="gap-1.5 bg-sky-600 hover:bg-sky-700">
-                              {recordPaymentMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
-                              Record Payment
-                            </Button>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    )}
-
-                    {isFM && !showPaymentForm && (pfis?.length ?? 0) === 0 && (
-                      <div className="rounded-lg border border-amber-200 bg-amber-50/40 px-4 py-3 flex items-center gap-3">
-                        <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-                        <p className="text-xs text-amber-700">
-                          Create and link a PFI first before recording a payment.
-                        </p>
-                      </div>
-                    )}
-
-                    <Card className="border-0 shadow-sm">
-                      <CardContent className="p-0">
-                        {payments?.length ? (
-                          <div className="divide-y">
-                            {payments.map((pay) => (
-                              <div key={pay.id} className="flex items-center justify-between px-5 py-3.5 gap-4">
-                                <div className="min-w-0 flex-1">
-                                  <p className="text-sm font-mono font-semibold">{pay.voucher_number}</p>
-                                  <p className="text-xs text-muted-foreground mt-0.5">
-                                    <span className="font-semibold">{pay.currency} {parseFloat(pay.amount).toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
-                                    {pay.payment_method && <span className="ml-2 capitalize">· {pay.payment_method.replace(/_/g, " ")}</span>}
-                                    {pay.payment_reference && <span className="ml-2 font-mono">· {pay.payment_reference}</span>}
-                                  </p>
-                                  <p className="text-[10px] text-muted-foreground/60 mt-0.5">{formatDateTime(pay.payment_date)}</p>
-                                </div>
-                                {isFM && op.status === "payment_processing" && (
-                                  <Button size="sm" variant="outline"
-                                    className="gap-1.5 h-7 text-xs border-emerald-300 text-emerald-700 hover:bg-emerald-50 shrink-0"
-                                    disabled={confirmPaymentMutation.isPending}
-                                    onClick={() => confirmPaymentMutation.mutate(pay.id)}>
-                                    {confirmPaymentMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
-                                    Confirm
-                                  </Button>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <div className="flex flex-col items-center py-8 text-muted-foreground">
-                            <Wallet className="w-7 h-7 mb-2 opacity-25" />
-                            <p className="text-sm">No payments recorded</p>
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
-                  </div>
-
-                  {/* ── Expense Vouchers Section (we pay out) */}
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Banknote className="w-4 h-4 text-rose-600" />
-                        <h3 className="text-sm font-semibold">Expense Vouchers</h3>
-                        {vouchers?.length ? (
-                          <Badge variant="secondary" className="text-[10px] h-4 px-1.5">{vouchers.length}</Badge>
-                        ) : null}
-                      </div>
-                      {isFM && !showVoucherForm && (
-                        <Button size="sm" variant="outline" className="gap-1.5"
-                          onClick={() => setShowVoucherForm(true)}>
-                          <PlusCircle className="w-3.5 h-3.5" />Add Voucher
-                        </Button>
-                      )}
-                    </div>
-
-                    {isFM && showVoucherForm && (
-                      <Card className="border border-rose-200 bg-rose-50/20 shadow-sm">
-                        <CardContent className="p-4 space-y-3">
-                          <div className="flex items-center justify-between gap-3">
-                            <p className="text-xs font-semibold uppercase tracking-wide text-rose-700">New Expense Vouchers</p>
-                            <Button type="button" size="sm" variant="outline" className="h-7 text-xs gap-1.5" onClick={addVoucherDraft}>
-                              <PlusCircle className="w-3 h-3" />Add Row
-                            </Button>
-                          </div>
-                          <div className="space-y-3">
-                            {voucherDrafts.map((row, index) => (
-                              <div key={index} className="rounded-md border bg-background/80 p-3 space-y-3">
-                                <div className="flex items-center justify-between gap-2">
-                                  <p className="text-xs font-semibold text-muted-foreground">Voucher {index + 1}</p>
-                                  <Button type="button" size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive" onClick={() => removeVoucherDraft(index)}>
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </Button>
-                                </div>
-                                <div className="grid grid-cols-2 gap-3">
-                                  <div className="space-y-1 col-span-2 sm:col-span-1">
-                                    <Label className="text-xs">Category <span className="text-destructive">*</span></Label>
-                                    <Select value={row.category} onValueChange={(value) => updateVoucherDraft(index, { category: value })}>
-                                      <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                                      <SelectContent>
-                                        {VOUCHER_CATEGORY_OPTIONS.map(([val, label]) => (
-                                          <SelectItem key={val} value={val} className="text-xs">{label}</SelectItem>
-                                        ))}
-                                      </SelectContent>
-                                    </Select>
-                                  </div>
-                                  <div className="space-y-1">
-                                    <Label className="text-xs">Amount <span className="text-destructive">*</span></Label>
-                                    <Input type="number" step="0.01" placeholder="0.00" className="h-8 text-xs" value={row.amount} onChange={(e) => updateVoucherDraft(index, { amount: e.target.value })} />
-                                  </div>
-                                  <div className="space-y-1">
-                                    <Label className="text-xs">Currency</Label>
-                                    <Select value={row.currency} onValueChange={(value) => updateVoucherDraft(index, { currency: value })}>
-                                      <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                                      <SelectContent>
-                                        <SelectItem value="NGN">NGN</SelectItem>
-                                        <SelectItem value="USD">USD</SelectItem>
-                                        <SelectItem value="EUR">EUR</SelectItem>
-                                      </SelectContent>
-                                    </Select>
-                                  </div>
-                                  <div className="space-y-1">
-                                    <Label className="text-xs">Supplier / Payee</Label>
-                                    <Input placeholder="Vendor name" className="h-8 text-xs" value={row.supplier} onChange={(e) => updateVoucherDraft(index, { supplier: e.target.value })} />
-                                  </div>
-                                  <div className="space-y-1">
-                                    <Label className="text-xs">Payment Date</Label>
-                                    <Input type="date" className="h-8 text-xs" value={row.paymentDate} onChange={(e) => updateVoucherDraft(index, { paymentDate: e.target.value })} />
-                                  </div>
-                                  <div className="space-y-1 col-span-2">
-                                    <Label className="text-xs">Description</Label>
-                                    <Input placeholder="Brief description of the expense" className="h-8 text-xs" value={row.description} onChange={(e) => updateVoucherDraft(index, { description: e.target.value })} />
-                                  </div>
-                                  <div className="space-y-1 col-span-2">
-                                    <Label className="text-xs">Notes</Label>
-                                    <Textarea rows={2} className="resize-none text-xs" placeholder="Any additional notes..." value={row.notes} onChange={(e) => updateVoucherDraft(index, { notes: e.target.value })} />
-                                  </div>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                          <div className="flex justify-end gap-2 pt-1">
-                            <Button size="sm" variant="outline" onClick={() => { setShowVoucherForm(false); resetVoucherDrafts(); }}>Cancel</Button>
-                            <Button size="sm" disabled={validVoucherDrafts.length === 0 || createVoucherMutation.isPending} onClick={() => createVoucherMutation.mutate()} className="gap-1.5 bg-rose-600 hover:bg-rose-700">
-                              {createVoucherMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Banknote className="w-3 h-3" />}
-                              Save {validVoucherDrafts.length || ""} Voucher{validVoucherDrafts.length === 1 ? "" : "s"}
-                            </Button>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    )}
-
-                    <Card className="border-0 shadow-sm">
-                      <CardContent className="p-0">
-                        {vouchers?.length ? (
-                          <div className="divide-y">
-                            {vouchers.map((v) => {
-                              const vStatusCls =
-                                v.status === "approved" ? "bg-emerald-100 text-emerald-800 border-emerald-200" :
-                                v.status === "rejected" ? "bg-red-100 text-red-800 border-red-200" :
-                                v.status === "submitted" ? "bg-sky-100 text-sky-800 border-sky-200" :
-                                "bg-secondary text-secondary-foreground border";
-                              return (
-                                <div key={v.id} className="px-5 py-3.5 space-y-2">
-                                  <div className="flex items-start justify-between gap-4">
-                                    <div className="min-w-0 flex-1">
-                                      <div className="flex items-center gap-2 flex-wrap">
-                                        <p className="text-sm font-mono font-semibold">{v.voucher_number}</p>
-                                        <Badge className={`text-[10px] h-4 px-1.5 capitalize border ${vStatusCls}`}>
-                                          {v.status}
-                                        </Badge>
-                                        <Badge variant="outline" className="text-[10px] h-4 px-1.5 capitalize">
-                                          {v.category.replace(/_/g, " ")}
-                                        </Badge>
-                                      </div>
-                                      <p className="text-xs text-muted-foreground mt-0.5">
-                                        <span className="font-semibold">{v.currency} {parseFloat(v.amount).toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
-                                        {v.supplier_name && <span className="ml-2">· {v.supplier_name}</span>}
-                                        {v.description && <span className="ml-2 italic text-muted-foreground/70">· {v.description}</span>}
-                                      </p>
-                                      {v.rejection_reason && (
-                                        <p className="text-[10px] text-red-600 mt-0.5">Rejected: {v.rejection_reason}</p>
-                                      )}
-                                      <p className="text-[10px] text-muted-foreground/60 mt-0.5">{formatDateTime(v.created_at)}</p>
-                                    </div>
-                                    {v.receipt_url && (
-                                      <a href={v.receipt_url} target="_blank" rel="noopener noreferrer" className="shrink-0">
-                                        <Button size="sm" variant="outline" className="gap-1 h-7 text-xs">
-                                          <Download className="w-3 h-3" />Receipt
-                                        </Button>
-                                      </a>
-                                    )}
-                                  </div>
-                                  {/* FM actions */}
-                                  {isFM && v.status === "draft" && (
-                                    <Button size="sm" className="h-7 text-xs gap-1 bg-sky-600 hover:bg-sky-700"
-                                      disabled={submitVoucherMutation.isPending}
-                                      onClick={() => submitVoucherMutation.mutate(v.id)}>
-                                      {submitVoucherMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <ChevronRight className="w-3 h-3" />}
-                                      Submit for Approval
-                                    </Button>
-                                  )}
-                                  {/* BM actions */}
-                                  {isBM && v.status === "submitted" && (
-                                    <div className="space-y-2">
-                                      <div className="flex gap-2">
-                                        <Button size="sm" className="h-7 text-xs gap-1 bg-emerald-600 hover:bg-emerald-700"
-                                          disabled={approveVoucherMutation.isPending}
-                                          onClick={() => approveVoucherMutation.mutate(v.id)}>
-                                          {approveVoucherMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
-                                          Approve
-                                        </Button>
-                                        <Button size="sm" variant="outline"
-                                          className="h-7 text-xs gap-1 text-destructive border-destructive/30"
-                                          onClick={() => setRejectingVoucherId(rejectingVoucherId === v.id ? null : v.id)}>
-                                          <XCircle className="w-3 h-3" />Reject
-                                        </Button>
-                                      </div>
-                                      {rejectingVoucherId === v.id && (
-                                        <div className="flex gap-2 items-end">
-                                          <Input className="h-8 text-xs flex-1" placeholder="Rejection reason…"
-                                            value={voucherRejectReason}
-                                            onChange={(e) => setVoucherRejectReason(e.target.value)} />
-                                          <Button size="sm" variant="destructive" className="h-8 text-xs shrink-0"
-                                            disabled={!voucherRejectReason.trim() || rejectVoucherMutation.isPending}
-                                            onClick={() => {
-                                              rejectVoucherMutation.mutate({ voucherId: v.id, reason: voucherRejectReason });
-                                              setRejectingVoucherId(null);
-                                              setVoucherRejectReason("");
-                                            }}>
-                                            Confirm Reject
-                                          </Button>
-                                        </div>
-                                      )}
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        ) : (
-                          <div className="flex flex-col items-center py-8 text-muted-foreground">
-                            <Banknote className="w-7 h-7 mb-2 opacity-25" />
-                            <p className="text-sm">No expense vouchers</p>
-                            {isFM && <p className="text-xs mt-1 text-muted-foreground/70">Record port fees, demurrage, logistics costs, etc.</p>}
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
-                  </div>
-
-                  {/* ── Invoices Section */}
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Receipt className="w-4 h-4 text-violet-600" />
-                        <h3 className="text-sm font-semibold">Client Invoices</h3>
-                        {invoices?.length ? (
-                          <Badge variant="secondary" className="text-[10px] h-4 px-1.5">{invoices.length}</Badge>
-                        ) : null}
-                      </div>
-                      {isFM && !showInvoiceForm && (
-                        <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setShowInvoiceForm(true)}>
-                          <PlusCircle className="w-3.5 h-3.5" />Create Invoice
-                        </Button>
-                      )}
-                    </div>
-
-                    {isFM && showInvoiceForm && (
-                      <Card className="border border-violet-200 bg-violet-50/30 shadow-sm">
-                        <CardContent className="p-4 space-y-3">
-                          <p className="text-xs font-semibold uppercase tracking-wide text-violet-700">New Client Invoice</p>
-                          {op.type !== "truck_only" && (
-                            <div className="space-y-1">
-                              <Label className="text-xs">BDN <span className="text-destructive">*</span></Label>
-                              <Select value={invBdnId} onValueChange={setInvBdnId}>
-                                <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select approved BDN…" /></SelectTrigger>
-                                <SelectContent>
-                                  {bdns?.filter((b) => b.status === "approved").map((b) => (
-                                    <SelectItem key={b.id} value={b.id} className="text-xs">
-                                      {b.bdn_number} — {parseFloat(b.quantity_delivered_mt).toFixed(2)} L
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
-                          )}
-                          <div className="grid grid-cols-2 gap-3">
-                            <div className="space-y-1">
-                              <Label className="text-xs">Amount <span className="text-destructive">*</span></Label>
-                              <Input type="number" step="0.01" placeholder="0.00" className="h-8 text-xs"
-                                value={invAmount} onChange={(e) => setInvAmount(e.target.value)} />
-                            </div>
-                            <div className="space-y-1">
-                              <Label className="text-xs">Currency</Label>
-                              <Select value={invCurrency} onValueChange={setInvCurrency}>
-                                <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="NGN">NGN</SelectItem>
-                                  <SelectItem value="USD">USD</SelectItem>
-                                  <SelectItem value="EUR">EUR</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            <div className="space-y-1">
-                              <Label className="text-xs">Tax Amount</Label>
-                              <Input type="number" step="0.01" min="0" placeholder="0.00" className="h-8 text-xs"
-                                value={invTax} onChange={(e) => setInvTax(e.target.value)} />
-                            </div>
-                            <div className="space-y-1">
-                              <Label className="text-xs">Due Date</Label>
-                              <Input type="date" className="h-8 text-xs"
-                                value={invDueDate} onChange={(e) => setInvDueDate(e.target.value)} />
-                            </div>
-                          </div>
-                          {invAmount && parseFloat(invAmount) > 0 && (
-                            <div className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 flex justify-between items-center text-xs">
-                              <span className="text-violet-700">Total Due</span>
-                              <span className="font-bold font-mono text-violet-800">
-                                {invCurrency} {(parseFloat(invAmount || "0") + parseFloat(invTax || "0")).toLocaleString("en-US", { minimumFractionDigits: 2 })}
-                              </span>
-                            </div>
-                          )}
-                          <div className="space-y-1">
-                            <Label className="text-xs">Notes</Label>
-                            <Textarea rows={2} className="resize-none text-xs" placeholder="Invoice notes…"
-                              value={invNotes} onChange={(e) => setInvNotes(e.target.value)} />
-                          </div>
-                          <div className="flex justify-end gap-2 pt-1">
-                            <Button size="sm" variant="outline" onClick={() => setShowInvoiceForm(false)}>Cancel</Button>
-                            <Button size="sm"
-                              disabled={
-                                !invAmount || parseFloat(invAmount) <= 0 ||
-                                (op.type !== "truck_only" && !invBdnId) ||
-                                createInvoiceMutation.isPending
-                              }
-                              onClick={() => createInvoiceMutation.mutate()}
-                              className="gap-1.5 bg-violet-600 hover:bg-violet-700">
-                              {createInvoiceMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Receipt className="w-3 h-3" />}
-                              Create Invoice
-                            </Button>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    )}
-
-                    <Card className="border-0 shadow-sm">
-                      <CardContent className="p-0">
-                        {invoices?.length ? (
-                          <div className="divide-y">
-                            {invoices.map((inv) => {
-                              const statusCls =
-                                inv.status === "paid"      ? "bg-emerald-600 text-white" :
-                                inv.status === "sent"      ? "bg-sky-600 text-white" :
-                                inv.status === "overdue"   ? "bg-red-500 text-white" :
-                                inv.status === "cancelled" ? "bg-muted text-muted-foreground border" :
-                                "bg-secondary text-secondary-foreground";
-                              return (
-                                <div key={inv.id} className="px-5 py-3.5 space-y-2.5">
-                                  <div className="flex items-start justify-between gap-3">
-                                    <div className="min-w-0 flex-1">
-                                      <div className="flex items-center gap-2 flex-wrap">
-                                        <p className="text-sm font-mono font-semibold">{inv.invoice_number}</p>
-                                        <Badge className={`text-[10px] h-4 px-1.5 capitalize ${statusCls}`}>{inv.status}</Badge>
-                                        {inv.due_date && inv.status !== "paid" && inv.status !== "cancelled" && (
-                                          <span className="text-[10px] text-muted-foreground">Due {formatDate(inv.due_date)}</span>
-                                        )}
-                                      </div>
-                                      <p className="text-xs text-muted-foreground mt-0.5">
-                                        <span className="font-semibold">{inv.currency} {parseFloat(inv.total_amount).toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
-                                        {parseFloat(inv.tax_amount) > 0 && (
-                                          <span className="ml-1 text-muted-foreground/60">(incl. tax {inv.currency} {parseFloat(inv.tax_amount).toLocaleString()})</span>
-                                        )}
-                                      </p>
-                                      {/* Reconciliation strip */}
-                                      {inv.advance_paid !== undefined && (
-                                        <div className="mt-1.5 flex items-center gap-4 text-[11px]">
-                                          <span className="text-muted-foreground">
-                                            Advance received:{" "}
-                                            <span className="font-semibold text-emerald-600">
-                                              {inv.currency} {parseFloat(inv.advance_paid).toLocaleString("en-US", { minimumFractionDigits: 2 })}
-                                            </span>
-                                          </span>
-                                          {inv.balance_due !== undefined && (
-                                            <span className="text-muted-foreground">
-                                              Balance:{" "}
-                                              <span className={`font-semibold ${parseFloat(inv.balance_due) > 0 ? "text-amber-600" : "text-emerald-600"}`}>
-                                                {inv.currency} {parseFloat(inv.balance_due).toLocaleString("en-US", { minimumFractionDigits: 2 })}
-                                                {parseFloat(inv.balance_due) <= 0 && " ✓"}
-                                              </span>
-                                            </span>
-                                          )}
-                                        </div>
-                                      )}
-                                      {inv.pdf_url && (
-                                        <a href={inv.pdf_url} target="_blank" rel="noopener noreferrer"
-                                          className="text-[10px] text-sky-600 underline underline-offset-2 mt-0.5 inline-block">
-                                          Download PDF
-                                        </a>
-                                      )}
-                                      <p className="text-[10px] text-muted-foreground/60 mt-0.5">
-                                        Created {formatDateTime(inv.created_at)}
-                                        {inv.sent_at && ` · Sent ${formatDateTime(inv.sent_at)}`}
-                                        {inv.paid_at && ` · Paid ${formatDateTime(inv.paid_at)}`}
-                                      </p>
-                                    </div>
-                                  </div>
-                                  {isFM && (
-                                    <div className="flex gap-2 flex-wrap">
-                                      {!inv.pdf_url && inv.status !== "cancelled" && (
-                                        <Button size="sm" variant="outline" className="h-7 text-xs gap-1"
-                                          disabled={generateInvoicePdfMutation.isPending}
-                                          onClick={() => generateInvoicePdfMutation.mutate(inv.id)}>
-                                          {generateInvoicePdfMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
-                                          Generate PDF
-                                        </Button>
-                                      )}
-                                      {inv.status === "draft" && (
-                                        <>
-                                          <Button size="sm" className="h-7 text-xs gap-1 bg-sky-600 hover:bg-sky-700"
-                                            disabled={markInvoiceSentMutation.isPending}
-                                            onClick={() => markInvoiceSentMutation.mutate(inv.id)}>
-                                            {markInvoiceSentMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <ChevronRight className="w-3 h-3" />}
-                                            Mark Sent
-                                          </Button>
-                                          <Button size="sm" variant="outline"
-                                            className="h-7 text-xs gap-1 text-destructive border-destructive/30 hover:bg-destructive/5"
-                                            disabled={cancelInvoiceMutation.isPending}
-                                            onClick={() => cancelInvoiceMutation.mutate(inv.id)}>
-                                            <XCircle className="w-3 h-3" />Cancel
-                                          </Button>
-                                        </>
-                                      )}
-                                      {(inv.status === "sent" || inv.status === "overdue") && (
-                                        <>
-                                          <Button size="sm" className="h-7 text-xs gap-1 bg-emerald-600 hover:bg-emerald-700"
-                                            disabled={markInvoicePaidMutation.isPending}
-                                            onClick={() => markInvoicePaidMutation.mutate(inv.id)}>
-                                            {markInvoicePaidMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
-                                            Mark Paid
-                                          </Button>
-                                          <Button size="sm" variant="outline"
-                                            className="h-7 text-xs gap-1 text-destructive border-destructive/30 hover:bg-destructive/5"
-                                            disabled={cancelInvoiceMutation.isPending}
-                                            onClick={() => cancelInvoiceMutation.mutate(inv.id)}>
-                                            <XCircle className="w-3 h-3" />Cancel
-                                          </Button>
-                                        </>
-                                      )}
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        ) : (
-                          <div className="flex flex-col items-center py-8 text-muted-foreground">
-                            <Receipt className="w-7 h-7 mb-2 opacity-25" />
-                            <p className="text-sm">No invoices yet</p>
-                            {isFM && <p className="text-xs mt-1 text-muted-foreground/70">Create an invoice once the BDN is approved</p>}
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
-                  </div>
-
-                </TabsContent>
-              )}
 
             </Tabs>
           </div>
@@ -5749,64 +4619,6 @@ export default function OperationDetailPage({
             >
               {createTruckMutation.isPending && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
               Create & Nominate
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* ── BM/FM: Edit PFI dialog */}
-      <Dialog open={!!editPfiId} onOpenChange={(v) => { if (!v) closeEditPfiDialog(); }}>
-        <DialogContent className="sm:max-w-md" aria-describedby={undefined}>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Pencil className="w-4 h-4 text-primary" />
-              Edit PFI
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3 mt-1">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs">Amount</Label>
-                <Input type="number" step="0.01" value={editPfiAmount} onChange={(e) => setEditPfiAmount(e.target.value)} />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs">Currency</Label>
-                <Select value={editPfiCurrency} onValueChange={setEditPfiCurrency}>
-                  <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="NGN">NGN</SelectItem>
-                    <SelectItem value="USD">USD</SelectItem>
-                    <SelectItem value="EUR">EUR</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Quantity (litres) <span className="text-muted-foreground font-normal">optional</span></Label>
-              <Input type="number" step="0.01" value={editPfiQuantity} onChange={(e) => setEditPfiQuantity(e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Supplier Name</Label>
-              <Input value={editPfiSupplier} onChange={(e) => setEditPfiSupplier(e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Description</Label>
-              <Textarea rows={2} className="resize-none text-sm" value={editPfiDesc} onChange={(e) => setEditPfiDesc(e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Reason for edit <span className="text-destructive">*</span></Label>
-              <Textarea rows={2} className="resize-none text-sm" placeholder="Why is this PFI being edited…"
-                value={editPfiReason} onChange={(e) => setEditPfiReason(e.target.value)} />
-            </div>
-          </div>
-          <DialogFooter className="mt-4">
-            <Button variant="outline" onClick={closeEditPfiDialog}>Cancel</Button>
-            <Button
-              disabled={!editPfiReason.trim() || editPfiMutation.isPending}
-              onClick={() => editPfiMutation.mutate()}
-            >
-              {editPfiMutation.isPending && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
-              Save Changes
             </Button>
           </DialogFooter>
         </DialogContent>

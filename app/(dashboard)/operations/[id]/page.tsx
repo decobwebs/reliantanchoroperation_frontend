@@ -111,18 +111,18 @@ const STATUS_PIPELINE: Record<string, string[]> = {
   truck_only: [
     "draft","tasks_assigned","awaiting_feedback","feedback_submitted",
     "active",
-    "pending_completion","invoiced","completed",
+    "pending_completion","completed",
   ],
   vessel_only: [
     "draft","tasks_assigned","active",
     "vessel_operations","bdn_pending","bdn_approved",
-    "invoiced","completed",
+    "completed",
   ],
   full_operation: [
     "draft","tasks_assigned","awaiting_feedback","feedback_submitted",
     "active",
     "vessel_operations","bdn_pending","bdn_approved",
-    "invoiced","completed",
+    "completed",
   ],
 };
 
@@ -211,17 +211,21 @@ function getAvailableTransitions(
         ? []
         : [{ to: "vessel_operations", label: "Start Vessel Ops" }];
     case "pending_completion":
-      // Delivery done. Finance raises the final invoice next (→ invoiced). BM can
-      // only bounce it back to Active.
+      // Delivery done — BM can complete the operation directly, independent
+      // of Finance, or bounce it back to Active.
       return [
+        { to: "completed", label: "Complete Operation" },
         { to: "active", label: "Return to Active", destructive: true },
       ];
+    case "bdn_approved":
+      return [{ to: "completed", label: "Complete Operation" }];
+    // Legacy compat only — no operation reaches "invoiced" going forward,
+    // but one already sitting there (pre-redesign) can still be completed.
     case "invoiced":
       return [{ to: "completed", label: "Complete Operation" }];
     default:
-      // pfi_linked, payment_processing, vessel_operations, bdn_pending,
-      // bdn_approved → driven by their own tabs / Finance's standalone portal.
-      // No BM stage button.
+      // pfi_linked, payment_processing, vessel_operations, bdn_pending →
+      // driven by their own tabs / Finance's standalone portal. No BM stage button.
       return [];
   }
 }
@@ -248,8 +252,6 @@ function getNextStepHint(op: Operation): { who: string; text: string } | null {
       return { who: "Marine", text: "Vessel operations underway. Record the delivery, then raise the BDN in the BDN tab." };
     case "bdn_pending":
       return { who: "Bunker Manager", text: "A BDN has been submitted. Review it in the BDN tab — approve or reject." };
-    case "bdn_approved":
-      return { who: "Finance", text: "BDN approved. Finance raises the final invoice from the Finance portal." };
     default:
       return null;
   }
@@ -1768,12 +1770,18 @@ export default function OperationDetailPage({
                   )}
                 </div>
               </div>
-              <div className="rounded-md bg-orange-100/60 px-3 py-2 text-xs text-orange-800">
-                Next step: <span className="font-semibold">Finance</span> raises the final invoice
-                from the Finance portal (→ Invoiced), then the operation completes when the invoice is
-                marked paid.
-              </div>
               <div className="flex gap-2 flex-wrap pt-1">
+                <Button
+                  size="sm"
+                  className="bg-emerald-600 hover:bg-emerald-700"
+                  disabled={transitionMutation.isPending}
+                  onClick={() => transitionMutation.mutate({ to_status: "completed", reason: "Completed by BM" })}
+                >
+                  {transitionMutation.isPending
+                    ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                    : <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" />}
+                  Complete Operation
+                </Button>
                 <Button
                   size="sm"
                   variant="outline"

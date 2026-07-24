@@ -51,6 +51,7 @@ export default function PfiPage() {
 
   // ── Create
   const [showCreate, setShowCreate] = useState(false);
+  const [pfiNumber, setPfiNumber] = useState("");
   const [amount, setAmount] = useState("");
   const [currency, setCurrency] = useState("NGN");
   const [quantity, setQuantity] = useState("");
@@ -59,13 +60,14 @@ export default function PfiPage() {
   const [clientRef, setClientRef] = useState("");
 
   const resetCreateForm = () => {
-    setAmount(""); setCurrency("NGN"); setQuantity("");
+    setPfiNumber(""); setAmount(""); setCurrency("NGN"); setQuantity("");
     setSupplier(""); setDescription(""); setClientRef("");
   };
 
   const createMutation = useMutation({
     mutationFn: async () => {
       await api.post("/pfis", {
+        pfi_number: pfiNumber.trim() || undefined,
         amount: parseFloat(amount),
         currency,
         quantity_litres: quantity ? parseFloat(quantity) : undefined,
@@ -86,6 +88,7 @@ export default function PfiPage() {
 
   // ── Edit
   const [editId, setEditId] = useState<string | null>(null);
+  const [editPfiNumber, setEditPfiNumber] = useState("");
   const [editAmount, setEditAmount] = useState("");
   const [editCurrency, setEditCurrency] = useState("NGN");
   const [editQuantity, setEditQuantity] = useState("");
@@ -95,6 +98,7 @@ export default function PfiPage() {
 
   const openEdit = (pfi: PFI) => {
     setEditId(pfi.id);
+    setEditPfiNumber(pfi.pfi_number ?? "");
     setEditAmount(pfi.amount ?? "");
     setEditCurrency(pfi.currency ?? "NGN");
     setEditQuantity(pfi.quantity_litres ?? "");
@@ -107,6 +111,7 @@ export default function PfiPage() {
     mutationFn: async () => {
       if (!editId) return;
       await api.put(`/pfis/${editId}`, {
+        pfi_number: editPfiNumber.trim() || undefined,
         amount: editAmount ? parseFloat(editAmount) : undefined,
         currency: editCurrency || undefined,
         quantity_litres: editQuantity ? parseFloat(editQuantity) : undefined,
@@ -235,6 +240,10 @@ export default function PfiPage() {
             <DialogTitle className="flex items-center gap-2"><FileText className="w-4 h-4 text-primary" />Create PFI</DialogTitle>
           </DialogHeader>
           <div className="space-y-3 mt-1">
+            <div className="space-y-1.5">
+              <Label className="text-xs">PFI Number / Title <span className="text-muted-foreground font-normal">optional — auto-generated (e.g. PFI-2026-0080) if left blank</span></Label>
+              <Input value={pfiNumber} onChange={(e) => setPfiNumber(e.target.value)} placeholder="e.g. PFI-2026-0080 or a custom title" />
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs">Amount <span className="text-destructive">*</span></Label>
@@ -289,6 +298,10 @@ export default function PfiPage() {
             <DialogTitle className="flex items-center gap-2"><Pencil className="w-4 h-4 text-primary" />Edit PFI</DialogTitle>
           </DialogHeader>
           <div className="space-y-3 mt-1">
+            <div className="space-y-1.5">
+              <Label className="text-xs">PFI Number / Title</Label>
+              <Input value={editPfiNumber} onChange={(e) => setEditPfiNumber(e.target.value)} />
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs">Amount</Label>

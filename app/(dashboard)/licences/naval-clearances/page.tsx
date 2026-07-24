@@ -29,8 +29,8 @@ type VesselRow = { client_id: string; vessel_name: string; imo_number: string };
 export default function NavalClearancesPage() {
   const { effectiveRole } = useAuth();
   const qc = useQueryClient();
-  const canAdd = effectiveRole === "marine_manager";
-  const canView = canAdd || effectiveRole === "bunker_manager";
+  const canAdd = effectiveRole === "marine_manager" || effectiveRole === "bunker_manager";
+  const canView = canAdd;
 
   const { data: clearances, isLoading } = useQuery({
     queryKey: ["naval-clearances"],

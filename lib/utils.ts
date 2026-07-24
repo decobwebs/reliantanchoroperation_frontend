@@ -98,6 +98,19 @@ export const OP_TYPE_LABELS: Record<string, string> = {
   truck_only: "Truck Only",
 };
 
+export const OPERATION_COLOR_SWATCHES: Record<string, string> = {
+  red:    "bg-red-500",
+  orange: "bg-orange-500",
+  amber:  "bg-amber-500",
+  green:  "bg-emerald-500",
+  teal:   "bg-teal-500",
+  blue:   "bg-blue-500",
+  indigo: "bg-indigo-500",
+  purple: "bg-purple-500",
+  pink:   "bg-pink-500",
+  gray:   "bg-gray-500",
+};
+
 export function getInitials(name: string): string {
   return name
     .split(" ")

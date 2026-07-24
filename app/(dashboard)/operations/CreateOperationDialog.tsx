@@ -28,7 +28,7 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { useState } from "react";
-import type { ApiResponse, User, Vessel, PFI, ProductType, OperationType } from "@/types";
+import type { ApiResponse, User, Vessel, PFI, ProductType, OperationType, NavalClearance } from "@/types";
 import { PRODUCT_TYPE_LABELS } from "@/types";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -526,6 +526,7 @@ export function CreateOperationDialog({ open, onClose, onCreated }: Props) {
   } = useFieldArray({ control, name: "pfi_allocations" });
 
   const opType = watch("type") as OperationType;
+  const [navalClearanceId, setNavalClearanceId] = useState("");
 
   // Seed one empty product row when the dialog opens, so the form isn't
   // empty-by-default requiring an extra click.
@@ -544,8 +545,13 @@ export function CreateOperationDialog({ open, onClose, onCreated }: Props) {
       setValue(`assignments.${i}.task_type`, "");
     });
     // Truck-only has no vessel — clear any previously chosen vessel so a stale
-    // selection isn't submitted or shown after switching type.
-    if (prevType === "truck_only") setValue("vessel_id", "");
+    // selection isn't submitted or shown after switching type. The Naval
+    // Clearance picker is hidden for truck-only too, so a clearance picked
+    // before switching would otherwise still get silently linked on submit.
+    if (prevType === "truck_only") {
+      setValue("vessel_id", "");
+      setNavalClearanceId("");
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prevType]);
 
@@ -584,6 +590,16 @@ export function CreateOperationDialog({ open, onClose, onCreated }: Props) {
     enabled: open && opType !== "truck_only",
   });
 
+  // ── Naval Clearances query (optional link — shown when not truck_only)
+  const { data: navalClearances } = useQuery({
+    queryKey: ["naval-clearances-picker"],
+    queryFn: async () => {
+      const res = await api.get<ApiResponse<NavalClearance[]>>("/naval-clearances");
+      return (res.data.data ?? []).filter((nc) => nc.is_valid);
+    },
+    enabled: open && opType !== "truck_only",
+  });
+
   // ── Unlinked PFIs query (source for the optional PFI-allocations picker)
   const { data: unlinkedPfis = [], isLoading: isPfisLoading } = useQuery({
     queryKey: ["pfis-unlinked"],
@@ -608,11 +624,16 @@ export function CreateOperationDialog({ open, onClose, onCreated }: Props) {
         pfi_allocations:    data.pfi_allocations?.length ? data.pfi_allocations : undefined,
       };
       const res = await api.post("/operations", payload);
-      return extractData(res);
+      const operation = extractData<{ id: string }>(res);
+      if (navalClearanceId && operation?.id) {
+        await api.post(`/operations/${operation.id}/link-naval-clearance`, { naval_clearance_id: navalClearanceId });
+      }
+      return operation;
     },
     onSuccess: () => {
       toast.success("Operation created");
       reset();
+      setNavalClearanceId("");
       onCreated();
     },
     onError: (err) => toast.error(getErrorMessage(err)),
@@ -620,6 +641,7 @@ export function CreateOperationDialog({ open, onClose, onCreated }: Props) {
 
   const handleClose = useCallback(() => {
     reset();
+    setNavalClearanceId("");
     onClose();
   }, [reset, onClose]);
 
@@ -737,6 +759,31 @@ export function CreateOperationDialog({ open, onClose, onCreated }: Props) {
                         {v.vessel_name}
                         <span className="ml-1.5 text-xs text-muted-foreground">
                           · ROB: {parseFloat(v.current_rob_mt).toLocaleString()} L
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {/* Naval Clearance (conditional, optional, never a gate) */}
+            {needsVessel && (
+              <div className="space-y-1.5">
+                <Label>
+                  Naval Clearance
+                  <span className="ml-1 text-xs font-normal text-muted-foreground">(optional — can be linked later)</span>
+                </Label>
+                <Select value={navalClearanceId} onValueChange={setNavalClearanceId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select Naval Clearance…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {navalClearances?.map((nc) => (
+                      <SelectItem key={nc.id} value={nc.id}>
+                        {nc.clearance_number}
+                        <span className="ml-1.5 text-xs text-muted-foreground">
+                          · {nc.products.join(", ")} · {parseFloat(nc.total_quantity_litres).toLocaleString()} L
                         </span>
                       </SelectItem>
                     ))}

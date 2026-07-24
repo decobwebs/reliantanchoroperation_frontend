@@ -20,6 +20,8 @@ import {
   BadgeCheck,
   UserCog,
   Check,
+  Anchor,
+  FileBadge2,
 } from "lucide-react";
 import { useState } from "react";
 import { cn, getInitials } from "@/lib/utils";
@@ -99,6 +101,26 @@ export const NAV_ITEMS: NavItem[] = [
     label: "Vessels",
     icon: Ship,
     roles: ["bunker_manager", "ops_supervisor", "marine_manager"],
+  },
+
+  // ── Licences ─────────────────────────────────────────────────────────────
+  {
+    href: "/licences/ppdl",
+    label: "PPDL",
+    icon: FileBadge2,
+    roles: ["bunker_manager", "marine_manager"],
+  },
+  {
+    href: "/licences/bfl",
+    label: "BFL",
+    icon: FileBadge2,
+    roles: ["bunker_manager", "marine_manager"],
+  },
+  {
+    href: "/licences/naval-clearances",
+    label: "Naval Clearances",
+    icon: Anchor,
+    roles: ["bunker_manager", "marine_manager"],
   },
 
   // ── Finance ──────────────────────────────────────────────────────────────

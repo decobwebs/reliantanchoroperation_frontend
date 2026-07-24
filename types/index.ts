@@ -102,6 +102,16 @@ export interface Operation {
   notes?: string;
   currency: string;
   vessel_id?: string;
+  naval_clearance_id?: string;
+  naval_clearance?: {
+    id: string;
+    clearance_number: string;
+    ppdl_number?: string;
+    bfl_numbers: string[];
+    products: string[];
+    is_valid: boolean;
+  };
+  color?: string;
   trucks_required?: number;
   version: number;
   parent_operation_id?: string;
@@ -209,6 +219,148 @@ export interface PfiAllocation {
   created_at: string;
   pfi_number?: string;
   operation_number?: string;
+}
+
+// ── Licence hierarchy: PPDL -> BFL -> Naval Clearance ──────────────────────
+
+export interface PpdlProduct {
+  id: string;
+  ppdl_id: string;
+  product_type: string;
+  quantity_litres: string;
+  allocated_litres: string;
+  remaining_litres?: string;
+  created_at: string;
+}
+
+export interface Ppdl {
+  id: string;
+  ppdl_number: string;
+  issue_date: string;
+  expiry_date: string;
+  is_current: boolean;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  products: PpdlProduct[];
+}
+
+export interface Bfl {
+  id: string;
+  bfl_number: string;
+  ppdl_id: string;
+  ppdl_number?: string;
+  product_type: string;
+  quantity_litres: string;
+  allocated_litres: string;
+  remaining_litres?: string;
+  vessel?: string;
+  expiry_date: string;
+  is_active: boolean;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface NavalClearanceDrawdown {
+  id: string;
+  naval_clearance_id: string;
+  bfl_id: string;
+  bfl_number?: string;
+  product_type?: string;
+  quantity_litres: string;
+  created_at: string;
+}
+
+export interface NavalClearanceLoadingLocation {
+  id: string;
+  location: string;
+  sort_order: number;
+}
+
+export interface NavalClearanceVessel {
+  id: string;
+  client_id: string;
+  client_name?: string;
+  client_email?: string;
+  vessel_name: string;
+  imo_number?: string;
+  current_eta?: string;
+}
+
+export interface NavalClearance {
+  id: string;
+  clearance_number: string;
+  date_of_loading: string;
+  expiry_date: string;
+  is_valid: boolean;
+  document_url?: string;
+  ppdl_number?: string;
+  bfl_numbers: string[];
+  products: string[];
+  total_quantity_litres: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  drawdowns: NavalClearanceDrawdown[];
+  loading_locations: NavalClearanceLoadingLocation[];
+  vessels: NavalClearanceVessel[];
+}
+
+export interface VesselRunKpi {
+  vessel_activity_id: string;
+  vessel_name?: string;
+  cast_off_at?: string;
+  discharge_completed_at?: string;
+  duration_hours?: number;
+}
+
+export interface OperationKpi {
+  operation_id: string;
+  cast_off_at?: string;
+  discharge_completed_at?: string;
+  duration_hours?: number;
+  vessel_runs: VesselRunKpi[];
+}
+
+export interface StageDurationEntry {
+  vessel_activity_id: string;
+  stage: string;
+  role?: string;
+  user_name?: string;
+  started_at?: string;
+  completed_at?: string;
+  duration_hours?: number;
+}
+
+export interface RoleStageDurations {
+  operation_id: string;
+  entries: StageDurationEntry[];
+}
+
+export interface ClientNotificationRecipient {
+  naval_clearance_vessel_id: string;
+  client_id: string;
+  client_name?: string;
+  client_email?: string;
+  vessel_name: string;
+  imo_number?: string;
+  current_eta?: string;
+}
+
+export interface ClientNotificationLog {
+  id: string;
+  operation_id: string;
+  naval_clearance_vessel_id: string;
+  client_id: string;
+  recipient_email: string;
+  recipient_name: string;
+  notification_type: string;
+  stage?: string;
+  subject: string;
+  sent_by: string;
+  sent_at: string;
+  thread_key: string;
 }
 
 export interface Voucher {
@@ -568,6 +720,38 @@ export interface VesselActivity {
   started_at?: string;
   completed_at?: string;
   created_at: string;
+
+  // ── Per-vessel stage flow ──
+  stage?: string;
+  stage_cast_off_at?: string;
+  stage_outbound_at?: string;
+  stage_alongside_at?: string;
+  stage_hse_check_at?: string;
+  stage_discharging_at?: string;
+  stage_discharge_completed_at?: string;
+
+  // ── HSE ──
+  hse_checklist: { item: string; passed: boolean; notes?: string }[];
+  hse_result?: string;
+  hse_conducted_by?: string;
+  hse_conducted_at?: string;
+  hse_notes?: string;
+
+  // ── Discharge arithmetic ──
+  gov?: string;
+  vcf?: string;
+  gsv?: string;
+  mt_vacuum?: string;
+
+  comments: {
+    id: string;
+    vessel_activity_id: string;
+    stage?: string;
+    comment: string;
+    recorded_by: string;
+    recorded_by_name?: string;
+    recorded_at: string;
+  }[];
 }
 
 // ─── BDN ─────────────────────────────────────────────────────────────────────
@@ -624,6 +808,45 @@ export interface TruckBdn {
   rejection_reason?: string;
   approved_at?: string;
   pdf_url?: string;
+  notes?: string;
+  created_at: string;
+}
+
+export interface VesselBdn {
+  id: string;
+  bdn_number: string;
+  operation_id: string;
+  vessel_id: string;
+  vessel_activity_id?: string;
+  generated_by: string;
+  generated_by_name?: string;
+  reviewed_by?: string;
+  status: string;
+  company_name: string;
+  product_type: string;
+  discharge_location: string;
+  receiving_vessel: string;
+  quantity_loaded_litres: string;
+  quantity_discharged_litres: string;
+  variance_litres?: string;
+  density: string;
+  temperature_before_loading: string;
+  temperature_after_loading: string;
+  vcf: string;
+  gov: string;
+  gsv: string;
+  mt_vacuum: string;
+  discharge_commenced_at: string;
+  discharge_completed_at: string;
+  discharge_completion_date: string;
+  system_product_type?: string;
+  system_discharge_location?: string;
+  system_quantity_loaded_litres?: string;
+  system_quantity_discharged_litres?: string;
+  system_discharge_commenced_at?: string;
+  system_discharge_completed_at?: string;
+  rejection_reason?: string;
+  approved_at?: string;
   notes?: string;
   created_at: string;
 }

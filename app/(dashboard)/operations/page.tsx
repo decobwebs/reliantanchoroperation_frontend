@@ -40,6 +40,7 @@ import {
   formatDateTime,
   formatRelative,
   OP_TYPE_LABELS,
+  OPERATION_COLOR_SWATCHES,
 } from "@/lib/utils";
 import {
   Tooltip,
@@ -258,7 +259,10 @@ export default function OperationsPage() {
                       className="w-full text-left px-4 py-3 hover:bg-muted/50 transition-colors"
                     >
                       <div className="flex items-center justify-between gap-2">
-                        <span className="font-mono text-sm font-semibold text-primary">{op.operation_number}</span>
+                        <span className="flex items-center gap-1.5 font-mono text-sm font-semibold text-primary">
+                          {op.color && <span className={`w-2 h-2 rounded-full shrink-0 ${OPERATION_COLOR_SWATCHES[op.color] ?? ""}`} />}
+                          {op.operation_number}
+                        </span>
                         <StatusBadge status={op.status as OperationStatus} />
                       </div>
                       <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
@@ -310,7 +314,10 @@ export default function OperationsPage() {
                         onClick={() => router.push(`/operations/${op.id}`)}
                       >
                         <TableCell className="font-mono text-sm font-semibold text-primary">
-                          {op.operation_number}
+                          <span className="flex items-center gap-1.5">
+                            {op.color && <span className={`w-2 h-2 rounded-full shrink-0 ${OPERATION_COLOR_SWATCHES[op.color] ?? ""}`} />}
+                            {op.operation_number}
+                          </span>
                         </TableCell>
                         <TableCell>
                           <Badge variant="outline" className="text-xs">

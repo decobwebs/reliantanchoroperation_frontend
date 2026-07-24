@@ -26,6 +26,7 @@ import {
   UploadCloud,
   ShieldCheck,
   ShieldAlert,
+  Bell,
   Shield,
   Activity,
   Download,
@@ -39,6 +40,7 @@ import {
   Anchor,
   PlayCircle,
   Pencil,
+  Gauge,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useForm } from "react-hook-form";
@@ -74,6 +76,7 @@ import {
   formatDateTime,
   formatRelative,
   OP_TYPE_LABELS,
+  OPERATION_COLOR_SWATCHES,
 } from "@/lib/utils";
 import type {
   ApiResponse,
@@ -101,6 +104,12 @@ import type {
   AuditLogEntry,
   AuditWaiver,
   TruckWaiver,
+  NavalClearance,
+  VesselBdn,
+  ClientNotificationRecipient,
+  ClientNotificationLog,
+  OperationKpi,
+  RoleStageDurations,
 } from "@/types";
 import { PRODUCT_TYPE_LABELS } from "@/types";
 
@@ -429,6 +438,7 @@ export default function OperationDetailPage({
   const canSeeTasks            = isBM || isOS || isLO || isMM;
   const canSeeBDN              = isBM || isMM;
   const canSeeTruckBdn         = isBM || isOS || isLO;
+  const canSeeVesselBdn        = isBM || isMM || isOS || isFM;
   const canSeeFeedback         = isBM || isLO;
   const canSeeFinance          = isBM || isFM;
   const canSeeMarine           = isBM || isMM;
@@ -534,6 +544,16 @@ export default function OperationDetailPage({
       return res.data.data;
     },
     enabled: canSeeTruckBdn || isFM,  // FM needs approved Truck BDNs to create invoices
+    staleTime: 0,
+  });
+
+  const { data: vesselBdns, isLoading: vesselBdnsLoading, isError: vesselBdnsErrored, refetch: refetchVesselBdns } = useQuery({
+    queryKey: ["operation-vessel-bdns", id],
+    queryFn: async () => {
+      const res = await api.get<ApiResponse<VesselBdn[]>>(`/operations/${id}/vessel-bdns`);
+      return res.data.data;
+    },
+    enabled: (canSeeVesselBdn || isFM) && op?.type !== "truck_only",
     staleTime: 0,
   });
 
@@ -780,6 +800,133 @@ export default function OperationDetailPage({
       qc.invalidateQueries({ queryKey: ["operation", id] });
       qc.invalidateQueries({ queryKey: ["operation-timeline", id] });
       qc.invalidateQueries({ queryKey: ["operations"] });
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const setColorMutation = useMutation({
+    mutationFn: async (color: string | null) => {
+      await api.patch(`/operations/${id}/color`, { color });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["operation", id] });
+      qc.invalidateQueries({ queryKey: ["operations"] });
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const [showColorPicker, setShowColorPicker] = useState(false);
+  const [showLinkNc, setShowLinkNc] = useState(false);
+  const [linkNcId, setLinkNcId] = useState("");
+  const { data: linkableClearances } = useQuery({
+    queryKey: ["naval-clearances-linkable"],
+    queryFn: async () => {
+      const res = await api.get<ApiResponse<NavalClearance[]>>("/naval-clearances");
+      return (res.data.data ?? []).filter((nc) => nc.is_valid);
+    },
+    enabled: showLinkNc,
+  });
+  const linkNcMutation = useMutation({
+    mutationFn: async () => {
+      await api.post(`/operations/${id}/link-naval-clearance`, { naval_clearance_id: linkNcId });
+    },
+    onSuccess: () => {
+      toast.success("Naval Clearance linked");
+      setShowLinkNc(false);
+      setLinkNcId("");
+      qc.invalidateQueries({ queryKey: ["operation", id] });
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+  const [unlinkNcReason, setUnlinkNcReason] = useState("");
+  const [showUnlinkNc, setShowUnlinkNc] = useState(false);
+  const unlinkNcMutation = useMutation({
+    mutationFn: async () => {
+      await api.post(`/operations/${id}/unlink-naval-clearance`, { reason: unlinkNcReason.trim() });
+    },
+    onSuccess: () => {
+      toast.success("Naval Clearance unlinked");
+      setShowUnlinkNc(false);
+      setUnlinkNcReason("");
+      qc.invalidateQueries({ queryKey: ["operation", id] });
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  // ── Client notifications — tick-to-send, strictly isolated per recipient ──
+  const [showNotifyDialog, setShowNotifyDialog] = useState(false);
+  const [tickedRecipients, setTickedRecipients] = useState<Set<string>>(new Set());
+  const [notifType, setNotifType] = useState("stage_update");
+  const [customMessage, setCustomMessage] = useState("");
+  const [etaEditId, setEtaEditId] = useState<string | null>(null);
+  const [etaEditValue, setEtaEditValue] = useState("");
+  const [etaEditReason, setEtaEditReason] = useState("");
+
+  const { data: notifyRecipients } = useQuery({
+    queryKey: ["client-notification-recipients", id],
+    queryFn: async () => {
+      const res = await api.get<ApiResponse<ClientNotificationRecipient[]>>(`/operations/${id}/client-notifications/recipients`);
+      return res.data.data ?? [];
+    },
+    enabled: showNotifyDialog && isBM,
+  });
+
+  const { data: notificationLog } = useQuery({
+    queryKey: ["client-notification-log", id],
+    queryFn: async () => {
+      const res = await api.get<ApiResponse<ClientNotificationLog[]>>(`/operations/${id}/client-notifications/log`);
+      return res.data.data ?? [];
+    },
+    enabled: isBM && !!op?.naval_clearance_id,
+  });
+
+  const { data: operationKpi, isLoading: operationKpiLoading, isError: operationKpiErrored, refetch: refetchOperationKpi } = useQuery({
+    queryKey: ["operation-kpi", id],
+    queryFn: async () => {
+      const res = await api.get<ApiResponse<OperationKpi>>(`/operations/${id}/kpi`);
+      return res.data.data ?? null;
+    },
+    enabled: isBM && op?.type !== "truck_only",
+  });
+
+  const { data: stageDurations, isLoading: stageDurationsLoading, isError: stageDurationsErrored, refetch: refetchStageDurations } = useQuery({
+    queryKey: ["operation-kpi-stage-durations", id],
+    queryFn: async () => {
+      const res = await api.get<ApiResponse<RoleStageDurations>>(`/operations/${id}/kpi/stage-durations`);
+      return res.data.data ?? null;
+    },
+    enabled: isBM && op?.type !== "truck_only",
+  });
+
+  const setEtaMutation = useMutation({
+    mutationFn: async (ncvId: string) => {
+      await api.post(`/naval-clearance-vessels/${ncvId}/eta`, {
+        eta_at: new Date(etaEditValue).toISOString(),
+        reason: etaEditReason.trim() || undefined,
+      });
+    },
+    onSuccess: () => {
+      toast.success("ETA recorded");
+      setEtaEditId(null); setEtaEditValue(""); setEtaEditReason("");
+      qc.invalidateQueries({ queryKey: ["client-notification-recipients", id] });
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const sendNotificationMutation = useMutation({
+    mutationFn: async () => {
+      await api.post(`/operations/${id}/client-notifications/send`, {
+        recipient_naval_clearance_vessel_ids: Array.from(tickedRecipients),
+        notification_type: notifType,
+        custom_message: customMessage.trim() || undefined,
+      });
+    },
+    onSuccess: () => {
+      toast.success(`Notification sent to ${tickedRecipients.size} recipient(s)`);
+      setShowNotifyDialog(false);
+      setTickedRecipients(new Set());
+      setCustomMessage("");
+      qc.invalidateQueries({ queryKey: ["client-notification-log", id] });
     },
     onError: (err) => toast.error(getErrorMessage(err)),
   });
@@ -1060,6 +1207,159 @@ export default function OperationDetailPage({
     onError: (err) => toast.error(getErrorMessage(err)),
   });
 
+  // ── Vessel BDN — one per vessel run, same manual/required/system-compare
+  // pattern as Truck BDN, plus an "N of M vessel runs approved" progress
+  // strip since completion depends on every run's BDN being approved.
+  const VESSEL_BDN_REQUIRED_FIELDS = [
+    "company_name", "product_type", "discharge_location", "receiving_vessel",
+    "quantity_loaded_litres", "quantity_discharged_litres",
+    "density", "temperature_before_loading", "temperature_after_loading",
+    "vcf", "gov", "gsv", "mt_vacuum",
+    "discharge_commenced_at", "discharge_completed_at", "discharge_completion_date",
+  ] as const;
+
+  const [vesselBdnFormActivityId, setVesselBdnFormActivityId] = useState<string | null>(null);
+  const [vesselBdnForm,           setVesselBdnForm]           = useState<Record<string, string>>({});
+  const [rejectVesselBdnId,       setRejectVesselBdnId]       = useState<string | null>(null);
+  const [rejectVesselBdnReason,   setRejectVesselBdnReason]   = useState("");
+  const [editVesselBdnId,         setEditVesselBdnId]         = useState<string | null>(null);
+  const [editVesselBdnForm,       setEditVesselBdnForm]       = useState<Record<string, string>>({});
+  const [editVesselBdnReason,     setEditVesselBdnReason]     = useState("");
+
+  // Mirrors the backend's positive_values validator — these fields must
+  // parse to a number greater than zero, not just be a non-empty string.
+  const VESSEL_BDN_POSITIVE_FIELDS = [
+    "quantity_loaded_litres", "quantity_discharged_litres", "density",
+    "vcf", "gov", "gsv", "mt_vacuum",
+  ] as const;
+
+  const vesselBdnFormComplete =
+    VESSEL_BDN_REQUIRED_FIELDS.every((k) => (vesselBdnForm[k] ?? "").trim() !== "") &&
+    VESSEL_BDN_POSITIVE_FIELDS.every((k) => {
+      const n = parseFloat(vesselBdnForm[k] ?? "");
+      return Number.isFinite(n) && n > 0;
+    });
+
+  const createVesselBdnMutation = useMutation({
+    mutationFn: async () => {
+      if (!vesselBdnFormActivityId) return;
+      await api.post(`/vessel-activities/${vesselBdnFormActivityId}/bdn`, {
+        company_name:               vesselBdnForm.company_name?.trim(),
+        product_type:               vesselBdnForm.product_type?.trim(),
+        discharge_location:         vesselBdnForm.discharge_location?.trim(),
+        receiving_vessel:           vesselBdnForm.receiving_vessel?.trim(),
+        quantity_loaded_litres:     parseFloat(vesselBdnForm.quantity_loaded_litres),
+        quantity_discharged_litres: parseFloat(vesselBdnForm.quantity_discharged_litres),
+        density:                    parseFloat(vesselBdnForm.density),
+        temperature_before_loading: parseFloat(vesselBdnForm.temperature_before_loading),
+        temperature_after_loading:  parseFloat(vesselBdnForm.temperature_after_loading),
+        vcf:                        parseFloat(vesselBdnForm.vcf),
+        gov:                        parseFloat(vesselBdnForm.gov),
+        gsv:                        parseFloat(vesselBdnForm.gsv),
+        mt_vacuum:                  parseFloat(vesselBdnForm.mt_vacuum),
+        discharge_commenced_at:     new Date(vesselBdnForm.discharge_commenced_at).toISOString(),
+        discharge_completed_at:     new Date(vesselBdnForm.discharge_completed_at).toISOString(),
+        discharge_completion_date:  vesselBdnForm.discharge_completion_date,
+        notes:                      vesselBdnForm.notes?.trim() || undefined,
+      });
+    },
+    onSuccess: () => {
+      toast.success("Vessel BDN submitted — awaiting Bunker Manager approval");
+      setVesselBdnFormActivityId(null);
+      setVesselBdnForm({});
+      qc.invalidateQueries({ queryKey: ["operation-vessel-bdns", id] });
+      qc.invalidateQueries({ queryKey: ["operation", id] });
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const approveVesselBdnMutation = useMutation({
+    mutationFn: async (bdnId: string) => {
+      const res = await api.post(`/vessel-bdns/${bdnId}/approve`, {});
+      return extractData<{ total_vessel_runs: number; approved_vessel_runs: number; operation_completed_gate_cleared: boolean }>(res);
+    },
+    onSuccess: (data) => {
+      toast.success(
+        data.operation_completed_gate_cleared
+          ? `Vessel BDN approved — all ${data.total_vessel_runs} vessel run(s) now approved`
+          : `Vessel BDN approved — ${data.approved_vessel_runs} of ${data.total_vessel_runs} vessel run(s) approved so far`
+      );
+      qc.invalidateQueries({ queryKey: ["operation-vessel-bdns", id] });
+      qc.invalidateQueries({ queryKey: ["operation", id] });
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const rejectVesselBdnMutation = useMutation({
+    mutationFn: async ({ bdnId, reason }: { bdnId: string; reason: string }) => {
+      await api.post(`/vessel-bdns/${bdnId}/reject`, { reason });
+    },
+    onSuccess: () => {
+      toast.success("Vessel BDN rejected");
+      setRejectVesselBdnId(null);
+      setRejectVesselBdnReason("");
+      qc.invalidateQueries({ queryKey: ["operation-vessel-bdns", id] });
+      qc.invalidateQueries({ queryKey: ["operation", id] });
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const openEditVesselBdn = (vb: VesselBdn) => {
+    setEditVesselBdnId(vb.id);
+    setEditVesselBdnForm({
+      company_name:               vb.company_name,
+      product_type:               vb.product_type,
+      discharge_location:         vb.discharge_location,
+      receiving_vessel:           vb.receiving_vessel,
+      quantity_loaded_litres:     vb.quantity_loaded_litres,
+      quantity_discharged_litres: vb.quantity_discharged_litres,
+      density:                    vb.density,
+      temperature_before_loading: vb.temperature_before_loading,
+      temperature_after_loading:  vb.temperature_after_loading,
+      vcf:                        vb.vcf,
+      gov:                        vb.gov,
+      gsv:                        vb.gsv,
+      mt_vacuum:                  vb.mt_vacuum,
+      discharge_commenced_at:     vb.discharge_commenced_at ? vb.discharge_commenced_at.slice(0, 16) : "",
+      discharge_completed_at:     vb.discharge_completed_at ? vb.discharge_completed_at.slice(0, 16) : "",
+      discharge_completion_date:  vb.discharge_completion_date ?? "",
+      notes:                      vb.notes ?? "",
+    });
+    setEditVesselBdnReason("");
+  };
+
+  const editVesselBdnMutation = useMutation({
+    mutationFn: async () => {
+      if (!editVesselBdnId) return;
+      await api.put(`/vessel-bdns/${editVesselBdnId}`, {
+        company_name:               editVesselBdnForm.company_name || undefined,
+        product_type:               editVesselBdnForm.product_type || undefined,
+        discharge_location:         editVesselBdnForm.discharge_location || undefined,
+        receiving_vessel:           editVesselBdnForm.receiving_vessel || undefined,
+        quantity_loaded_litres:     editVesselBdnForm.quantity_loaded_litres ? parseFloat(editVesselBdnForm.quantity_loaded_litres) : undefined,
+        quantity_discharged_litres: editVesselBdnForm.quantity_discharged_litres ? parseFloat(editVesselBdnForm.quantity_discharged_litres) : undefined,
+        density:                    editVesselBdnForm.density ? parseFloat(editVesselBdnForm.density) : undefined,
+        temperature_before_loading: editVesselBdnForm.temperature_before_loading ? parseFloat(editVesselBdnForm.temperature_before_loading) : undefined,
+        temperature_after_loading:  editVesselBdnForm.temperature_after_loading ? parseFloat(editVesselBdnForm.temperature_after_loading) : undefined,
+        vcf:                        editVesselBdnForm.vcf ? parseFloat(editVesselBdnForm.vcf) : undefined,
+        gov:                        editVesselBdnForm.gov ? parseFloat(editVesselBdnForm.gov) : undefined,
+        gsv:                        editVesselBdnForm.gsv ? parseFloat(editVesselBdnForm.gsv) : undefined,
+        mt_vacuum:                  editVesselBdnForm.mt_vacuum ? parseFloat(editVesselBdnForm.mt_vacuum) : undefined,
+        discharge_commenced_at:     editVesselBdnForm.discharge_commenced_at ? new Date(editVesselBdnForm.discharge_commenced_at).toISOString() : undefined,
+        discharge_completed_at:     editVesselBdnForm.discharge_completed_at ? new Date(editVesselBdnForm.discharge_completed_at).toISOString() : undefined,
+        discharge_completion_date:  editVesselBdnForm.discharge_completion_date || undefined,
+        notes:                      editVesselBdnForm.notes || undefined,
+        reason:                     editVesselBdnReason.trim(),
+      });
+    },
+    onSuccess: () => {
+      toast.success("Vessel BDN updated");
+      setEditVesselBdnId(null);
+      qc.invalidateQueries({ queryKey: ["operation-vessel-bdns", id] });
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
   // ── Document upload (BM)
   const [showDocUploadForm, setShowDocUploadForm] = useState(false);
   const [opDocFile,         setOpDocFile]         = useState<File | null>(null);
@@ -1196,6 +1496,97 @@ export default function OperationDetailPage({
       toast.success("Initial ROB updated and logged");
       setEditingRobActivityId(null);
       setEditRobValue("");
+      refetchVesselActivities();
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  // ── Per-vessel stage flow (cast off -> discharge completed) — independent
+  // of the ROB session status above.
+  const VESSEL_STAGES: { value: string; label: string }[] = [
+    { value: "cast_off", label: "Cast Off" },
+    { value: "outbound", label: "Outbound" },
+    { value: "alongside", label: "Alongside" },
+    { value: "hse_check", label: "HSE Check" },
+    { value: "discharging", label: "Discharging" },
+    { value: "discharge_completed", label: "Discharge Completed" },
+  ];
+  const [stageFormActivityId, setStageFormActivityId] = useState<string | null>(null);
+  const [stageOccurredAt, setStageOccurredAt] = useState("");
+  const [stageComment, setStageComment] = useState("");
+
+  const advanceStageMutation = useMutation({
+    mutationFn: async ({ activityId, stage }: { activityId: string; stage: string }) => {
+      await api.post(`/vessel-activities/${activityId}/advance-stage`, {
+        stage, occurred_at: new Date(stageOccurredAt).toISOString(), comment: stageComment.trim() || undefined,
+      });
+    },
+    onSuccess: () => {
+      toast.success("Stage recorded");
+      setStageFormActivityId(null); setStageOccurredAt(""); setStageComment("");
+      refetchVesselActivities();
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const DEFAULT_HSE_CHECKLIST: { item: string; passed: boolean; notes: string }[] = [
+    { item: "Fire extinguisher accessible", passed: false, notes: "" },
+    { item: "Spill kit available", passed: false, notes: "" },
+    { item: "Communication established with vessel crew", passed: false, notes: "" },
+    { item: "PPE worn by all personnel", passed: false, notes: "" },
+  ];
+  const [hseFormActivityId, setHseFormActivityId] = useState<string | null>(null);
+  const [hseChecklist, setHseChecklist] = useState(DEFAULT_HSE_CHECKLIST);
+  const [hseNotes, setHseNotes] = useState("");
+  const openHseForm = (activityId: string) => {
+    setHseFormActivityId(activityId);
+    setHseChecklist(DEFAULT_HSE_CHECKLIST);
+    setHseNotes("");
+  };
+  const closeHseForm = () => {
+    setHseFormActivityId(null);
+    setHseChecklist(DEFAULT_HSE_CHECKLIST);
+    setHseNotes("");
+  };
+
+  const recordHseMutation = useMutation({
+    mutationFn: async (activityId: string) => {
+      await api.post(`/vessel-activities/${activityId}/hse`, {
+        checklist: hseChecklist.map((c) => ({ item: c.item, passed: c.passed, notes: c.notes.trim() || undefined })),
+        result: hseChecklist.every((c) => c.passed) ? "satisfactory" : "not_satisfactory",
+        notes: hseNotes.trim() || undefined,
+      });
+    },
+    onSuccess: () => {
+      toast.success("HSE checklist recorded");
+      closeHseForm();
+      refetchVesselActivities();
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const [dischargeQtyActivityId, setDischargeQtyActivityId] = useState<string | null>(null);
+  const [dqGov, setDqGov] = useState("");
+  const [dqVcf, setDqVcf] = useState("");
+  const [dqDensity, setDqDensity] = useState("");
+  const openDischargeQtyForm = (activityId: string) => {
+    setDischargeQtyActivityId(activityId);
+    setDqGov(""); setDqVcf(""); setDqDensity("");
+  };
+  const closeDischargeQtyForm = () => {
+    setDischargeQtyActivityId(null);
+    setDqGov(""); setDqVcf(""); setDqDensity("");
+  };
+
+  const recordDischargeQtyMutation = useMutation({
+    mutationFn: async (activityId: string) => {
+      await api.post(`/vessel-activities/${activityId}/discharge-quantities`, {
+        gov: parseFloat(dqGov), vcf: parseFloat(dqVcf), density: parseFloat(dqDensity),
+      });
+    },
+    onSuccess: () => {
+      toast.success("Discharge quantities recorded — GSV/MTvac computed");
+      closeDischargeQtyForm();
       refetchVesselActivities();
     },
     onError: (err) => toast.error(getErrorMessage(err)),
@@ -1866,6 +2257,45 @@ export default function OperationDetailPage({
               {parseFloat(op.expected_volume_mt).toLocaleString()} L expected
             </span>
           )}
+
+          {op.type !== "truck_only" && (
+            op.naval_clearance ? (
+              <>
+                <Badge variant="outline" className="flex items-center gap-1.5">
+                  <Anchor className="w-3 h-3" />
+                  {op.naval_clearance.clearance_number}
+                  {!op.naval_clearance.is_valid && <span className="text-amber-600">(expired)</span>}
+                  {isBM && (
+                    <button
+                      className="ml-1 text-muted-foreground hover:text-destructive"
+                      onClick={() => setShowUnlinkNc(true)}
+                      title="Unlink Naval Clearance"
+                    >
+                      <XCircle className="w-3 h-3" />
+                    </button>
+                  )}
+                </Badge>
+                {isBM && (
+                  <Button size="sm" variant="outline" className="h-6 text-xs gap-1" onClick={() => setShowNotifyDialog(true)}>
+                    <Bell className="w-3 h-3" />Notify Clients
+                  </Button>
+                )}
+              </>
+            ) : isBM && (
+              <Button size="sm" variant="outline" className="h-6 text-xs gap-1" onClick={() => setShowLinkNc(true)}>
+                <Anchor className="w-3 h-3" />Link Naval Clearance
+              </Button>
+            )
+          )}
+
+          {isBM && (
+            <button
+              className={`w-4 h-4 rounded-full border ${op.color ? OPERATION_COLOR_SWATCHES[op.color] : "bg-transparent border-dashed"}`}
+              title="Set operation color"
+              onClick={() => setShowColorPicker(true)}
+            />
+          )}
+
           <span className="text-sm text-muted-foreground ml-auto">
             Created {formatRelative(op.created_at)}
           </span>
@@ -2172,6 +2602,17 @@ export default function OperationDetailPage({
                   </TabsTrigger>
                 )}
 
+                {canSeeVesselBdn && op.type !== "truck_only" && (
+                  <TabsTrigger value="vessel-bdns">
+                    Vessel BDN
+                    {vesselBdns?.length ? (
+                      <Badge variant="secondary" className="ml-1.5 h-4 px-1.5 text-[10px]">
+                        {vesselBdns.length}
+                      </Badge>
+                    ) : null}
+                  </TabsTrigger>
+                )}
+
                 {canSeeMarine && (
                   <TabsTrigger value="marine">
                     <Anchor className="w-3.5 h-3.5 mr-1" />
@@ -2184,6 +2625,13 @@ export default function OperationDetailPage({
                         {vesselActivities.length}
                       </Badge>
                     ) : null}
+                  </TabsTrigger>
+                )}
+
+                {isBM && op.type !== "truck_only" && (
+                  <TabsTrigger value="kpi">
+                    <Gauge className="w-3.5 h-3.5 mr-1" />
+                    KPI
                   </TabsTrigger>
                 )}
 
@@ -3365,6 +3813,305 @@ export default function OperationDetailPage({
                 </TabsContent>
               )}
 
+              {/* ── Vessel BDN tab — one per vessel run, gates operation completion until ALL are approved */}
+              {canSeeVesselBdn && op.type !== "truck_only" && (() => {
+                const bdnnedActivityIds = new Set(
+                  (vesselBdns ?? []).filter((b) => b.status === "pending" || b.status === "approved").map((b) => b.vessel_activity_id)
+                );
+                const submittableActivities = (vesselActivities ?? []).filter(
+                  (a) => a.status !== "cancelled" && !bdnnedActivityIds.has(a.id)
+                );
+                const totalRuns = (vesselActivities ?? []).filter((a) => a.status !== "cancelled").length;
+                const approvedRuns = (vesselBdns ?? []).filter((b) => b.status === "approved").length;
+
+                return (
+                <TabsContent value="vessel-bdns" className="mt-4 space-y-4">
+
+                  {totalRuns > 0 && (
+                    <div className={`rounded-md px-3 py-2 text-xs flex items-center gap-2 ${approvedRuns >= totalRuns ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
+                      <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+                      {approvedRuns} of {totalRuns} vessel run(s) approved
+                      {approvedRuns < totalRuns && " — operation cannot complete until every run is approved"}
+                    </div>
+                  )}
+
+                  {/* OS/Marine: Submit Vessel BDN form */}
+                  {(isOS || isMM) && submittableActivities.length > 0 && (
+                    <Card className="border-0 shadow-sm">
+                      <CardHeader className="pb-3 pt-4 px-5">
+                        <div className="flex items-center justify-between">
+                          <CardTitle className="text-sm font-semibold">Submit Vessel Bunker Delivery Note</CardTitle>
+                          {!vesselBdnFormActivityId && (
+                            <Select value="" onValueChange={(v) => { setVesselBdnFormActivityId(v); setVesselBdnForm({}); }}>
+                              <SelectTrigger className="h-8 text-xs w-[220px]"><SelectValue placeholder="Select vessel run…" /></SelectTrigger>
+                              <SelectContent>
+                                {submittableActivities.map((a) => (
+                                  <SelectItem key={a.id} value={a.id} className="text-xs">{a.activity_number} · {a.vessel_name}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          All fields are entered manually and required. The system separately records its own figures
+                          from this vessel run — the Bunker Manager will see both side by side.
+                        </p>
+                      </CardHeader>
+
+                      {vesselBdnFormActivityId && (
+                        <CardContent className="px-5 pb-5 space-y-4 border-t pt-4">
+                          <div className="space-y-3">
+                            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Basic Info</p>
+                            <div className="space-y-1.5">
+                              <Label className="text-xs">Company Name <span className="text-destructive">*</span></Label>
+                              <Input className="h-8 text-xs" placeholder="Client company being supplied to…" value={vesselBdnForm.company_name ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, company_name: e.target.value }))} />
+                            </div>
+                            <div className="grid grid-cols-3 gap-3">
+                              <div className="space-y-1.5">
+                                <Label className="text-xs">Product Type <span className="text-destructive">*</span></Label>
+                                <Input className="h-8 text-xs" value={vesselBdnForm.product_type ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, product_type: e.target.value }))} />
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label className="text-xs">Discharge Location <span className="text-destructive">*</span></Label>
+                                <Input className="h-8 text-xs" value={vesselBdnForm.discharge_location ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, discharge_location: e.target.value }))} />
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label className="text-xs">Receiving Vessel <span className="text-destructive">*</span></Label>
+                                <Input className="h-8 text-xs" placeholder="e.g. MV Breydel" value={vesselBdnForm.receiving_vessel ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, receiving_vessel: e.target.value }))} />
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="space-y-3">
+                            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Quantities</p>
+                            <div className="grid grid-cols-2 gap-3">
+                              <div className="space-y-1.5">
+                                <Label className="text-xs">Quantity Loaded (L) <span className="text-destructive">*</span></Label>
+                                <Input type="number" step="0.01" min="0" className="h-8 text-xs" value={vesselBdnForm.quantity_loaded_litres ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, quantity_loaded_litres: e.target.value }))} />
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label className="text-xs">Quantity Discharged (L) <span className="text-destructive">*</span></Label>
+                                <Input type="number" step="0.01" min="0" className="h-8 text-xs" value={vesselBdnForm.quantity_discharged_litres ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, quantity_discharged_litres: e.target.value }))} />
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="space-y-3">
+                            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Product Quality</p>
+                            <div className="grid grid-cols-3 gap-3">
+                              <div className="space-y-1.5">
+                                <Label className="text-xs">Density (kg/m³) <span className="text-destructive">*</span></Label>
+                                <Input type="number" step="0.0001" min="0" className="h-8 text-xs" value={vesselBdnForm.density ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, density: e.target.value }))} />
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label className="text-xs">Temp. Before Loading (°C) <span className="text-destructive">*</span></Label>
+                                <Input type="number" step="0.1" className="h-8 text-xs" value={vesselBdnForm.temperature_before_loading ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, temperature_before_loading: e.target.value }))} />
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label className="text-xs">Temp. After Loading (°C) <span className="text-destructive">*</span></Label>
+                                <Input type="number" step="0.1" className="h-8 text-xs" value={vesselBdnForm.temperature_after_loading ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, temperature_after_loading: e.target.value }))} />
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="space-y-3">
+                            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Delivery Quantity / Method</p>
+                            <div className="grid grid-cols-4 gap-3">
+                              <div className="space-y-1.5">
+                                <Label className="text-xs">VCF <span className="text-destructive">*</span></Label>
+                                <Input type="number" step="0.0001" min="0" className="h-8 text-xs" value={vesselBdnForm.vcf ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, vcf: e.target.value }))} />
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label className="text-xs">GOV (L) <span className="text-destructive">*</span></Label>
+                                <Input type="number" step="0.01" min="0" className="h-8 text-xs" value={vesselBdnForm.gov ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, gov: e.target.value }))} />
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label className="text-xs">GSV (L) <span className="text-destructive">*</span></Label>
+                                <Input type="number" step="0.01" min="0" className="h-8 text-xs" value={vesselBdnForm.gsv ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, gsv: e.target.value }))} />
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label className="text-xs">MTvac <span className="text-destructive">*</span></Label>
+                                <Input type="number" step="0.001" min="0" className="h-8 text-xs" value={vesselBdnForm.mt_vacuum ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, mt_vacuum: e.target.value }))} />
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="space-y-3">
+                            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Timing</p>
+                            <div className="grid grid-cols-3 gap-3">
+                              <div className="space-y-1.5">
+                                <Label className="text-xs">Commenced Discharge <span className="text-destructive">*</span></Label>
+                                <Input type="datetime-local" className="h-8 text-xs" value={vesselBdnForm.discharge_commenced_at ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, discharge_commenced_at: e.target.value }))} />
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label className="text-xs">Completed Discharge <span className="text-destructive">*</span></Label>
+                                <Input type="datetime-local" className="h-8 text-xs" value={vesselBdnForm.discharge_completed_at ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, discharge_completed_at: e.target.value }))} />
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label className="text-xs">Date of Discharge Completion <span className="text-destructive">*</span></Label>
+                                <Input type="date" className="h-8 text-xs" value={vesselBdnForm.discharge_completion_date ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, discharge_completion_date: e.target.value }))} />
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="space-y-1.5">
+                            <Label className="text-xs">Notes</Label>
+                            <Textarea className="text-xs min-h-[60px] resize-none" placeholder="Any additional delivery notes…" value={vesselBdnForm.notes ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, notes: e.target.value }))} />
+                          </div>
+                          <div className="flex gap-2">
+                            <Button size="sm" className="flex-1" disabled={!vesselBdnFormComplete || createVesselBdnMutation.isPending} onClick={() => createVesselBdnMutation.mutate()}>
+                              {createVesselBdnMutation.isPending ? "Submitting…" : "Submit Vessel BDN"}
+                            </Button>
+                            <Button size="sm" variant="outline" onClick={() => { setVesselBdnFormActivityId(null); setVesselBdnForm({}); }}>Cancel</Button>
+                          </div>
+                        </CardContent>
+                      )}
+                    </Card>
+                  )}
+
+                  {/* Vessel BDN list */}
+                  <Card className="border-0 shadow-sm">
+                    <CardContent className="p-0">
+                      {vesselBdnsLoading ? (
+                        <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
+                      ) : vesselBdnsErrored ? (
+                        <div className="flex flex-col items-center gap-2 py-8">
+                          <p className="text-sm text-red-600">Failed to load Vessel BDNs</p>
+                          <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => refetchVesselBdns()}>Retry</Button>
+                        </div>
+                      ) : vesselBdns?.length ? (
+                        <div className="divide-y">
+                          {vesselBdns.map((vb) => {
+                            const activity = vesselActivities?.find((a) => a.id === vb.vessel_activity_id);
+                            const rows: { label: string; system?: string; submitted: string; mismatch: boolean }[] = [
+                              { label: "Product Type", system: vb.system_product_type ?? "—", submitted: vb.product_type, mismatch: (vb.system_product_type ?? "").trim().toLowerCase() !== vb.product_type.trim().toLowerCase() },
+                              {
+                                label: "Quantity Loaded",
+                                system: vb.system_quantity_loaded_litres ? `${parseFloat(vb.system_quantity_loaded_litres).toLocaleString(undefined, { minimumFractionDigits: 2 })} L` : "—",
+                                submitted: `${parseFloat(vb.quantity_loaded_litres).toLocaleString(undefined, { minimumFractionDigits: 2 })} L`,
+                                mismatch: vb.system_quantity_loaded_litres !== undefined && parseFloat(vb.system_quantity_loaded_litres ?? "0") !== parseFloat(vb.quantity_loaded_litres),
+                              },
+                              {
+                                label: "Quantity Discharged",
+                                system: vb.system_quantity_discharged_litres ? `${parseFloat(vb.system_quantity_discharged_litres).toLocaleString(undefined, { minimumFractionDigits: 2 })} L` : "—",
+                                submitted: `${parseFloat(vb.quantity_discharged_litres).toLocaleString(undefined, { minimumFractionDigits: 2 })} L`,
+                                mismatch: vb.system_quantity_discharged_litres !== undefined && parseFloat(vb.system_quantity_discharged_litres ?? "0") !== parseFloat(vb.quantity_discharged_litres),
+                              },
+                              {
+                                label: "Commenced Discharge",
+                                system: vb.system_discharge_commenced_at ? formatDateTime(vb.system_discharge_commenced_at) : "—",
+                                submitted: formatDateTime(vb.discharge_commenced_at),
+                                mismatch: vb.system_discharge_commenced_at !== undefined && vb.system_discharge_commenced_at !== vb.discharge_commenced_at,
+                              },
+                              {
+                                label: "Completed Discharge",
+                                system: vb.system_discharge_completed_at ? formatDateTime(vb.system_discharge_completed_at) : "—",
+                                submitted: formatDateTime(vb.discharge_completed_at),
+                                mismatch: vb.system_discharge_completed_at !== undefined && vb.system_discharge_completed_at !== vb.discharge_completed_at,
+                              },
+                            ];
+                            const mismatchCount = rows.filter((r) => r.mismatch).length;
+
+                            return (
+                            <div key={vb.id} className="px-5 py-4 space-y-3">
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <p className="text-sm font-mono font-semibold">{vb.bdn_number}</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {activity ? `${activity.activity_number} · ${activity.vessel_name}` : "—"}
+                                    {" · "}{vb.company_name}
+                                    {" · "}{parseFloat(vb.quantity_discharged_litres).toLocaleString(undefined, { minimumFractionDigits: 2 })} L
+                                  </p>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                  {mismatchCount > 0 && (
+                                    <Badge variant="outline" className="text-[10px] gap-1 border-amber-300 text-amber-700 bg-amber-50">
+                                      <AlertTriangle className="w-3 h-3" />{mismatchCount} discrepanc{mismatchCount === 1 ? "y" : "ies"}
+                                    </Badge>
+                                  )}
+                                  <Badge variant={vb.status === "approved" ? "default" : vb.status === "rejected" ? "destructive" : "secondary"} className="text-xs capitalize">
+                                    {vb.status}
+                                  </Badge>
+                                  {isBM && (
+                                    <Button size="sm" variant="outline" className="h-6 px-1.5" onClick={() => openEditVesselBdn(vb)}>
+                                      <Pencil className="w-3 h-3" />
+                                    </Button>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className="rounded-md border overflow-hidden">
+                                <div className="grid grid-cols-[1fr_1fr_1fr] bg-muted/40 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                                  <span>Field</span><span>System Recorded</span><span>Submitted</span>
+                                </div>
+                                {rows.map((r) => (
+                                  <div key={r.label} className={`grid grid-cols-[1fr_1fr_1fr] px-3 py-1.5 text-xs border-t items-center ${r.mismatch ? "bg-amber-50" : ""}`}>
+                                    <span className="text-muted-foreground">{r.label}</span>
+                                    <span>{r.system}</span>
+                                    <span className={r.mismatch ? "text-amber-800 font-semibold flex items-center gap-1" : ""}>
+                                      {r.mismatch && <AlertTriangle className="w-3 h-3 shrink-0" />}{r.submitted}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+
+                              <div className="grid grid-cols-3 gap-x-4 gap-y-1 text-[11px] text-muted-foreground bg-muted/20 rounded-md p-2.5">
+                                <span>Receiving Vessel: {vb.receiving_vessel}</span>
+                                <span>Discharge Location: {vb.discharge_location}</span>
+                                <span>Density: {parseFloat(vb.density).toLocaleString(undefined, { minimumFractionDigits: 4 })}</span>
+                                <span>Temp Before: {parseFloat(vb.temperature_before_loading).toFixed(1)}°C</span>
+                                <span>Temp After: {parseFloat(vb.temperature_after_loading).toFixed(1)}°C</span>
+                                <span>VCF: {parseFloat(vb.vcf).toLocaleString(undefined, { minimumFractionDigits: 4 })}</span>
+                                <span>GOV: {parseFloat(vb.gov).toLocaleString(undefined, { minimumFractionDigits: 2 })} L</span>
+                                <span>GSV: {parseFloat(vb.gsv).toLocaleString(undefined, { minimumFractionDigits: 2 })} L</span>
+                                <span>MTvac: {parseFloat(vb.mt_vacuum).toLocaleString(undefined, { minimumFractionDigits: 3 })}</span>
+                                {vb.variance_litres && <span>Variance: {parseFloat(vb.variance_litres).toLocaleString(undefined, { minimumFractionDigits: 2 })} L</span>}
+                                <span>Completion Date: {formatDate(vb.discharge_completion_date)}</span>
+                              </div>
+                              {vb.notes && <p className="text-xs text-foreground/80">{vb.notes}</p>}
+
+                              {isBM && vb.status === "pending" && (
+                                <div className="pt-1 space-y-2">
+                                  {rejectVesselBdnId === vb.id ? (
+                                    <div className="space-y-2 border rounded-md p-3 bg-muted/30">
+                                      <Label className="text-xs">Rejection reason <span className="text-destructive">*</span></Label>
+                                      <Textarea className="text-xs min-h-[60px] resize-none" placeholder="Explain why this Vessel BDN is being rejected (min 10 characters)…" value={rejectVesselBdnReason} onChange={(e) => setRejectVesselBdnReason(e.target.value)} />
+                                      <div className="flex gap-2">
+                                        <Button size="sm" variant="destructive" className="flex-1 text-xs" disabled={rejectVesselBdnReason.trim().length < 10 || rejectVesselBdnMutation.isPending} onClick={() => rejectVesselBdnMutation.mutate({ bdnId: vb.id, reason: rejectVesselBdnReason.trim() })}>
+                                          {rejectVesselBdnMutation.isPending ? "Rejecting…" : "Confirm Rejection"}
+                                        </Button>
+                                        <Button size="sm" variant="outline" className="flex-1 text-xs" onClick={() => { setRejectVesselBdnId(null); setRejectVesselBdnReason(""); }}>Cancel</Button>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div className="flex gap-2">
+                                      <Button size="sm" className="flex-1 text-xs" disabled={approveVesselBdnMutation.isPending} onClick={() => approveVesselBdnMutation.mutate(vb.id)}>
+                                        Approve Vessel BDN
+                                      </Button>
+                                      <Button size="sm" variant="outline" className="flex-1 text-xs text-destructive border-destructive/30 hover:bg-destructive/10" onClick={() => setRejectVesselBdnId(vb.id)}>
+                                        Reject
+                                      </Button>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+
+                              {vb.status === "rejected" && vb.rejection_reason && (
+                                <p className="text-xs text-destructive bg-destructive/10 rounded px-2 py-1">Rejected: {vb.rejection_reason}</p>
+                              )}
+                            </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground text-center py-8">No Vessel BDNs yet</p>
+                      )}
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+                );
+              })()}
+
               {/* ── Marine tab — vessel receipt summary + activity sessions */}
               {canSeeMarine && (
                 <TabsContent value="marine" className="mt-4 space-y-4">
@@ -3787,6 +4534,181 @@ export default function OperationDetailPage({
                               </div>
                             )}
 
+                            {/* ── Per-vessel stage flow — cast off through discharge completed.
+                                 Independent of the ROB session status above (Reliant's own
+                                 barge's physical journey, not the truck→barge replenishment). ── */}
+                            {activity.status !== "cancelled" && (() => {
+                              const stageIdx = VESSEL_STAGES.findIndex((s) => s.value === activity.stage);
+                              const nextStage = VESSEL_STAGES[stageIdx + 1];
+                              const isFormOpen = stageFormActivityId === activity.id;
+                              return (
+                                <div className="border-t px-5 py-3.5 space-y-3">
+                                  <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Vessel Stage</p>
+                                  <div className="flex items-center gap-1 overflow-x-auto pb-1">
+                                    {VESSEL_STAGES.map((s, i) => {
+                                      const done = i <= stageIdx;
+                                      const current = i === stageIdx + 1;
+                                      return (
+                                        <div key={s.value} className="flex items-center gap-1 shrink-0">
+                                          <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold ${
+                                            done ? "bg-emerald-500 text-white" : current ? "bg-primary text-white" : "bg-muted text-muted-foreground"
+                                          }`}>
+                                            {done ? "✓" : i + 1}
+                                          </div>
+                                          <span className={`text-[10px] ${done ? "text-muted-foreground line-through" : current ? "font-semibold" : "text-muted-foreground"}`}>
+                                            {s.label}
+                                          </span>
+                                          {i < VESSEL_STAGES.length - 1 && <ChevronRight className="w-2.5 h-2.5 text-muted-foreground/30 shrink-0" />}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+
+                                  {/* Per-stage timestamps already logged */}
+                                  {stageIdx >= 0 && (
+                                    <div className="grid grid-cols-3 gap-x-3 gap-y-1 text-[10px] text-muted-foreground">
+                                      {VESSEL_STAGES.slice(0, stageIdx + 1).map((s) => {
+                                        const key = `stage_${s.value}_at` as keyof VesselActivity;
+                                        const val = activity[key] as string | undefined;
+                                        return val ? <span key={s.value}>{s.label}: {formatDateTime(val)}</span> : null;
+                                      })}
+                                    </div>
+                                  )}
+
+                                  {canAct && nextStage && (
+                                    isFormOpen ? (
+                                      <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+                                        <p className="text-xs font-semibold">Log "{nextStage.label}"</p>
+                                        <div className="grid grid-cols-2 gap-2">
+                                          <div className="space-y-1">
+                                            <Label className="text-[10px] text-muted-foreground">Occurred At</Label>
+                                            <Input type="datetime-local" className="h-8 text-xs" value={stageOccurredAt} onChange={(e) => setStageOccurredAt(e.target.value)} />
+                                          </div>
+                                        </div>
+                                        <div className="space-y-1">
+                                          <Label className="text-[10px] text-muted-foreground">Comment (optional)</Label>
+                                          <Textarea className="text-xs min-h-[50px] resize-none" value={stageComment} onChange={(e) => setStageComment(e.target.value)} placeholder="Progress notes, delays, explanations…" />
+                                        </div>
+                                        <div className="flex gap-2">
+                                          <Button
+                                            size="sm" className="flex-1 text-xs"
+                                            disabled={!stageOccurredAt || advanceStageMutation.isPending}
+                                            onClick={() => advanceStageMutation.mutate({ activityId: activity.id, stage: nextStage.value })}
+                                          >
+                                            {advanceStageMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : `Confirm ${nextStage.label}`}
+                                          </Button>
+                                          <Button size="sm" variant="ghost" className="text-xs" onClick={() => { setStageFormActivityId(null); setStageOccurredAt(""); setStageComment(""); }}>Cancel</Button>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <Button
+                                        size="sm" variant="outline" className="text-xs gap-1.5"
+                                        onClick={() => { setStageFormActivityId(activity.id); setStageOccurredAt(""); setStageComment(""); }}
+                                      >
+                                        <ChevronRight className="w-3.5 h-3.5" />Log "{nextStage.label}"
+                                      </Button>
+                                    )
+                                  )}
+
+                                  {/* HSE checklist — available once alongside has been logged, non-blocking */}
+                                  {canAct && stageIdx >= VESSEL_STAGES.findIndex((s) => s.value === "alongside") && (
+                                    <div className="pt-1">
+                                      {activity.hse_result ? (
+                                        <div className={`rounded-md px-3 py-2 text-xs flex items-center gap-2 ${activity.hse_result === "satisfactory" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
+                                          <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+                                          HSE checklist recorded — {activity.hse_result === "satisfactory" ? "Satisfactory" : "Issues noted (recorded, non-blocking)"}
+                                        </div>
+                                      ) : hseFormActivityId === activity.id ? (
+                                        <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+                                          <p className="text-xs font-semibold">HSE Safety Checklist</p>
+                                          {hseChecklist.map((item, i) => (
+                                            <label key={i} className="flex items-center gap-2 text-xs">
+                                              <input type="checkbox" checked={item.passed} onChange={(e) => setHseChecklist((rows) => rows.map((r, idx) => idx === i ? { ...r, passed: e.target.checked } : r))} />
+                                              {item.item}
+                                            </label>
+                                          ))}
+                                          <Textarea className="text-xs min-h-[50px] resize-none" placeholder="Notes…" value={hseNotes} onChange={(e) => setHseNotes(e.target.value)} />
+                                          <div className="flex gap-2">
+                                            <Button size="sm" className="flex-1 text-xs" disabled={recordHseMutation.isPending} onClick={() => recordHseMutation.mutate(activity.id)}>
+                                              {recordHseMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Submit HSE Checklist"}
+                                            </Button>
+                                            <Button size="sm" variant="ghost" className="text-xs" onClick={closeHseForm}>Cancel</Button>
+                                          </div>
+                                        </div>
+                                      ) : (
+                                        <Button size="sm" variant="outline" className="text-xs gap-1.5" onClick={() => openHseForm(activity.id)}>
+                                          <ShieldCheck className="w-3.5 h-3.5" />Record HSE Checklist
+                                        </Button>
+                                      )}
+                                    </div>
+                                  )}
+
+                                  {/* Discharge quantities — GOV/VCF/density in, GSV/MTvac computed */}
+                                  {canAct && stageIdx >= VESSEL_STAGES.findIndex((s) => s.value === "discharging") && (
+                                    <div className="pt-1">
+                                      {activity.gsv ? (
+                                        <div className="grid grid-cols-4 gap-px border rounded-md overflow-hidden text-xs">
+                                          {[["GOV", activity.gov], ["VCF", activity.vcf], ["GSV", activity.gsv], ["MTvac", activity.mt_vacuum]].map(([lbl, val]) => (
+                                            <div key={String(lbl)} className="bg-muted/20 px-2.5 py-1.5">
+                                              <p className="text-[9px] text-muted-foreground uppercase">{lbl}</p>
+                                              <p className="font-mono font-semibold">{val ? parseFloat(String(val)).toLocaleString() : "—"}</p>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      ) : dischargeQtyActivityId === activity.id ? (
+                                        <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+                                          <p className="text-xs font-semibold">Discharge Quantities</p>
+                                          <div className="grid grid-cols-3 gap-2">
+                                            <div className="space-y-1">
+                                              <Label className="text-[10px] text-muted-foreground">GOV (L)</Label>
+                                              <Input type="number" className="h-8 text-xs" value={dqGov} onChange={(e) => setDqGov(e.target.value)} />
+                                            </div>
+                                            <div className="space-y-1">
+                                              <Label className="text-[10px] text-muted-foreground">VCF</Label>
+                                              <Input type="number" step="0.0001" className="h-8 text-xs" value={dqVcf} onChange={(e) => setDqVcf(e.target.value)} />
+                                            </div>
+                                            <div className="space-y-1">
+                                              <Label className="text-[10px] text-muted-foreground">Density</Label>
+                                              <Input type="number" step="0.0001" className="h-8 text-xs" value={dqDensity} onChange={(e) => setDqDensity(e.target.value)} />
+                                            </div>
+                                          </div>
+                                          <div className="flex gap-2">
+                                            <Button
+                                              size="sm" className="flex-1 text-xs"
+                                              disabled={!dqGov || !dqVcf || !dqDensity || recordDischargeQtyMutation.isPending}
+                                              onClick={() => recordDischargeQtyMutation.mutate(activity.id)}
+                                            >
+                                              {recordDischargeQtyMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Compute GSV/MTvac"}
+                                            </Button>
+                                            <Button size="sm" variant="ghost" className="text-xs" onClick={closeDischargeQtyForm}>Cancel</Button>
+                                          </div>
+                                        </div>
+                                      ) : (
+                                        <Button size="sm" variant="outline" className="text-xs gap-1.5" onClick={() => openDischargeQtyForm(activity.id)}>
+                                          <FileText className="w-3.5 h-3.5" />Record Discharge Quantities
+                                        </Button>
+                                      )}
+                                    </div>
+                                  )}
+
+                                  {/* Comments log */}
+                                  {activity.comments.length > 0 && (
+                                    <div className="pt-1 space-y-1">
+                                      <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Comments</p>
+                                      {activity.comments.map((c) => (
+                                        <div key={c.id} className="text-[11px] text-muted-foreground border-l-2 border-muted pl-2">
+                                          <span className="font-medium text-foreground">{c.recorded_by_name ?? "—"}</span>
+                                          {c.stage && <span className="ml-1 text-muted-foreground">({VESSEL_STAGES.find((s) => s.value === c.stage)?.label ?? c.stage})</span>}
+                                          <span className="ml-1">{formatDateTime(c.recorded_at)}</span>
+                                          <p className="text-foreground/80">{c.comment}</p>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })()}
+
                             {/* ── Step-by-step action area (only for active/pending, only if canAct) ── */}
                             {canAct && activity.status !== "completed" && activity.status !== "cancelled" && (
                               <div className="border-t">
@@ -4084,6 +5006,99 @@ export default function OperationDetailPage({
 
                   </> /* end op.type !== "truck_only" */}
 
+                </TabsContent>
+              )}
+
+              {/* ── KPI tab — cast-off to discharge-completed duration + per-stage/role timing, computed live from stage timestamps and the audit trail, no new tables */}
+              {isBM && op.type !== "truck_only" && (
+                <TabsContent value="kpi" className="mt-4 space-y-4">
+                  <Card className="border-0 shadow-sm">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm flex items-center gap-2">
+                        <Gauge className="w-4 h-4 text-primary" />
+                        Operation Duration
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-5 pt-0">
+                      {operationKpiLoading ? (
+                        <div className="flex justify-center py-6"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
+                      ) : operationKpiErrored ? (
+                        <div className="flex flex-col items-center gap-2 py-6">
+                          <p className="text-sm text-red-600">Failed to load operation duration</p>
+                          <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => refetchOperationKpi()}>Retry</Button>
+                        </div>
+                      ) : !operationKpi || (!operationKpi.cast_off_at && !operationKpi.discharge_completed_at) ? (
+                        <p className="text-sm text-muted-foreground text-center py-6">No stage data recorded yet</p>
+                      ) : (
+                        <div className="grid grid-cols-3 gap-4">
+                          <InfoItem label="Earliest Cast-Off" value={operationKpi.cast_off_at ? formatDateTime(operationKpi.cast_off_at) : "—"} />
+                          <InfoItem label="Latest Discharge Completed" value={operationKpi.discharge_completed_at ? formatDateTime(operationKpi.discharge_completed_at) : "—"} />
+                          <InfoItem label="Overall Duration" value={operationKpi.duration_hours != null ? `${operationKpi.duration_hours.toFixed(1)} hrs` : "—"} />
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  <Card className="border-0 shadow-sm">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm">Per-Vessel-Run Breakdown</CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-0">
+                      {operationKpiLoading ? (
+                        <div className="flex justify-center py-6"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
+                      ) : operationKpiErrored ? (
+                        <div className="flex flex-col items-center gap-2 py-6">
+                          <p className="text-sm text-red-600">Failed to load vessel-run breakdown</p>
+                          <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => refetchOperationKpi()}>Retry</Button>
+                        </div>
+                      ) : !operationKpi?.vessel_runs.length ? (
+                        <p className="text-sm text-muted-foreground text-center py-6">No vessel runs yet</p>
+                      ) : (
+                        <div className="divide-y">
+                          {operationKpi.vessel_runs.map((r) => (
+                            <div key={r.vessel_activity_id} className="px-4 py-3 flex items-center justify-between gap-3 text-xs">
+                              <span className="font-medium">{r.vessel_name ?? "—"}</span>
+                              <span className="text-muted-foreground">
+                                {r.cast_off_at ? formatDateTime(r.cast_off_at) : "—"} → {r.discharge_completed_at ? formatDateTime(r.discharge_completed_at) : "—"}
+                              </span>
+                              <span className="font-mono shrink-0">{r.duration_hours != null ? `${r.duration_hours.toFixed(1)} hrs` : "—"}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  <Card className="border-0 shadow-sm">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm">Stage-by-Stage Timing</CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-0">
+                      {stageDurationsLoading ? (
+                        <div className="flex justify-center py-6"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
+                      ) : stageDurationsErrored ? (
+                        <div className="flex flex-col items-center gap-2 py-6">
+                          <p className="text-sm text-red-600">Failed to load stage timing</p>
+                          <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => refetchStageDurations()}>Retry</Button>
+                        </div>
+                      ) : !stageDurations?.entries.length ? (
+                        <p className="text-sm text-muted-foreground text-center py-6">No stage advances logged yet</p>
+                      ) : (
+                        <div className="divide-y">
+                          {stageDurations.entries.map((e, i) => (
+                            <div key={`${e.vessel_activity_id}-${e.stage}-${i}`} className="px-4 py-2.5 flex items-center justify-between gap-3 text-xs">
+                              <span className="capitalize font-medium w-32 shrink-0">{e.stage.replace(/_/g, " ")}</span>
+                              <span className="text-muted-foreground flex-1">
+                                {e.user_name ?? "—"}{e.role ? ` (${ROLE_LABELS[e.role] ?? e.role})` : ""}
+                              </span>
+                              <span className="text-muted-foreground text-[10px] shrink-0">{e.completed_at ? formatDateTime(e.completed_at) : "—"}</span>
+                              <span className="font-mono shrink-0 w-16 text-right">{e.duration_hours != null ? `${e.duration_hours.toFixed(1)}h` : "—"}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
                 </TabsContent>
               )}
 
@@ -5458,6 +6473,191 @@ export default function OperationDetailPage({
         </DialogContent>
       </Dialog>
 
+      {/* ── BM: Operation color picker ── */}
+      <Dialog open={showColorPicker} onOpenChange={setShowColorPicker}>
+        <DialogContent className="sm:max-w-xs" aria-describedby={undefined}>
+          <DialogHeader><DialogTitle>Operation Color</DialogTitle></DialogHeader>
+          <div className="grid grid-cols-5 gap-3 py-2">
+            {Object.entries(OPERATION_COLOR_SWATCHES).map(([name, cls]) => (
+              <button
+                key={name}
+                className={`w-9 h-9 rounded-full ${cls} ${op.color === name ? "ring-2 ring-offset-2 ring-primary" : ""}`}
+                title={name}
+                onClick={() => { setColorMutation.mutate(name); setShowColorPicker(false); }}
+              />
+            ))}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => { setColorMutation.mutate(null); setShowColorPicker(false); }}>
+              Clear Color
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── BM: Link Naval Clearance dialog ── */}
+      <Dialog open={showLinkNc} onOpenChange={(v) => { setShowLinkNc(v); if (!v) setLinkNcId(""); }}>
+        <DialogContent className="sm:max-w-md" aria-describedby={undefined}>
+          <DialogHeader><DialogTitle className="flex items-center gap-2"><Anchor className="w-4 h-4 text-primary" />Link Naval Clearance</DialogTitle></DialogHeader>
+          <div className="space-y-3 mt-1">
+            <Select value={linkNcId} onValueChange={setLinkNcId}>
+              <SelectTrigger><SelectValue placeholder="Select Naval Clearance…" /></SelectTrigger>
+              <SelectContent>
+                {linkableClearances?.map((nc) => (
+                  <SelectItem key={nc.id} value={nc.id}>
+                    {nc.clearance_number}
+                    <span className="ml-1.5 text-xs text-muted-foreground">
+                      · {nc.products.join(", ")} · {parseFloat(nc.total_quantity_litres).toLocaleString()} L
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter className="mt-4">
+            <Button variant="outline" onClick={() => setShowLinkNc(false)}>Cancel</Button>
+            <Button disabled={!linkNcId || linkNcMutation.isPending} onClick={() => linkNcMutation.mutate()}>
+              {linkNcMutation.isPending && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
+              Link
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── BM: Unlink Naval Clearance dialog ── */}
+      <Dialog open={showUnlinkNc} onOpenChange={(v) => { setShowUnlinkNc(v); if (!v) setUnlinkNcReason(""); }}>
+        <DialogContent className="sm:max-w-sm" aria-describedby={undefined}>
+          <DialogHeader><DialogTitle>Unlink Naval Clearance</DialogTitle></DialogHeader>
+          <div className="space-y-3 mt-1">
+            <Label className="text-xs">Reason <span className="text-destructive">*</span></Label>
+            <Textarea
+              rows={2} className="resize-none text-sm" placeholder="Why is this being unlinked…"
+              value={unlinkNcReason} onChange={(e) => setUnlinkNcReason(e.target.value)}
+            />
+          </div>
+          <DialogFooter className="mt-4">
+            <Button variant="outline" onClick={() => setShowUnlinkNc(false)}>Cancel</Button>
+            <Button
+              variant="destructive"
+              disabled={!unlinkNcReason.trim() || unlinkNcMutation.isPending}
+              onClick={() => unlinkNcMutation.mutate()}
+            >
+              {unlinkNcMutation.isPending && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
+              Unlink
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── BM: Notify Clients — tick-to-send, defaults every row unticked ── */}
+      <Dialog open={showNotifyDialog} onOpenChange={(v) => {
+        setShowNotifyDialog(v);
+        if (!v) {
+          setTickedRecipients(new Set());
+          setCustomMessage("");
+          setNotifType("stage_update");
+          setEtaEditId(null);
+          setEtaEditValue("");
+          setEtaEditReason("");
+        }
+      }}>
+        <DialogContent className="sm:max-w-lg" aria-describedby={undefined}>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><Bell className="w-4 h-4 text-primary" />Notify Clients</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 mt-1 max-h-[65vh] overflow-y-auto pr-1">
+            {new Set(Array.from(tickedRecipients).map((rid) => notifyRecipients?.find((r) => r.naval_clearance_vessel_id === rid)?.client_id)).size > 1 && (
+              <div className="rounded-md bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-700 flex items-center gap-2">
+                <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                This will notify more than one client organisation.
+              </div>
+            )}
+
+            <div className="space-y-1.5">
+              <Label className="text-xs">Notification Type</Label>
+              <Select value={notifType} onValueChange={setNotifType}>
+                <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="stage_update" className="text-xs">Stage Update</SelectItem>
+                  <SelectItem value="eta_change" className="text-xs">ETA Change</SelectItem>
+                  <SelectItem value="completion" className="text-xs">Completion</SelectItem>
+                  <SelectItem value="general" className="text-xs">General</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs">Message (optional)</Label>
+              <Textarea className="text-xs min-h-[60px] resize-none" placeholder="Additional message content…" value={customMessage} onChange={(e) => setCustomMessage(e.target.value)} />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs">Recipients — tick to select</Label>
+              <div className="rounded-md border divide-y">
+                {notifyRecipients?.length ? notifyRecipients.map((r) => (
+                  <div key={r.naval_clearance_vessel_id} className="px-3 py-2 space-y-1.5">
+                    <label className="flex items-start gap-2 text-xs cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={tickedRecipients.has(r.naval_clearance_vessel_id)}
+                        onChange={(e) => setTickedRecipients((prev) => {
+                          const next = new Set(prev);
+                          if (e.target.checked) next.add(r.naval_clearance_vessel_id); else next.delete(r.naval_clearance_vessel_id);
+                          return next;
+                        })}
+                      />
+                      <span className="flex-1">
+                        <span className="font-medium">{r.client_name ?? "—"}</span>
+                        <span className="text-muted-foreground"> ({r.client_email ?? "—"})</span>
+                        <br />
+                        <span className="text-muted-foreground">{r.vessel_name}{r.imo_number ? ` · IMO ${r.imo_number}` : ""}</span>
+                      </span>
+                    </label>
+                    <div className="pl-6 flex items-center gap-2 text-[11px] text-muted-foreground">
+                      {etaEditId === r.naval_clearance_vessel_id ? (
+                        <>
+                          <Input type="datetime-local" className="h-6 text-[11px] w-[160px]" value={etaEditValue} onChange={(e) => setEtaEditValue(e.target.value)} />
+                          <Input className="h-6 text-[11px]" placeholder="Reason (e.g. weather)" value={etaEditReason} onChange={(e) => setEtaEditReason(e.target.value)} />
+                          <Button size="sm" className="h-6 px-2 text-[11px]" disabled={!etaEditValue || setEtaMutation.isPending} onClick={() => setEtaMutation.mutate(r.naval_clearance_vessel_id)}>Save</Button>
+                          <Button size="sm" variant="ghost" className="h-6 px-2 text-[11px]" onClick={() => setEtaEditId(null)}>Cancel</Button>
+                        </>
+                      ) : (
+                        <>
+                          <span>ETA: {r.current_eta ? formatDateTime(r.current_eta) : "not set"}</span>
+                          <button className="text-primary underline" onClick={() => { setEtaEditId(r.naval_clearance_vessel_id); setEtaEditValue(""); setEtaEditReason(""); }}>
+                            Update ETA
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )) : (
+                  <p className="text-xs text-muted-foreground text-center py-6">No client vessels on this operation's Naval Clearance</p>
+                )}
+              </div>
+            </div>
+
+            {notificationLog && notificationLog.length > 0 && (
+              <div className="space-y-1">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Previously Sent</p>
+                {notificationLog.map((l) => (
+                  <div key={l.id} className="text-[11px] text-muted-foreground border-l-2 border-muted pl-2">
+                    <span className="font-medium text-foreground">{l.recipient_name}</span> — {l.subject} · {formatDateTime(l.sent_at)}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <DialogFooter className="mt-4">
+            <Button variant="outline" onClick={() => setShowNotifyDialog(false)}>Cancel</Button>
+            <Button disabled={tickedRecipients.size === 0 || sendNotificationMutation.isPending} onClick={() => sendNotificationMutation.mutate()}>
+              {sendNotificationMutation.isPending && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
+              Send to {tickedRecipients.size || 0} Recipient(s)
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* ── BM: Edit Truck BDN dialog */}
       <Dialog open={!!editTruckBdnId} onOpenChange={(v) => { if (!v) setEditTruckBdnId(null); }}>
         <DialogContent className="sm:max-w-md" aria-describedby={undefined}>
@@ -5619,6 +6819,106 @@ export default function OperationDetailPage({
               onClick={() => editTruckBdnMutation.mutate()}
             >
               {editTruckBdnMutation.isPending && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
+              Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── BM: Edit Vessel BDN dialog */}
+      <Dialog open={!!editVesselBdnId} onOpenChange={(v) => { if (!v) setEditVesselBdnId(null); }}>
+        <DialogContent className="sm:max-w-md" aria-describedby={undefined}>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><Pencil className="w-4 h-4 text-primary" />Edit Vessel BDN</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 mt-1 max-h-[70vh] overflow-y-auto pr-1">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Company Name</Label>
+              <Input value={editVesselBdnForm.company_name ?? ""} onChange={(e) => setEditVesselBdnForm((f) => ({ ...f, company_name: e.target.value }))} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Product Type</Label>
+                <Input value={editVesselBdnForm.product_type ?? ""} onChange={(e) => setEditVesselBdnForm((f) => ({ ...f, product_type: e.target.value }))} />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Discharge Location</Label>
+                <Input value={editVesselBdnForm.discharge_location ?? ""} onChange={(e) => setEditVesselBdnForm((f) => ({ ...f, discharge_location: e.target.value }))} />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Receiving Vessel</Label>
+              <Input value={editVesselBdnForm.receiving_vessel ?? ""} onChange={(e) => setEditVesselBdnForm((f) => ({ ...f, receiving_vessel: e.target.value }))} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Quantity Loaded (L)</Label>
+                <Input type="number" step="0.01" value={editVesselBdnForm.quantity_loaded_litres ?? ""} onChange={(e) => setEditVesselBdnForm((f) => ({ ...f, quantity_loaded_litres: e.target.value }))} />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Quantity Discharged (L)</Label>
+                <Input type="number" step="0.01" value={editVesselBdnForm.quantity_discharged_litres ?? ""} onChange={(e) => setEditVesselBdnForm((f) => ({ ...f, quantity_discharged_litres: e.target.value }))} />
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Density</Label>
+                <Input type="number" step="0.0001" value={editVesselBdnForm.density ?? ""} onChange={(e) => setEditVesselBdnForm((f) => ({ ...f, density: e.target.value }))} />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Temp. Before (°C)</Label>
+                <Input type="number" step="0.1" value={editVesselBdnForm.temperature_before_loading ?? ""} onChange={(e) => setEditVesselBdnForm((f) => ({ ...f, temperature_before_loading: e.target.value }))} />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Temp. After (°C)</Label>
+                <Input type="number" step="0.1" value={editVesselBdnForm.temperature_after_loading ?? ""} onChange={(e) => setEditVesselBdnForm((f) => ({ ...f, temperature_after_loading: e.target.value }))} />
+              </div>
+            </div>
+            <div className="grid grid-cols-4 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">VCF</Label>
+                <Input type="number" step="0.0001" value={editVesselBdnForm.vcf ?? ""} onChange={(e) => setEditVesselBdnForm((f) => ({ ...f, vcf: e.target.value }))} />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">GOV</Label>
+                <Input type="number" step="0.01" value={editVesselBdnForm.gov ?? ""} onChange={(e) => setEditVesselBdnForm((f) => ({ ...f, gov: e.target.value }))} />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">GSV</Label>
+                <Input type="number" step="0.01" value={editVesselBdnForm.gsv ?? ""} onChange={(e) => setEditVesselBdnForm((f) => ({ ...f, gsv: e.target.value }))} />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">MTvac</Label>
+                <Input type="number" step="0.001" value={editVesselBdnForm.mt_vacuum ?? ""} onChange={(e) => setEditVesselBdnForm((f) => ({ ...f, mt_vacuum: e.target.value }))} />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Commenced Discharge</Label>
+                <Input type="datetime-local" value={editVesselBdnForm.discharge_commenced_at ?? ""} onChange={(e) => setEditVesselBdnForm((f) => ({ ...f, discharge_commenced_at: e.target.value }))} />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Completed Discharge</Label>
+                <Input type="datetime-local" value={editVesselBdnForm.discharge_completed_at ?? ""} onChange={(e) => setEditVesselBdnForm((f) => ({ ...f, discharge_completed_at: e.target.value }))} />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Date of Discharge Completion</Label>
+              <Input type="date" value={editVesselBdnForm.discharge_completion_date ?? ""} onChange={(e) => setEditVesselBdnForm((f) => ({ ...f, discharge_completion_date: e.target.value }))} />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Notes</Label>
+              <Textarea rows={2} className="resize-none text-sm" value={editVesselBdnForm.notes ?? ""} onChange={(e) => setEditVesselBdnForm((f) => ({ ...f, notes: e.target.value }))} />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Reason for edit <span className="text-destructive">*</span></Label>
+              <Textarea rows={2} className="resize-none text-sm" placeholder="Why is this being changed…" value={editVesselBdnReason} onChange={(e) => setEditVesselBdnReason(e.target.value)} />
+            </div>
+          </div>
+          <DialogFooter className="mt-4">
+            <Button variant="outline" onClick={() => setEditVesselBdnId(null)}>Cancel</Button>
+            <Button disabled={!editVesselBdnReason.trim() || editVesselBdnMutation.isPending} onClick={() => editVesselBdnMutation.mutate()}>
+              {editVesselBdnMutation.isPending && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
               Save Changes
             </Button>
           </DialogFooter>

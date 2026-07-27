@@ -4501,7 +4501,11 @@ export default function OperationDetailPage({
                     <div className="space-y-4">
                       {vesselActivities!.map((activity) => {
                         const isAssignee   = user?.id === activity.assigned_to;
-                        const canAct       = isAssignee || isBM;
+                        // Mirrors the backend's _assert_authorized (vessel_activity_service.py),
+                        // which checks the account's TRUE role, not the "acting as" preview role —
+                        // a real Bunker Manager or Ops Supervisor always retains action authority
+                        // here even while previewing the app as another role.
+                        const canAct       = isAssignee || user?.role === "bunker_manager" || user?.role === "ops_supervisor";
                         const hasReceipt   = !!activity.vessel_received_mt;
                         const hasBunkering = !!activity.bunkering_start_at;
                         const hasDischarge = !!activity.quantity_discharged_mt;

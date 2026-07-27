@@ -1600,16 +1600,18 @@ export default function OperationDetailPage({
 
   const [commenceFormActivityId, setCommenceFormActivityId] = useState<string | null>(null);
   const [commenceUserAt, setCommenceUserAt] = useState("");
+  const [commenceDescription, setCommenceDescription] = useState("");
 
   const commenceMutation = useMutation({
     mutationFn: async (activityId: string) => {
       await api.post(`/vessel-activities/${activityId}/commence`, {
         commenced_user_at: new Date(commenceUserAt).toISOString(),
+        description: commenceDescription.trim() || undefined,
       });
     },
     onSuccess: () => {
       toast.success("Vessel operation commenced");
-      setCommenceFormActivityId(null); setCommenceUserAt("");
+      setCommenceFormActivityId(null); setCommenceUserAt(""); setCommenceDescription("");
       refetchVesselActivities();
     },
     onError: (err) => toast.error(getErrorMessage(err)),
@@ -5160,15 +5162,17 @@ export default function OperationDetailPage({
                                         <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
                                           <Label className="text-[10px] text-muted-foreground">Commenced At</Label>
                                           <Input type="datetime-local" className="h-8 text-xs" value={commenceUserAt} onChange={(e) => setCommenceUserAt(e.target.value)} />
+                                          <Label className="text-[10px] text-muted-foreground">Description (optional)</Label>
+                                          <Textarea className="text-xs min-h-[50px] resize-none" placeholder="Any notes about how the vessel operation is commencing…" value={commenceDescription} onChange={(e) => setCommenceDescription(e.target.value)} />
                                           <div className="flex gap-2">
                                             <Button size="sm" className="flex-1 text-xs" disabled={!commenceUserAt || commenceMutation.isPending} onClick={() => commenceMutation.mutate(activity.id)}>
                                               {commenceMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Commence Vessel Operation"}
                                             </Button>
-                                            <Button size="sm" variant="ghost" className="text-xs" onClick={() => { setCommenceFormActivityId(null); setCommenceUserAt(""); }}>Cancel</Button>
+                                            <Button size="sm" variant="ghost" className="text-xs" onClick={() => { setCommenceFormActivityId(null); setCommenceUserAt(""); setCommenceDescription(""); }}>Cancel</Button>
                                           </div>
                                         </div>
                                       ) : (
-                                        <Button size="sm" className="text-xs gap-1.5" onClick={() => { setCommenceFormActivityId(activity.id); setCommenceUserAt(""); }}>
+                                        <Button size="sm" className="text-xs gap-1.5" onClick={() => { setCommenceFormActivityId(activity.id); setCommenceUserAt(""); setCommenceDescription(""); }}>
                                           <PlayCircle className="w-3.5 h-3.5" />Commence Vessel Operation
                                         </Button>
                                       )}
@@ -5224,6 +5228,9 @@ export default function OperationDetailPage({
                                             <p className="font-mono font-semibold">{activity.complete_user_at ? formatDateTime(activity.complete_user_at) : "—"}</p>
                                           </div>
                                         </div>
+                                      )}
+                                      {activity.commence_description && (
+                                        <p className="text-[11px] text-muted-foreground italic mt-1.5">{activity.commence_description}</p>
                                       )}
                                     </div>
 

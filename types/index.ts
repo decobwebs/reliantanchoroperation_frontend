@@ -758,6 +758,7 @@ export interface VesselActivity {
   // ── Vessel-only commence -> updates -> complete -> quantities flow ──
   commence_system_at?: string;
   commence_user_at?: string;
+  commence_description?: string;
   complete_system_at?: string;
   complete_user_at?: string;
   discharged_quantity_litres?: string;

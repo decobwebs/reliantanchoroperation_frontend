@@ -31,6 +31,7 @@ export interface AuthTokens {
 // ─── Operations ──────────────────────────────────────────────────────────────
 
 export type OperationType = "full_operation" | "vessel_only" | "truck_only";
+export type VesselSourceType = "truck" | "terminal";
 
 export type OperationStatus =
   | "draft"
@@ -91,6 +92,7 @@ export interface Operation {
   id: string;
   operation_number: string;
   type: OperationType;
+  source_type?: VesselSourceType;
   status: OperationStatus;
   client_id: string;
   created_by: string;
@@ -752,6 +754,27 @@ export interface VesselActivity {
     recorded_by_name?: string;
     recorded_at: string;
   }[];
+
+  // ── Vessel-only commence -> updates -> complete -> quantities flow ──
+  commence_system_at?: string;
+  commence_user_at?: string;
+  complete_system_at?: string;
+  complete_user_at?: string;
+  discharged_quantity_litres?: string;
+  received_quantity_litres?: string;
+  quantity_recorded_at?: string;
+  quantity_description?: string;
+  updates: VesselActivityUpdate[];
+}
+
+export interface VesselActivityUpdate {
+  id: string;
+  vessel_activity_id: string;
+  content: string;
+  image_url?: string;
+  recorded_by: string;
+  recorded_by_name?: string;
+  recorded_at: string;
 }
 
 // ─── BDN ─────────────────────────────────────────────────────────────────────

@@ -28,8 +28,9 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { useState } from "react";
-import type { ApiResponse, User, Vessel, PFI, ProductType, OperationType, NavalClearance } from "@/types";
+import type { ApiResponse, User, Vessel, PFI, ProductType, OperationType, NavalClearance, VesselSourceType } from "@/types";
 import { PRODUCT_TYPE_LABELS } from "@/types";
+import { VESSEL_SOURCE_TYPE_LABELS } from "@/lib/utils";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -91,6 +92,10 @@ const pfiAllocationSchema = z.object({
 
 const schema = z.object({
   type:               z.enum(["full_operation", "vessel_only", "truck_only"]),
+  // Vessel-only only — hard-required for that type, enforced via the submit
+  // button's disabled state below (not Zod, matching the file's existing
+  // pattern of business-logic requirements living in the submit gate).
+  source_type:        z.enum(["truck", "terminal"]).optional(),
   products:            z.array(productSchema).min(1, "At least one product is required"),
   // Client and vessel are optional at creation — BM can come back and fill
   // them in later from the operation detail page.
@@ -552,6 +557,12 @@ export function CreateOperationDialog({ open, onClose, onCreated }: Props) {
       setValue("vessel_id", "");
       setNavalClearanceId("");
     }
+    // source_type only applies to vessel-only — clear it switching to any
+    // other type so a stale value from an earlier vessel-only selection
+    // can't get silently resubmitted (the backend rejects it outright).
+    if (prevType !== "vessel_only") {
+      setValue("source_type", undefined);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prevType]);
 
@@ -614,6 +625,7 @@ export function CreateOperationDialog({ open, onClose, onCreated }: Props) {
     mutationFn: async (data: FormData) => {
       const payload = {
         type:               data.type,
+        source_type:        data.type === "vessel_only" ? data.source_type : undefined,
         products:           data.products,
         client_id:          data.client_id || undefined,
         vessel_id:          data.vessel_id || undefined,
@@ -692,6 +704,29 @@ export function CreateOperationDialog({ open, onClose, onCreated }: Props) {
               </Select>
               {errors.type && <p className="text-xs text-destructive">{errors.type.message}</p>}
             </div>
+
+            {/* Source Type — vessel-only only, required, pure label (never pulls in truck UI) */}
+            {opType === "vessel_only" && (
+              <div className="space-y-1.5">
+                <Label>Product Source <span className="text-destructive">*</span></Label>
+                <Select
+                  value={watch("source_type") ?? ""}
+                  onValueChange={(v) => setValue("source_type", v as VesselSourceType)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select where the product comes from…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(VESSEL_SOURCE_TYPE_LABELS).map(([value, label]) => (
+                      <SelectItem key={value} value={value}>{label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-[11px] text-muted-foreground">
+                  A label only — the vessel flow is identical either way.
+                </p>
+              </div>
+            )}
 
             {/* Products */}
             <div className="space-y-1.5">
@@ -921,7 +956,10 @@ export function CreateOperationDialog({ open, onClose, onCreated }: Props) {
             <Button type="button" variant="outline" onClick={handleClose}>
               Cancel
             </Button>
-            <Button type="submit" disabled={mutation.isPending}>
+            <Button
+              type="submit"
+              disabled={mutation.isPending || (opType === "vessel_only" && !watch("source_type"))}
+            >
               {mutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               Create Operation
             </Button>

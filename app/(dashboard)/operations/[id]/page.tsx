@@ -77,6 +77,7 @@ import {
   formatRelative,
   OP_TYPE_LABELS,
   OPERATION_COLOR_SWATCHES,
+  VESSEL_SOURCE_TYPE_LABELS,
 } from "@/lib/utils";
 import type {
   ApiResponse,
@@ -625,7 +626,7 @@ export default function OperationDetailPage({
       const res = await api.get<ApiResponse<TruckFeedback[]>>(`/operations/${id}/feedback`);
       return res.data.data;
     },
-    enabled: canSeeFeedback,
+    enabled: canSeeFeedback && op?.type !== "vessel_only",
   });
 
   const { data: vesselActivities, refetch: refetchVesselActivities } = useQuery({
@@ -1592,6 +1593,142 @@ export default function OperationDetailPage({
     onError: (err) => toast.error(getErrorMessage(err)),
   });
 
+  // ── Vessel-only: commence -> updates -> complete -> quantities ─────────────
+  // Fully separate from the stage flow above — used only when op.type ===
+  // "vessel_only"; full_operation keeps the stage/HSE/discharge-qty UI above
+  // completely untouched.
+
+  const [commenceFormActivityId, setCommenceFormActivityId] = useState<string | null>(null);
+  const [commenceUserAt, setCommenceUserAt] = useState("");
+
+  const commenceMutation = useMutation({
+    mutationFn: async (activityId: string) => {
+      await api.post(`/vessel-activities/${activityId}/commence`, {
+        commenced_user_at: new Date(commenceUserAt).toISOString(),
+      });
+    },
+    onSuccess: () => {
+      toast.success("Vessel operation commenced");
+      setCommenceFormActivityId(null); setCommenceUserAt("");
+      refetchVesselActivities();
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const [updateFormActivityId, setUpdateFormActivityId] = useState<string | null>(null);
+  const [updateContent, setUpdateContent] = useState("");
+  const [updateImageFile, setUpdateImageFile] = useState<File | null>(null);
+  const updateImageInputRef = useRef<HTMLInputElement>(null);
+
+  const addUpdateMutation = useMutation({
+    mutationFn: async (activityId: string) => {
+      const form = new FormData();
+      form.append("content", updateContent.trim());
+      if (updateImageFile) form.append("image", updateImageFile);
+      await api.post(`/vessel-activities/${activityId}/updates`, form, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+    },
+    onSuccess: () => {
+      toast.success("Update added");
+      setUpdateFormActivityId(null); setUpdateContent(""); setUpdateImageFile(null);
+      if (updateImageInputRef.current) updateImageInputRef.current.value = "";
+      refetchVesselActivities();
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const [completeFormActivityId, setCompleteFormActivityId] = useState<string | null>(null);
+  const [completeUserAt, setCompleteUserAt] = useState("");
+
+  const completeVesselOpMutation = useMutation({
+    mutationFn: async (activityId: string) => {
+      await api.post(`/vessel-activities/${activityId}/complete-vessel-operation`, {
+        completed_user_at: new Date(completeUserAt).toISOString(),
+      });
+    },
+    onSuccess: () => {
+      toast.success("Vessel operation completed — ready for BDN submission");
+      setCompleteFormActivityId(null); setCompleteUserAt("");
+      refetchVesselActivities();
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const [quantitiesFormActivityId, setQuantitiesFormActivityId] = useState<string | null>(null);
+  const [qtyDischarged, setQtyDischarged] = useState("");
+  const [qtyReceived, setQtyReceived] = useState("");
+  const [qtyDensity, setQtyDensity] = useState("");
+  const [qtyTemperature, setQtyTemperature] = useState("");
+  const [qtyVcf, setQtyVcf] = useState("");
+  const [qtyGov, setQtyGov] = useState("");
+  const [qtyDescription, setQtyDescription] = useState("");
+  const [qtyReason, setQtyReason] = useState("");
+  const resetQuantitiesForm = () => {
+    setQuantitiesFormActivityId(null);
+    setQtyDischarged(""); setQtyReceived(""); setQtyDensity("");
+    setQtyTemperature(""); setQtyVcf(""); setQtyGov(""); setQtyDescription(""); setQtyReason("");
+  };
+  const openQuantitiesForm = (activity: VesselActivity) => {
+    setQuantitiesFormActivityId(activity.id);
+    setQtyDischarged(activity.discharged_quantity_litres ?? "");
+    setQtyReceived(activity.received_quantity_litres ?? "");
+    setQtyDensity(activity.density ?? "");
+    setQtyTemperature(activity.temperature_celsius ?? "");
+    setQtyVcf(activity.vcf ?? "");
+    setQtyGov(activity.gov ?? "");
+    setQtyDescription(activity.quantity_description ?? "");
+    setQtyReason("");
+  };
+
+  const recordVesselQuantitiesMutation = useMutation({
+    mutationFn: async (activityId: string) => {
+      await api.post(`/vessel-activities/${activityId}/quantities`, {
+        discharged_quantity_litres: parseFloat(qtyDischarged),
+        received_quantity_litres: parseFloat(qtyReceived),
+        density: parseFloat(qtyDensity),
+        temperature_celsius: parseFloat(qtyTemperature),
+        vcf: parseFloat(qtyVcf),
+        gov: parseFloat(qtyGov),
+        description: qtyDescription.trim() || undefined,
+        reason: qtyReason.trim() || undefined,
+      });
+    },
+    onSuccess: () => {
+      toast.success("Quantities recorded");
+      resetQuantitiesForm();
+      refetchVesselActivities();
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const [editTimingActivityId, setEditTimingActivityId] = useState<string | null>(null);
+  const [editCommenceUserAt, setEditCommenceUserAt] = useState("");
+  const [editCompleteUserAt, setEditCompleteUserAt] = useState("");
+  const [editTimingReason, setEditTimingReason] = useState("");
+  const openEditTiming = (activity: VesselActivity) => {
+    setEditTimingActivityId(activity.id);
+    setEditCommenceUserAt(activity.commence_user_at ? activity.commence_user_at.slice(0, 16) : "");
+    setEditCompleteUserAt(activity.complete_user_at ? activity.complete_user_at.slice(0, 16) : "");
+    setEditTimingReason("");
+  };
+
+  const correctTimingMutation = useMutation({
+    mutationFn: async (activityId: string) => {
+      await api.patch(`/vessel-activities/${activityId}/vessel-operation-timing`, {
+        commence_user_at: editCommenceUserAt ? new Date(editCommenceUserAt).toISOString() : undefined,
+        complete_user_at: editCompleteUserAt ? new Date(editCompleteUserAt).toISOString() : undefined,
+        reason: editTimingReason.trim(),
+      });
+    },
+    onSuccess: () => {
+      toast.success("Timing corrected");
+      setEditTimingActivityId(null); setEditTimingReason("");
+      refetchVesselActivities();
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
   const reopenMutation = useMutation<Operation, Error, void>({
     mutationFn: async () => {
       const res = await api.post(`/operations/${id}/reopen`, {
@@ -2239,6 +2376,9 @@ export default function OperationDetailPage({
         <div className="flex flex-wrap items-center gap-3">
           <StatusBadge status={op.status as OperationStatus} className="text-sm px-3 py-1" />
           <Badge variant="outline">{OP_TYPE_LABELS[op.type]}</Badge>
+          {op.type === "vessel_only" && op.source_type && (
+            <Badge variant="outline">{VESSEL_SOURCE_TYPE_LABELS[op.source_type]}</Badge>
+          )}
           {op.product_type && (
             <Badge variant="secondary" className="flex items-center gap-1">
               <Tag className="w-3 h-3" />
@@ -2566,7 +2706,7 @@ export default function OperationDetailPage({
                   </TabsTrigger>
                 )}
 
-                {canSeeFeedback && (
+                {canSeeFeedback && op.type !== "vessel_only" && (
                   <TabsTrigger value="feedback">
                     Feedback
                     {feedbacks?.length ? (
@@ -2834,8 +2974,8 @@ export default function OperationDetailPage({
                 </TabsContent>
               )}
 
-              {/* ── Feedback tab */}
-              {canSeeFeedback && (
+              {/* ── Feedback tab — truck-nomination readiness, never applicable to vessel-only operations */}
+              {canSeeFeedback && op.type !== "vessel_only" && (
                 <TabsContent value="feedback" className="mt-4 space-y-3">
                   {/* LO submission form — also reachable by BM (unrestricted edit power). Trucks
                       can be nominated/added at any point in the operation's lifecycle, not just
@@ -3819,7 +3959,8 @@ export default function OperationDetailPage({
                   (vesselBdns ?? []).filter((b) => b.status === "pending" || b.status === "approved").map((b) => b.vessel_activity_id)
                 );
                 const submittableActivities = (vesselActivities ?? []).filter(
-                  (a) => a.status !== "cancelled" && !bdnnedActivityIds.has(a.id)
+                  (a) => a.status !== "cancelled" && !bdnnedActivityIds.has(a.id) &&
+                    (op.type === "vessel_only" ? !!a.complete_system_at : a.stage === "discharge_completed")
                 );
                 const totalRuns = (vesselActivities ?? []).filter((a) => a.status !== "cancelled").length;
                 const approvedRuns = (vesselBdns ?? []).filter((b) => b.status === "approved").length;
@@ -4365,9 +4506,11 @@ export default function OperationDetailPage({
                         const hasBunkering = !!activity.bunkering_start_at;
                         const hasDischarge = !!activity.quantity_discharged_mt;
 
+                        // Only ever rendered for full_operation now — vessel_only uses the
+                        // commence/updates/complete/quantities flow below instead.
                         const steps = [
                           { n: 1, label: "Start",     done: activity.status !== "pending" },
-                          { n: 2, label: op?.type === "vessel_only" ? "Inflow" : "Receipt", done: hasReceipt },
+                          { n: 2, label: "Receipt",   done: hasReceipt },
                           { n: 3, label: "Bunkering", done: hasBunkering },
                           { n: 4, label: "Discharge", done: hasDischarge },
                           { n: 5, label: "Complete",  done: activity.status === "completed" },
@@ -4426,6 +4569,11 @@ export default function OperationDetailPage({
                                 </Button>
                               )}
                             </div>
+
+                            {/* ── Branch: vessel-only gets the new commence/updates/complete/
+                                 quantities flow; full_operation keeps the old ROB-session +
+                                 6-stage tracker byte-for-byte, fully untouched. ── */}
+                            {op.type !== "vessel_only" ? <>
 
                             {/* ── Initial ROB strip (BM-editable, always shown while not cancelled) ── */}
                             {activity.status !== "cancelled" && (
@@ -4780,15 +4928,12 @@ export default function OperationDetailPage({
                                           ? <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
                                           : <span className="w-4 h-4 rounded-full bg-primary flex items-center justify-center text-[9px] text-white font-bold shrink-0">2</span>}
                                         <p className="text-sm font-semibold">
-                                          {hasReceipt
-                                            ? (op?.type === "vessel_only" ? "Inflow Recorded" : "Receipt Recorded")
-                                            : (op?.type === "vessel_only" ? "Record Inflow (Optional)" : "Record Receipt Quantities")}
+                                          {hasReceipt ? "Receipt Recorded" : "Record Receipt Quantities"}
                                         </p>
                                       </div>
                                       {hasReceipt ? (
                                         <p className="text-xs text-muted-foreground">
-                                          {parseFloat(activity.vessel_received_mt!).toFixed(3)} L
-                                          {op?.type === "vessel_only" ? " inflow" : " received"}
+                                          {parseFloat(activity.vessel_received_mt!).toFixed(3)} L received
                                           {activity.product_type && ` · ${activity.product_type}`}
                                           {activity.variance_mt && ` · Variance: ${parseFloat(activity.variance_mt) > 0 ? "+" : ""}${parseFloat(activity.variance_mt).toFixed(3)} L`}
                                         </p>
@@ -4810,14 +4955,13 @@ export default function OperationDetailPage({
                                           <div className="grid grid-cols-3 gap-2">
                                             <div className="space-y-1">
                                               <Label className="text-[11px]">
-                                                {op?.type === "vessel_only" ? "Additional Inflow (L)" : "Vessel Received (L)"}
-                                                {op?.type !== "vessel_only" && <span className="ml-0.5 text-destructive">*</span>}
-                                                {op?.type === "vessel_only" && <span className="ml-1 text-muted-foreground font-normal">(optional)</span>}
+                                                Vessel Received (L)
+                                                <span className="ml-0.5 text-destructive">*</span>
                                               </Label>
                                               <Input
                                                 className="h-8 text-xs"
                                                 type="number" step="0.001"
-                                                placeholder={op?.type === "vessel_only" ? "0.000 — leave blank if none" : "0.000"}
+                                                placeholder="0.000"
                                                 value={actVesselMt}
                                                 onChange={(e) => setActVesselMt(e.target.value)}
                                               />
@@ -4855,7 +4999,7 @@ export default function OperationDetailPage({
                                             <Button size="sm"
                                               disabled={
                                                 !activity.initial_rob_mt ||
-                                                (op?.type !== "vessel_only" && !actVesselMt) ||
+                                                !actVesselMt ||
                                                 recordReceiptMutation.isPending
                                               }
                                               onClick={() => recordReceiptMutation.mutate({
@@ -4997,6 +5141,281 @@ export default function OperationDetailPage({
                                 </div>
                               </div>
                             )}
+
+                            </> : <>
+
+                            {/* ── Vessel-only: commence -> updates -> complete -> quantities ── */}
+                            {activity.status !== "cancelled" && (
+                              <div className="border-t">
+
+                                {/* Commence */}
+                                {!activity.commence_system_at ? (
+                                  canAct && (
+                                    <div className="px-5 py-3.5">
+                                      {commenceFormActivityId === activity.id ? (
+                                        <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+                                          <Label className="text-[10px] text-muted-foreground">Commenced At</Label>
+                                          <Input type="datetime-local" className="h-8 text-xs" value={commenceUserAt} onChange={(e) => setCommenceUserAt(e.target.value)} />
+                                          <div className="flex gap-2">
+                                            <Button size="sm" className="flex-1 text-xs" disabled={!commenceUserAt || commenceMutation.isPending} onClick={() => commenceMutation.mutate(activity.id)}>
+                                              {commenceMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Commence Vessel Operation"}
+                                            </Button>
+                                            <Button size="sm" variant="ghost" className="text-xs" onClick={() => { setCommenceFormActivityId(null); setCommenceUserAt(""); }}>Cancel</Button>
+                                          </div>
+                                        </div>
+                                      ) : (
+                                        <Button size="sm" className="text-xs gap-1.5" onClick={() => { setCommenceFormActivityId(activity.id); setCommenceUserAt(""); }}>
+                                          <PlayCircle className="w-3.5 h-3.5" />Commence Vessel Operation
+                                        </Button>
+                                      )}
+                                    </div>
+                                  )
+                                ) : (
+                                  <div className="px-5 py-3.5 space-y-3">
+
+                                    {/* Four-timings display — always shown together, never one overwriting the other */}
+                                    <div>
+                                      <div className="flex items-center justify-between mb-1.5">
+                                        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Timings</p>
+                                        {isBM && editTimingActivityId !== activity.id && (
+                                          <button className="text-[10px] text-primary underline" onClick={() => openEditTiming(activity)}>Edit</button>
+                                        )}
+                                      </div>
+                                      {editTimingActivityId === activity.id ? (
+                                        <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+                                          <div className="grid grid-cols-2 gap-2">
+                                            <div className="space-y-1">
+                                              <Label className="text-[10px] text-muted-foreground">Commenced At (you entered)</Label>
+                                              <Input type="datetime-local" className="h-8 text-xs" value={editCommenceUserAt} onChange={(e) => setEditCommenceUserAt(e.target.value)} />
+                                            </div>
+                                            <div className="space-y-1">
+                                              <Label className="text-[10px] text-muted-foreground">Completed At (you entered)</Label>
+                                              <Input type="datetime-local" className="h-8 text-xs" value={editCompleteUserAt} onChange={(e) => setEditCompleteUserAt(e.target.value)} disabled={!activity.complete_system_at} />
+                                            </div>
+                                          </div>
+                                          <Textarea className="text-xs min-h-[50px] resize-none" placeholder="Reason for correction…" value={editTimingReason} onChange={(e) => setEditTimingReason(e.target.value)} />
+                                          <div className="flex gap-2">
+                                            <Button size="sm" className="flex-1 text-xs" disabled={!editTimingReason.trim() || correctTimingMutation.isPending} onClick={() => correctTimingMutation.mutate(activity.id)}>
+                                              {correctTimingMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Save Correction"}
+                                            </Button>
+                                            <Button size="sm" variant="ghost" className="text-xs" onClick={() => setEditTimingActivityId(null)}>Cancel</Button>
+                                          </div>
+                                        </div>
+                                      ) : (
+                                        <div className="grid grid-cols-2 gap-px border rounded-md overflow-hidden text-xs">
+                                          <div className="bg-muted/20 px-3 py-2">
+                                            <p className="text-[9px] text-muted-foreground uppercase">System Commenced</p>
+                                            <p className="font-mono font-semibold">{formatDateTime(activity.commence_system_at)}</p>
+                                          </div>
+                                          <div className="bg-muted/20 px-3 py-2">
+                                            <p className="text-[9px] text-muted-foreground uppercase">You Entered — Commenced</p>
+                                            <p className="font-mono font-semibold">{activity.commence_user_at ? formatDateTime(activity.commence_user_at) : "—"}</p>
+                                          </div>
+                                          <div className="bg-muted/20 px-3 py-2">
+                                            <p className="text-[9px] text-muted-foreground uppercase">System Completed</p>
+                                            <p className="font-mono font-semibold">{activity.complete_system_at ? formatDateTime(activity.complete_system_at) : "—"}</p>
+                                          </div>
+                                          <div className="bg-muted/20 px-3 py-2">
+                                            <p className="text-[9px] text-muted-foreground uppercase">You Entered — Completed</p>
+                                            <p className="font-mono font-semibold">{activity.complete_user_at ? formatDateTime(activity.complete_user_at) : "—"}</p>
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    {/* HSE checklist — available any time once commenced, non-blocking */}
+                                    {canAct && (
+                                      <div>
+                                        {activity.hse_result ? (
+                                          <div className={`rounded-md px-3 py-2 text-xs flex items-center gap-2 ${activity.hse_result === "satisfactory" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
+                                            <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+                                            HSE checklist recorded — {activity.hse_result === "satisfactory" ? "Satisfactory" : "Issues noted (recorded, non-blocking)"}
+                                          </div>
+                                        ) : hseFormActivityId === activity.id ? (
+                                          <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+                                            <p className="text-xs font-semibold">HSE Safety Checklist</p>
+                                            {hseChecklist.map((item, i) => (
+                                              <label key={i} className="flex items-center gap-2 text-xs">
+                                                <input type="checkbox" checked={item.passed} onChange={(e) => setHseChecklist((rows) => rows.map((r, idx) => idx === i ? { ...r, passed: e.target.checked } : r))} />
+                                                {item.item}
+                                              </label>
+                                            ))}
+                                            <Textarea className="text-xs min-h-[50px] resize-none" placeholder="Notes…" value={hseNotes} onChange={(e) => setHseNotes(e.target.value)} />
+                                            <div className="flex gap-2">
+                                              <Button size="sm" className="flex-1 text-xs" disabled={recordHseMutation.isPending} onClick={() => recordHseMutation.mutate(activity.id)}>
+                                                {recordHseMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Submit HSE Checklist"}
+                                              </Button>
+                                              <Button size="sm" variant="ghost" className="text-xs" onClick={closeHseForm}>Cancel</Button>
+                                            </div>
+                                          </div>
+                                        ) : (
+                                          <Button size="sm" variant="outline" className="text-xs gap-1.5" onClick={() => openHseForm(activity.id)}>
+                                            <ShieldCheck className="w-3.5 h-3.5" />Record HSE Checklist
+                                          </Button>
+                                        )}
+                                      </div>
+                                    )}
+
+                                    {/* Updates timeline — reverse-chronological, system-time only */}
+                                    <div>
+                                      <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">Updates</p>
+                                      {activity.updates.length > 0 && (
+                                        <div className="space-y-1.5 mb-2 max-h-56 overflow-y-auto pr-1">
+                                          {activity.updates.map((u) => (
+                                            <div key={u.id} className="text-[11px] border-l-2 border-muted pl-2 py-0.5">
+                                              <span className="font-medium text-foreground">{u.recorded_by_name ?? "—"}</span>
+                                              <span className="ml-1 text-muted-foreground">{formatDateTime(u.recorded_at)}</span>
+                                              <p className="text-foreground/80">{u.content}</p>
+                                              {u.image_url && (
+                                                <a href={u.image_url} target="_blank" rel="noopener noreferrer" className="text-primary underline text-[10px]">View image</a>
+                                              )}
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
+                                      {canAct && (
+                                        updateFormActivityId === activity.id ? (
+                                          <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+                                            <Textarea className="text-xs min-h-[60px] resize-none" placeholder="What's happening…" value={updateContent} onChange={(e) => setUpdateContent(e.target.value)} />
+                                            <input
+                                              ref={updateImageInputRef} type="file" accept="image/*" className="text-xs"
+                                              onChange={(e) => setUpdateImageFile(e.target.files?.[0] ?? null)}
+                                            />
+                                            <div className="flex gap-2">
+                                              <Button size="sm" className="flex-1 text-xs" disabled={!updateContent.trim() || addUpdateMutation.isPending} onClick={() => addUpdateMutation.mutate(activity.id)}>
+                                                {addUpdateMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Post Update"}
+                                              </Button>
+                                              <Button size="sm" variant="ghost" className="text-xs" onClick={() => { setUpdateFormActivityId(null); setUpdateContent(""); setUpdateImageFile(null); if (updateImageInputRef.current) updateImageInputRef.current.value = ""; }}>Cancel</Button>
+                                            </div>
+                                          </div>
+                                        ) : (
+                                          <Button size="sm" variant="outline" className="text-xs gap-1.5" onClick={() => { setUpdateFormActivityId(activity.id); setUpdateContent(""); setUpdateImageFile(null); }}>
+                                            <PlusCircle className="w-3.5 h-3.5" />Add Update
+                                          </Button>
+                                        )
+                                      )}
+                                    </div>
+
+                                    {/* Complete */}
+                                    {!activity.complete_system_at && canAct && (
+                                      <div>
+                                        {completeFormActivityId === activity.id ? (
+                                          <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+                                            <Label className="text-[10px] text-muted-foreground">Completed At</Label>
+                                            <Input type="datetime-local" className="h-8 text-xs" value={completeUserAt} onChange={(e) => setCompleteUserAt(e.target.value)} />
+                                            <div className="flex gap-2">
+                                              <Button size="sm" className="flex-1 text-xs bg-emerald-700 hover:bg-emerald-800" disabled={!completeUserAt || completeVesselOpMutation.isPending} onClick={() => completeVesselOpMutation.mutate(activity.id)}>
+                                                {completeVesselOpMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Complete Vessel Operation"}
+                                              </Button>
+                                              <Button size="sm" variant="ghost" className="text-xs" onClick={() => { setCompleteFormActivityId(null); setCompleteUserAt(""); }}>Cancel</Button>
+                                            </div>
+                                          </div>
+                                        ) : (
+                                          <Button size="sm" className="text-xs gap-1.5 bg-emerald-700 hover:bg-emerald-800" onClick={() => { setCompleteFormActivityId(activity.id); setCompleteUserAt(""); }}>
+                                            <CheckCircle2 className="w-3.5 h-3.5" />Complete Vessel Operation
+                                          </Button>
+                                        )}
+                                      </div>
+                                    )}
+
+                                    {/* Discharge & Received Quantity — visible once completed, a separate
+                                         operational note, never a Vessel BDN precondition */}
+                                    {activity.complete_system_at && (
+                                      <div>
+                                        <div className="flex items-center justify-between mb-1.5">
+                                          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Discharge &amp; Received Quantity</p>
+                                          {activity.quantity_recorded_at && isBM && quantitiesFormActivityId !== activity.id && (
+                                            <button className="text-[10px] text-primary underline" onClick={() => openQuantitiesForm(activity)}>Edit</button>
+                                          )}
+                                        </div>
+                                        {quantitiesFormActivityId === activity.id ? (
+                                          <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+                                            <div className="grid grid-cols-2 gap-2">
+                                              <div className="space-y-1">
+                                                <Label className="text-[10px] text-muted-foreground">Discharged Quantity (L)</Label>
+                                                <Input type="number" className="h-8 text-xs" value={qtyDischarged} onChange={(e) => setQtyDischarged(e.target.value)} />
+                                              </div>
+                                              <div className="space-y-1">
+                                                <Label className="text-[10px] text-muted-foreground">Received Quantity (L)</Label>
+                                                <Input type="number" className="h-8 text-xs" value={qtyReceived} onChange={(e) => setQtyReceived(e.target.value)} />
+                                              </div>
+                                              <div className="space-y-1">
+                                                <Label className="text-[10px] text-muted-foreground">Density</Label>
+                                                <Input type="number" step="0.0001" className="h-8 text-xs" value={qtyDensity} onChange={(e) => setQtyDensity(e.target.value)} />
+                                              </div>
+                                              <div className="space-y-1">
+                                                <Label className="text-[10px] text-muted-foreground">Temperature (°C)</Label>
+                                                <Input type="number" step="0.01" className="h-8 text-xs" value={qtyTemperature} onChange={(e) => setQtyTemperature(e.target.value)} />
+                                              </div>
+                                              <div className="space-y-1">
+                                                <Label className="text-[10px] text-muted-foreground">VCF</Label>
+                                                <Input type="number" step="0.0001" className="h-8 text-xs" value={qtyVcf} onChange={(e) => setQtyVcf(e.target.value)} />
+                                              </div>
+                                              <div className="space-y-1">
+                                                <Label className="text-[10px] text-muted-foreground">GOV</Label>
+                                                <Input type="number" className="h-8 text-xs" value={qtyGov} onChange={(e) => setQtyGov(e.target.value)} />
+                                              </div>
+                                            </div>
+                                            {qtyGov && qtyVcf && qtyDensity && (
+                                              <div className="grid grid-cols-2 gap-px border rounded-md overflow-hidden text-[11px]">
+                                                <div className="bg-background px-2.5 py-1.5">
+                                                  <p className="text-[9px] text-muted-foreground uppercase">GSV (computed)</p>
+                                                  <p className="font-mono font-semibold">{(parseFloat(qtyGov) * parseFloat(qtyVcf)).toLocaleString()}</p>
+                                                </div>
+                                                <div className="bg-background px-2.5 py-1.5">
+                                                  <p className="text-[9px] text-muted-foreground uppercase">MTvac (computed)</p>
+                                                  <p className="font-mono font-semibold">{(parseFloat(qtyGov) * parseFloat(qtyVcf) * parseFloat(qtyDensity)).toLocaleString()}</p>
+                                                </div>
+                                              </div>
+                                            )}
+                                            <Textarea className="text-xs min-h-[50px] resize-none" placeholder="Description (optional)…" value={qtyDescription} onChange={(e) => setQtyDescription(e.target.value)} />
+                                            {activity.quantity_recorded_at && (
+                                              <Textarea className="text-xs min-h-[40px] resize-none" placeholder="Reason for correction (required)…" value={qtyReason} onChange={(e) => setQtyReason(e.target.value)} />
+                                            )}
+                                            <div className="flex gap-2">
+                                              <Button
+                                                size="sm" className="flex-1 text-xs"
+                                                disabled={!qtyDischarged || !qtyReceived || !qtyDensity || !qtyTemperature || !qtyVcf || !qtyGov || (!!activity.quantity_recorded_at && !qtyReason.trim()) || recordVesselQuantitiesMutation.isPending}
+                                                onClick={() => recordVesselQuantitiesMutation.mutate(activity.id)}
+                                              >
+                                                {recordVesselQuantitiesMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Save Quantities"}
+                                              </Button>
+                                              <Button size="sm" variant="ghost" className="text-xs" onClick={resetQuantitiesForm}>Cancel</Button>
+                                            </div>
+                                          </div>
+                                        ) : activity.quantity_recorded_at ? (
+                                          <div className="grid grid-cols-3 gap-px border rounded-md overflow-hidden text-xs">
+                                            <div className="bg-emerald-50/40 px-3 py-2">
+                                              <p className="text-[9px] text-muted-foreground uppercase">Discharged</p>
+                                              <p className="font-mono font-semibold">{parseFloat(activity.discharged_quantity_litres ?? "0").toLocaleString()} L</p>
+                                            </div>
+                                            <div className="bg-blue-50/40 px-3 py-2">
+                                              <p className="text-[9px] text-muted-foreground uppercase">Received</p>
+                                              <p className="font-mono font-semibold">{parseFloat(activity.received_quantity_litres ?? "0").toLocaleString()} L</p>
+                                            </div>
+                                            <div className="bg-muted/20 px-3 py-2">
+                                              <p className="text-[9px] text-muted-foreground uppercase">Recorded</p>
+                                              <p className="font-mono font-semibold text-[10px]">{formatDateTime(activity.quantity_recorded_at)}</p>
+                                            </div>
+                                            {activity.quantity_description && (
+                                              <div className="col-span-3 bg-background px-3 py-1.5 text-[11px] text-muted-foreground italic">{activity.quantity_description}</div>
+                                            )}
+                                          </div>
+                                        ) : canAct ? (
+                                          <Button size="sm" variant="outline" className="text-xs gap-1.5" onClick={() => openQuantitiesForm(activity)}>
+                                            <FileText className="w-3.5 h-3.5" />Record Discharge &amp; Received Quantity
+                                          </Button>
+                                        ) : (
+                                          <p className="text-xs text-muted-foreground">Not yet recorded</p>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            </> }
 
                           </Card>
                         );

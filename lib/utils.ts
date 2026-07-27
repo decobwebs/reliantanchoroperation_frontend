@@ -98,6 +98,13 @@ export const OP_TYPE_LABELS: Record<string, string> = {
   truck_only: "Truck Only",
 };
 
+// Vessel-only only — a pure label, never a gate. "terminal"'s human label
+// ("TMS") isn't finalized; this is the one place to change it later.
+export const VESSEL_SOURCE_TYPE_LABELS: Record<string, string> = {
+  truck: "TTS (Truck-to-Ship)",
+  terminal: "TMS (Terminal-to-Ship)",
+};
+
 export const OPERATION_COLOR_SWATCHES: Record<string, string> = {
   red:    "bg-red-500",
   orange: "bg-orange-500",

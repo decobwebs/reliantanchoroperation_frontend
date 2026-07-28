@@ -755,28 +755,92 @@ export interface VesselActivity {
     recorded_at: string;
   }[];
 
-  // ── Vessel-only commence -> updates -> complete -> quantities flow ──
+  // ── Vessel-only: Loading Commenced/Completed (reuses commence/complete) ──
   commence_system_at?: string;
   commence_user_at?: string;
   commence_description?: string;
   complete_system_at?: string;
   complete_user_at?: string;
+  // Superseded (migration 039) — dead for rows created after the
+  // six-stage + receiving-vessel-legs rebuild (migration 041).
   discharged_quantity_litres?: string;
   received_quantity_litres?: string;
   quantity_recorded_at?: string;
   quantity_description?: string;
+
+  // ── Loading Received Quantity — one-time, six-stage + legs flow ──
+  loading_received_quantity_litres?: string;
+  loading_density?: string;
+  loading_temperature_before_loading?: string;
+  loading_temperature_after_loading?: string;
+  loading_vcf?: string;
+  loading_gov?: string;
+  loading_gsv?: string;
+  loading_mt_vacuum?: string;
+  loading_quantity_recorded_at?: string;
+  loading_quantity_description?: string;
+
   updates: VesselActivityUpdate[];
+  legs: VesselActivityLeg[];
 }
 
 export interface VesselActivityUpdate {
   id: string;
   vessel_activity_id: string;
+  leg_id?: string;
   content: string;
   image_url?: string;
   recorded_by: string;
   recorded_by_name?: string;
   recorded_at: string;
 }
+
+export interface VesselActivityLeg {
+  id: string;
+  vessel_activity_id: string;
+  receiving_vessel_name: string;
+  imo_number?: string;
+  eta_at?: string;
+  created_by: string;
+  created_at: string;
+
+  stage?: string;
+  stage_cast_off_system_at?: string;
+  stage_cast_off_user_at?: string;
+  stage_alongside_system_at?: string;
+  stage_alongside_user_at?: string;
+  stage_discharge_commenced_system_at?: string;
+  stage_discharge_commenced_user_at?: string;
+  stage_discharge_completed_system_at?: string;
+  stage_discharge_completed_user_at?: string;
+
+  hse_checklist: { item: string; passed: boolean; notes?: string }[];
+  hse_result?: string;
+  hse_conducted_by?: string;
+  hse_conducted_at?: string;
+  hse_notes?: string;
+
+  quantity_discharged_litres?: string;
+  density?: string;
+  temperature_before_loading?: string;
+  temperature_after_loading?: string;
+  vcf?: string;
+  gov?: string;
+  gsv?: string;
+  mt_vacuum?: string;
+  quantity_recorded_at?: string;
+  quantity_description?: string;
+
+  cancelled_at?: string;
+  cancelled_reason?: string;
+}
+
+export const LEG_STAGES: { value: string; label: string }[] = [
+  { value: "cast_off", label: "Cast Off" },
+  { value: "alongside", label: "Alongside" },
+  { value: "discharge_commenced", label: "Discharge Commenced" },
+  { value: "discharge_completed", label: "Discharge Completed" },
+];
 
 // ─── BDN ─────────────────────────────────────────────────────────────────────
 
@@ -842,6 +906,7 @@ export interface VesselBdn {
   operation_id: string;
   vessel_id: string;
   vessel_activity_id?: string;
+  vessel_leg_id?: string;
   generated_by: string;
   generated_by_name?: string;
   reviewed_by?: string;

@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState, useRef } from "react";
+import { use, useState, useRef, Fragment } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -99,6 +99,7 @@ import type {
   User,
   Vessel,
   VesselActivity,
+  VesselActivityLeg,
   TruckSafetyAudit,
   AuditResult,
   AuditPhase,
@@ -112,7 +113,7 @@ import type {
   OperationKpi,
   RoleStageDurations,
 } from "@/types";
-import { PRODUCT_TYPE_LABELS } from "@/types";
+import { PRODUCT_TYPE_LABELS, LEG_STAGES } from "@/types";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -1220,6 +1221,10 @@ export default function OperationDetailPage({
   ] as const;
 
   const [vesselBdnFormActivityId, setVesselBdnFormActivityId] = useState<string | null>(null);
+  // When op.type === "vessel_only", vesselBdnFormActivityId actually holds a
+  // receiving-vessel LEG id (one BDN per leg), and this flag picks the
+  // /vessel-activity-legs/{id}/bdn endpoint instead of /vessel-activities/{id}/bdn.
+  const [vesselBdnFormIsLeg,      setVesselBdnFormIsLeg]      = useState(false);
   const [vesselBdnForm,           setVesselBdnForm]           = useState<Record<string, string>>({});
   const [rejectVesselBdnId,       setRejectVesselBdnId]       = useState<string | null>(null);
   const [rejectVesselBdnReason,   setRejectVesselBdnReason]   = useState("");
@@ -1244,7 +1249,10 @@ export default function OperationDetailPage({
   const createVesselBdnMutation = useMutation({
     mutationFn: async () => {
       if (!vesselBdnFormActivityId) return;
-      await api.post(`/vessel-activities/${vesselBdnFormActivityId}/bdn`, {
+      const endpoint = vesselBdnFormIsLeg
+        ? `/vessel-activity-legs/${vesselBdnFormActivityId}/bdn`
+        : `/vessel-activities/${vesselBdnFormActivityId}/bdn`;
+      await api.post(endpoint, {
         company_name:               vesselBdnForm.company_name?.trim(),
         product_type:               vesselBdnForm.product_type?.trim(),
         discharge_location:         vesselBdnForm.discharge_location?.trim(),
@@ -1267,6 +1275,7 @@ export default function OperationDetailPage({
     onSuccess: () => {
       toast.success("Vessel BDN submitted — awaiting Bunker Manager approval");
       setVesselBdnFormActivityId(null);
+      setVesselBdnFormIsLeg(false);
       setVesselBdnForm({});
       qc.invalidateQueries({ queryKey: ["operation-vessel-bdns", id] });
       qc.invalidateQueries({ queryKey: ["operation", id] });
@@ -1610,7 +1619,7 @@ export default function OperationDetailPage({
       });
     },
     onSuccess: () => {
-      toast.success("Vessel operation commenced");
+      toast.success("Loading commenced");
       setCommenceFormActivityId(null); setCommenceUserAt(""); setCommenceDescription("");
       refetchVesselActivities();
     },
@@ -1650,7 +1659,7 @@ export default function OperationDetailPage({
       });
     },
     onSuccess: () => {
-      toast.success("Vessel operation completed — ready for BDN submission");
+      toast.success("Loading completed — add receiving vessels to begin delivery");
       setCompleteFormActivityId(null); setCompleteUserAt("");
       refetchVesselActivities();
     },
@@ -1726,6 +1735,206 @@ export default function OperationDetailPage({
     onSuccess: () => {
       toast.success("Timing corrected");
       setEditTimingActivityId(null); setEditTimingReason("");
+      refetchVesselActivities();
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  // ── Loading Received Quantity — one-time, six-stage + legs flow ──
+  const [loadReceiptFormActivityId, setLoadReceiptFormActivityId] = useState<string | null>(null);
+  const [loadReceived, setLoadReceived] = useState("");
+  const [loadDensity, setLoadDensity] = useState("");
+  const [loadTempBefore, setLoadTempBefore] = useState("");
+  const [loadTempAfter, setLoadTempAfter] = useState("");
+  const [loadVcf, setLoadVcf] = useState("");
+  const [loadGov, setLoadGov] = useState("");
+  const [loadDescription, setLoadDescription] = useState("");
+  const [loadReason, setLoadReason] = useState("");
+  const resetLoadReceiptForm = () => {
+    setLoadReceiptFormActivityId(null);
+    setLoadReceived(""); setLoadDensity(""); setLoadTempBefore(""); setLoadTempAfter("");
+    setLoadVcf(""); setLoadGov(""); setLoadDescription(""); setLoadReason("");
+  };
+  const openLoadReceiptForm = (activity: VesselActivity) => {
+    setLoadReceiptFormActivityId(activity.id);
+    setLoadReceived(activity.loading_received_quantity_litres ?? "");
+    setLoadDensity(activity.loading_density ?? "");
+    setLoadTempBefore(activity.loading_temperature_before_loading ?? "");
+    setLoadTempAfter(activity.loading_temperature_after_loading ?? "");
+    setLoadVcf(activity.loading_vcf ?? "");
+    setLoadGov(activity.loading_gov ?? "");
+    setLoadDescription(activity.loading_quantity_description ?? "");
+    setLoadReason("");
+  };
+  const recordLoadingReceiptMutation = useMutation({
+    mutationFn: async (activityId: string) => {
+      await api.post(`/vessel-activities/${activityId}/loading-receipt`, {
+        received_quantity_litres: parseFloat(loadReceived),
+        density: parseFloat(loadDensity),
+        temperature_before_loading: parseFloat(loadTempBefore),
+        temperature_after_loading: parseFloat(loadTempAfter),
+        vcf: parseFloat(loadVcf),
+        gov: parseFloat(loadGov),
+        description: loadDescription.trim() || undefined,
+        reason: loadReason.trim() || undefined,
+      });
+    },
+    onSuccess: () => {
+      toast.success("Loading receipt recorded");
+      resetLoadReceiptForm();
+      refetchVesselActivities();
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  // ── Receiving-vessel legs — added at any point, each runs its own
+  // Cast Off -> Alongside -> Discharge Commenced -> Discharge Completed.
+  const [addLegFormActivityId, setAddLegFormActivityId] = useState<string | null>(null);
+  const [newLegName, setNewLegName] = useState("");
+  const [newLegImo, setNewLegImo] = useState("");
+  const [newLegEta, setNewLegEta] = useState("");
+  const addLegMutation = useMutation({
+    mutationFn: async (activityId: string) => {
+      await api.post(`/vessel-activities/${activityId}/legs`, {
+        receiving_vessel_name: newLegName.trim(),
+        imo_number: newLegImo.trim() || undefined,
+        eta_at: newLegEta ? new Date(newLegEta).toISOString() : undefined,
+      });
+    },
+    onSuccess: () => {
+      toast.success("Receiving vessel added");
+      setAddLegFormActivityId(null); setNewLegName(""); setNewLegImo(""); setNewLegEta("");
+      refetchVesselActivities();
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const [legStageFormLegId, setLegStageFormLegId] = useState<string | null>(null);
+  const [legStageTarget, setLegStageTarget] = useState<string>("");
+  const [legStageOccurredAt, setLegStageOccurredAt] = useState("");
+  const advanceLegStageMutation = useMutation({
+    mutationFn: async (legId: string) => {
+      await api.post(`/vessel-activity-legs/${legId}/advance-stage`, {
+        stage: legStageTarget,
+        occurred_at: new Date(legStageOccurredAt).toISOString(),
+      });
+    },
+    onSuccess: () => {
+      toast.success("Leg stage recorded");
+      setLegStageFormLegId(null); setLegStageTarget(""); setLegStageOccurredAt("");
+      refetchVesselActivities();
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const [legHseFormLegId, setLegHseFormLegId] = useState<string | null>(null);
+  const [legHseChecklist, setLegHseChecklist] = useState(DEFAULT_HSE_CHECKLIST);
+  const [legHseNotes, setLegHseNotes] = useState("");
+  const openLegHseForm = (legId: string) => {
+    setLegHseFormLegId(legId);
+    setLegHseChecklist(DEFAULT_HSE_CHECKLIST);
+    setLegHseNotes("");
+  };
+  const recordLegHseMutation = useMutation({
+    mutationFn: async (legId: string) => {
+      await api.post(`/vessel-activity-legs/${legId}/hse`, {
+        checklist: legHseChecklist.map((c) => ({ item: c.item, passed: c.passed, notes: c.notes.trim() || undefined })),
+        result: legHseChecklist.every((c) => c.passed) ? "satisfactory" : "not_satisfactory",
+        notes: legHseNotes.trim() || undefined,
+      });
+    },
+    onSuccess: () => {
+      toast.success("Leg HSE checklist recorded");
+      setLegHseFormLegId(null); setLegHseNotes("");
+      refetchVesselActivities();
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const [legQtyFormLegId, setLegQtyFormLegId] = useState<string | null>(null);
+  const [legQtyDischarged, setLegQtyDischarged] = useState("");
+  const [legQtyDensity, setLegQtyDensity] = useState("");
+  const [legQtyTempBefore, setLegQtyTempBefore] = useState("");
+  const [legQtyTempAfter, setLegQtyTempAfter] = useState("");
+  const [legQtyVcf, setLegQtyVcf] = useState("");
+  const [legQtyGov, setLegQtyGov] = useState("");
+  const [legQtyDescription, setLegQtyDescription] = useState("");
+  const [legQtyReason, setLegQtyReason] = useState("");
+  const resetLegQtyForm = () => {
+    setLegQtyFormLegId(null);
+    setLegQtyDischarged(""); setLegQtyDensity(""); setLegQtyTempBefore(""); setLegQtyTempAfter("");
+    setLegQtyVcf(""); setLegQtyGov(""); setLegQtyDescription(""); setLegQtyReason("");
+  };
+  const openLegQtyForm = (leg: VesselActivityLeg) => {
+    setLegQtyFormLegId(leg.id);
+    setLegQtyDischarged(leg.quantity_discharged_litres ?? "");
+    setLegQtyDensity(leg.density ?? "");
+    setLegQtyTempBefore(leg.temperature_before_loading ?? "");
+    setLegQtyTempAfter(leg.temperature_after_loading ?? "");
+    setLegQtyVcf(leg.vcf ?? "");
+    setLegQtyGov(leg.gov ?? "");
+    setLegQtyDescription(leg.quantity_description ?? "");
+    setLegQtyReason("");
+  };
+  const recordLegQtyMutation = useMutation({
+    mutationFn: async (legId: string) => {
+      await api.post(`/vessel-activity-legs/${legId}/quantities`, {
+        quantity_discharged_litres: parseFloat(legQtyDischarged),
+        density: parseFloat(legQtyDensity),
+        temperature_before_loading: parseFloat(legQtyTempBefore),
+        temperature_after_loading: parseFloat(legQtyTempAfter),
+        vcf: parseFloat(legQtyVcf),
+        gov: parseFloat(legQtyGov),
+        description: legQtyDescription.trim() || undefined,
+        reason: legQtyReason.trim() || undefined,
+      });
+    },
+    onSuccess: () => {
+      toast.success("Leg quantities recorded");
+      resetLegQtyForm();
+      refetchVesselActivities();
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const [editLegTimingId, setEditLegTimingId] = useState<string | null>(null);
+  const [editLegTimingFields, setEditLegTimingFields] = useState<Record<string, string>>({});
+  const [editLegTimingReason, setEditLegTimingReason] = useState("");
+  const openEditLegTiming = (leg: VesselActivityLeg) => {
+    setEditLegTimingId(leg.id);
+    setEditLegTimingFields({
+      stage_cast_off_user_at: leg.stage_cast_off_user_at?.slice(0, 16) ?? "",
+      stage_alongside_user_at: leg.stage_alongside_user_at?.slice(0, 16) ?? "",
+      stage_discharge_commenced_user_at: leg.stage_discharge_commenced_user_at?.slice(0, 16) ?? "",
+      stage_discharge_completed_user_at: leg.stage_discharge_completed_user_at?.slice(0, 16) ?? "",
+    });
+    setEditLegTimingReason("");
+  };
+  const correctLegTimingMutation = useMutation({
+    mutationFn: async (legId: string) => {
+      const body: Record<string, string> = { reason: editLegTimingReason.trim() };
+      for (const [k, v] of Object.entries(editLegTimingFields)) {
+        if (v) body[k] = new Date(v).toISOString();
+      }
+      await api.patch(`/vessel-activity-legs/${legId}/timing`, body);
+    },
+    onSuccess: () => {
+      toast.success("Leg timing corrected");
+      setEditLegTimingId(null); setEditLegTimingReason("");
+      refetchVesselActivities();
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const [cancelLegFormId, setCancelLegFormId] = useState<string | null>(null);
+  const [cancelLegReason, setCancelLegReason] = useState("");
+  const cancelLegMutation = useMutation({
+    mutationFn: async (legId: string) => {
+      await api.post(`/vessel-activity-legs/${legId}/cancel`, { reason: cancelLegReason.trim() });
+    },
+    onSuccess: () => {
+      toast.success("Receiving vessel cancelled");
+      setCancelLegFormId(null); setCancelLegReason("");
       refetchVesselActivities();
     },
     onError: (err) => toast.error(getErrorMessage(err)),
@@ -3957,15 +4166,34 @@ export default function OperationDetailPage({
 
               {/* ── Vessel BDN tab — one per vessel run, gates operation completion until ALL are approved */}
               {canSeeVesselBdn && op.type !== "truck_only" && (() => {
+                const isVesselOnly = op.type === "vessel_only";
+
+                // vessel_only: one BDN per receiving-vessel LEG (delivery
+                // repeats per receiving vessel). Everything else: one BDN
+                // per VesselActivity (vessel run), unchanged.
+                const bdnnedLegIds = new Set(
+                  (vesselBdns ?? []).filter((b) => (b.status === "pending" || b.status === "approved") && b.vessel_leg_id).map((b) => b.vessel_leg_id)
+                );
                 const bdnnedActivityIds = new Set(
                   (vesselBdns ?? []).filter((b) => b.status === "pending" || b.status === "approved").map((b) => b.vessel_activity_id)
                 );
-                const submittableActivities = (vesselActivities ?? []).filter(
-                  (a) => a.status !== "cancelled" && !bdnnedActivityIds.has(a.id) &&
-                    (op.type === "vessel_only" ? !!a.complete_system_at : a.stage === "discharge_completed")
+
+                const allLegs = isVesselOnly
+                  ? (vesselActivities ?? []).flatMap((a) => (a.legs ?? []).map((leg) => ({ leg, activity: a })))
+                  : [];
+                const submittableLegs = allLegs.filter(
+                  ({ leg }) => !leg.cancelled_at && leg.stage === "discharge_completed" && !bdnnedLegIds.has(leg.id)
                 );
-                const totalRuns = (vesselActivities ?? []).filter((a) => a.status !== "cancelled").length;
-                const approvedRuns = (vesselBdns ?? []).filter((b) => b.status === "approved").length;
+                const submittableActivities = isVesselOnly ? [] : (vesselActivities ?? []).filter(
+                  (a) => a.status !== "cancelled" && !bdnnedActivityIds.has(a.id) && a.stage === "discharge_completed"
+                );
+
+                const totalRuns = isVesselOnly
+                  ? allLegs.filter(({ leg }) => !leg.cancelled_at).length
+                  : (vesselActivities ?? []).filter((a) => a.status !== "cancelled").length;
+                const approvedRuns = isVesselOnly
+                  ? (vesselBdns ?? []).filter((b) => b.status === "approved" && b.vessel_leg_id).length
+                  : (vesselBdns ?? []).filter((b) => b.status === "approved").length;
 
                 return (
                 <TabsContent value="vessel-bdns" className="mt-4 space-y-4">
@@ -3979,18 +4207,33 @@ export default function OperationDetailPage({
                   )}
 
                   {/* OS/Marine: Submit Vessel BDN form */}
-                  {(isOS || isMM) && submittableActivities.length > 0 && (
+                  {(isOS || isMM) && (isVesselOnly ? submittableLegs.length > 0 : submittableActivities.length > 0) && (
                     <Card className="border-0 shadow-sm">
                       <CardHeader className="pb-3 pt-4 px-5">
                         <div className="flex items-center justify-between">
                           <CardTitle className="text-sm font-semibold">Submit Vessel Bunker Delivery Note</CardTitle>
                           {!vesselBdnFormActivityId && (
-                            <Select value="" onValueChange={(v) => { setVesselBdnFormActivityId(v); setVesselBdnForm({}); }}>
-                              <SelectTrigger className="h-8 text-xs w-[220px]"><SelectValue placeholder="Select vessel run…" /></SelectTrigger>
+                            <Select
+                              value=""
+                              onValueChange={(v) => {
+                                setVesselBdnFormActivityId(v);
+                                setVesselBdnFormIsLeg(isVesselOnly);
+                                setVesselBdnForm(
+                                  isVesselOnly
+                                    ? { receiving_vessel: submittableLegs.find(({ leg }) => leg.id === v)?.leg.receiving_vessel_name ?? "" }
+                                    : {}
+                                );
+                              }}
+                            >
+                              <SelectTrigger className="h-8 text-xs w-[220px]"><SelectValue placeholder={isVesselOnly ? "Select receiving vessel…" : "Select vessel run…"} /></SelectTrigger>
                               <SelectContent>
-                                {submittableActivities.map((a) => (
-                                  <SelectItem key={a.id} value={a.id} className="text-xs">{a.activity_number} · {a.vessel_name}</SelectItem>
-                                ))}
+                                {isVesselOnly
+                                  ? submittableLegs.map(({ leg, activity }) => (
+                                      <SelectItem key={leg.id} value={leg.id} className="text-xs">{leg.receiving_vessel_name} · {activity.vessel_name}</SelectItem>
+                                    ))
+                                  : submittableActivities.map((a) => (
+                                      <SelectItem key={a.id} value={a.id} className="text-xs">{a.activity_number} · {a.vessel_name}</SelectItem>
+                                    ))}
                               </SelectContent>
                             </Select>
                           )}
@@ -4105,7 +4348,7 @@ export default function OperationDetailPage({
                             <Button size="sm" className="flex-1" disabled={!vesselBdnFormComplete || createVesselBdnMutation.isPending} onClick={() => createVesselBdnMutation.mutate()}>
                               {createVesselBdnMutation.isPending ? "Submitting…" : "Submit Vessel BDN"}
                             </Button>
-                            <Button size="sm" variant="outline" onClick={() => { setVesselBdnFormActivityId(null); setVesselBdnForm({}); }}>Cancel</Button>
+                            <Button size="sm" variant="outline" onClick={() => { setVesselBdnFormActivityId(null); setVesselBdnFormIsLeg(false); setVesselBdnForm({}); }}>Cancel</Button>
                           </div>
                         </CardContent>
                       )}
@@ -4126,6 +4369,7 @@ export default function OperationDetailPage({
                         <div className="divide-y">
                           {vesselBdns.map((vb) => {
                             const activity = vesselActivities?.find((a) => a.id === vb.vessel_activity_id);
+                            const leg = vb.vessel_leg_id ? activity?.legs?.find((l) => l.id === vb.vessel_leg_id) : undefined;
                             const rows: { label: string; system?: string; submitted: string; mismatch: boolean }[] = [
                               { label: "Product Type", system: vb.system_product_type ?? "—", submitted: vb.product_type, mismatch: (vb.system_product_type ?? "").trim().toLowerCase() !== vb.product_type.trim().toLowerCase() },
                               {
@@ -4161,7 +4405,7 @@ export default function OperationDetailPage({
                                 <div>
                                   <p className="text-sm font-mono font-semibold">{vb.bdn_number}</p>
                                   <p className="text-xs text-muted-foreground">
-                                    {activity ? `${activity.activity_number} · ${activity.vessel_name}` : "—"}
+                                    {leg ? `${leg.receiving_vessel_name} · ${activity?.vessel_name}` : activity ? `${activity.activity_number} · ${activity.vessel_name}` : "—"}
                                     {" · "}{vb.company_name}
                                     {" · "}{parseFloat(vb.quantity_discharged_litres).toLocaleString(undefined, { minimumFractionDigits: 2 })} L
                                   </p>
@@ -5166,14 +5410,14 @@ export default function OperationDetailPage({
                                           <Textarea className="text-xs min-h-[50px] resize-none" placeholder="Any notes about how the vessel operation is commencing…" value={commenceDescription} onChange={(e) => setCommenceDescription(e.target.value)} />
                                           <div className="flex gap-2">
                                             <Button size="sm" className="flex-1 text-xs" disabled={!commenceUserAt || commenceMutation.isPending} onClick={() => commenceMutation.mutate(activity.id)}>
-                                              {commenceMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Commence Vessel Operation"}
+                                              {commenceMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Mark Loading Commenced"}
                                             </Button>
                                             <Button size="sm" variant="ghost" className="text-xs" onClick={() => { setCommenceFormActivityId(null); setCommenceUserAt(""); setCommenceDescription(""); }}>Cancel</Button>
                                           </div>
                                         </div>
                                       ) : (
                                         <Button size="sm" className="text-xs gap-1.5" onClick={() => { setCommenceFormActivityId(activity.id); setCommenceUserAt(""); setCommenceDescription(""); }}>
-                                          <PlayCircle className="w-3.5 h-3.5" />Commence Vessel Operation
+                                          <PlayCircle className="w-3.5 h-3.5" />Mark Loading Commenced
                                         </Button>
                                       )}
                                     </div>
@@ -5316,108 +5560,399 @@ export default function OperationDetailPage({
                                             <Input type="datetime-local" className="h-8 text-xs" value={completeUserAt} onChange={(e) => setCompleteUserAt(e.target.value)} />
                                             <div className="flex gap-2">
                                               <Button size="sm" className="flex-1 text-xs bg-emerald-700 hover:bg-emerald-800" disabled={!completeUserAt || completeVesselOpMutation.isPending} onClick={() => completeVesselOpMutation.mutate(activity.id)}>
-                                                {completeVesselOpMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Complete Vessel Operation"}
+                                                {completeVesselOpMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Mark Loading Completed"}
                                               </Button>
                                               <Button size="sm" variant="ghost" className="text-xs" onClick={() => { setCompleteFormActivityId(null); setCompleteUserAt(""); }}>Cancel</Button>
                                             </div>
                                           </div>
                                         ) : (
                                           <Button size="sm" className="text-xs gap-1.5 bg-emerald-700 hover:bg-emerald-800" onClick={() => { setCompleteFormActivityId(activity.id); setCompleteUserAt(""); }}>
-                                            <CheckCircle2 className="w-3.5 h-3.5" />Complete Vessel Operation
+                                            <CheckCircle2 className="w-3.5 h-3.5" />Mark Loading Completed
                                           </Button>
                                         )}
                                       </div>
                                     )}
 
-                                    {/* Discharge & Received Quantity — visible once completed, a separate
-                                         operational note, never a Vessel BDN precondition */}
+                                    {/* Loading Received Quantity — visible once Loading Completed, one-time */}
                                     {activity.complete_system_at && (
                                       <div>
                                         <div className="flex items-center justify-between mb-1.5">
-                                          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Discharge &amp; Received Quantity</p>
-                                          {activity.quantity_recorded_at && isBM && quantitiesFormActivityId !== activity.id && (
-                                            <button className="text-[10px] text-primary underline" onClick={() => openQuantitiesForm(activity)}>Edit</button>
+                                          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Loading Received Quantity</p>
+                                          {activity.loading_quantity_recorded_at && isBM && loadReceiptFormActivityId !== activity.id && (
+                                            <button className="text-[10px] text-primary underline" onClick={() => openLoadReceiptForm(activity)}>Edit</button>
                                           )}
                                         </div>
-                                        {quantitiesFormActivityId === activity.id ? (
+                                        {loadReceiptFormActivityId === activity.id ? (
                                           <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
                                             <div className="grid grid-cols-2 gap-2">
                                               <div className="space-y-1">
-                                                <Label className="text-[10px] text-muted-foreground">Discharged Quantity (L)</Label>
-                                                <Input type="number" className="h-8 text-xs" value={qtyDischarged} onChange={(e) => setQtyDischarged(e.target.value)} />
-                                              </div>
-                                              <div className="space-y-1">
                                                 <Label className="text-[10px] text-muted-foreground">Received Quantity (L)</Label>
-                                                <Input type="number" className="h-8 text-xs" value={qtyReceived} onChange={(e) => setQtyReceived(e.target.value)} />
+                                                <Input type="number" className="h-8 text-xs" value={loadReceived} onChange={(e) => setLoadReceived(e.target.value)} />
                                               </div>
                                               <div className="space-y-1">
                                                 <Label className="text-[10px] text-muted-foreground">Density</Label>
-                                                <Input type="number" step="0.0001" className="h-8 text-xs" value={qtyDensity} onChange={(e) => setQtyDensity(e.target.value)} />
+                                                <Input type="number" step="0.0001" className="h-8 text-xs" value={loadDensity} onChange={(e) => setLoadDensity(e.target.value)} />
                                               </div>
                                               <div className="space-y-1">
-                                                <Label className="text-[10px] text-muted-foreground">Temperature (°C)</Label>
-                                                <Input type="number" step="0.01" className="h-8 text-xs" value={qtyTemperature} onChange={(e) => setQtyTemperature(e.target.value)} />
+                                                <Label className="text-[10px] text-muted-foreground">Temp Before Loading (°C)</Label>
+                                                <Input type="number" step="0.01" className="h-8 text-xs" value={loadTempBefore} onChange={(e) => setLoadTempBefore(e.target.value)} />
+                                              </div>
+                                              <div className="space-y-1">
+                                                <Label className="text-[10px] text-muted-foreground">Temp After Loading (°C)</Label>
+                                                <Input type="number" step="0.01" className="h-8 text-xs" value={loadTempAfter} onChange={(e) => setLoadTempAfter(e.target.value)} />
                                               </div>
                                               <div className="space-y-1">
                                                 <Label className="text-[10px] text-muted-foreground">VCF</Label>
-                                                <Input type="number" step="0.0001" className="h-8 text-xs" value={qtyVcf} onChange={(e) => setQtyVcf(e.target.value)} />
+                                                <Input type="number" step="0.0001" className="h-8 text-xs" value={loadVcf} onChange={(e) => setLoadVcf(e.target.value)} />
                                               </div>
                                               <div className="space-y-1">
                                                 <Label className="text-[10px] text-muted-foreground">GOV</Label>
-                                                <Input type="number" className="h-8 text-xs" value={qtyGov} onChange={(e) => setQtyGov(e.target.value)} />
+                                                <Input type="number" className="h-8 text-xs" value={loadGov} onChange={(e) => setLoadGov(e.target.value)} />
                                               </div>
                                             </div>
-                                            {qtyGov && qtyVcf && qtyDensity && (
+                                            {loadGov && loadVcf && loadDensity && (
                                               <div className="grid grid-cols-2 gap-px border rounded-md overflow-hidden text-[11px]">
                                                 <div className="bg-background px-2.5 py-1.5">
                                                   <p className="text-[9px] text-muted-foreground uppercase">GSV (computed)</p>
-                                                  <p className="font-mono font-semibold">{(parseFloat(qtyGov) * parseFloat(qtyVcf)).toLocaleString()}</p>
+                                                  <p className="font-mono font-semibold">{(parseFloat(loadGov) * parseFloat(loadVcf)).toLocaleString()}</p>
                                                 </div>
                                                 <div className="bg-background px-2.5 py-1.5">
                                                   <p className="text-[9px] text-muted-foreground uppercase">MTvac (computed)</p>
-                                                  <p className="font-mono font-semibold">{(parseFloat(qtyGov) * parseFloat(qtyVcf) * parseFloat(qtyDensity)).toLocaleString()}</p>
+                                                  <p className="font-mono font-semibold">{(parseFloat(loadGov) * parseFloat(loadVcf) * parseFloat(loadDensity)).toLocaleString()}</p>
                                                 </div>
                                               </div>
                                             )}
-                                            <Textarea className="text-xs min-h-[50px] resize-none" placeholder="Description (optional)…" value={qtyDescription} onChange={(e) => setQtyDescription(e.target.value)} />
-                                            {activity.quantity_recorded_at && (
-                                              <Textarea className="text-xs min-h-[40px] resize-none" placeholder="Reason for correction (required)…" value={qtyReason} onChange={(e) => setQtyReason(e.target.value)} />
+                                            <Textarea className="text-xs min-h-[50px] resize-none" placeholder="Description (optional)…" value={loadDescription} onChange={(e) => setLoadDescription(e.target.value)} />
+                                            {activity.loading_quantity_recorded_at && (
+                                              <Textarea className="text-xs min-h-[40px] resize-none" placeholder="Reason for correction (required)…" value={loadReason} onChange={(e) => setLoadReason(e.target.value)} />
                                             )}
                                             <div className="flex gap-2">
                                               <Button
                                                 size="sm" className="flex-1 text-xs"
-                                                disabled={!qtyDischarged || !qtyReceived || !qtyDensity || !qtyTemperature || !qtyVcf || !qtyGov || (!!activity.quantity_recorded_at && !qtyReason.trim()) || recordVesselQuantitiesMutation.isPending}
-                                                onClick={() => recordVesselQuantitiesMutation.mutate(activity.id)}
+                                                disabled={!loadReceived || !loadDensity || !loadTempBefore || !loadTempAfter || !loadVcf || !loadGov || (!!activity.loading_quantity_recorded_at && !loadReason.trim()) || recordLoadingReceiptMutation.isPending}
+                                                onClick={() => recordLoadingReceiptMutation.mutate(activity.id)}
                                               >
-                                                {recordVesselQuantitiesMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Save Quantities"}
+                                                {recordLoadingReceiptMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Save Loading Receipt"}
                                               </Button>
-                                              <Button size="sm" variant="ghost" className="text-xs" onClick={resetQuantitiesForm}>Cancel</Button>
+                                              <Button size="sm" variant="ghost" className="text-xs" onClick={resetLoadReceiptForm}>Cancel</Button>
                                             </div>
                                           </div>
-                                        ) : activity.quantity_recorded_at ? (
+                                        ) : activity.loading_quantity_recorded_at ? (
                                           <div className="grid grid-cols-3 gap-px border rounded-md overflow-hidden text-xs">
-                                            <div className="bg-emerald-50/40 px-3 py-2">
-                                              <p className="text-[9px] text-muted-foreground uppercase">Discharged</p>
-                                              <p className="font-mono font-semibold">{parseFloat(activity.discharged_quantity_litres ?? "0").toLocaleString()} L</p>
-                                            </div>
                                             <div className="bg-blue-50/40 px-3 py-2">
                                               <p className="text-[9px] text-muted-foreground uppercase">Received</p>
-                                              <p className="font-mono font-semibold">{parseFloat(activity.received_quantity_litres ?? "0").toLocaleString()} L</p>
+                                              <p className="font-mono font-semibold">{parseFloat(activity.loading_received_quantity_litres ?? "0").toLocaleString()} L</p>
+                                            </div>
+                                            <div className="bg-background px-3 py-2">
+                                              <p className="text-[9px] text-muted-foreground uppercase">MTvac</p>
+                                              <p className="font-mono font-semibold">{parseFloat(activity.loading_mt_vacuum ?? "0").toLocaleString()}</p>
                                             </div>
                                             <div className="bg-muted/20 px-3 py-2">
                                               <p className="text-[9px] text-muted-foreground uppercase">Recorded</p>
-                                              <p className="font-mono font-semibold text-[10px]">{formatDateTime(activity.quantity_recorded_at)}</p>
+                                              <p className="font-mono font-semibold text-[10px]">{formatDateTime(activity.loading_quantity_recorded_at)}</p>
                                             </div>
-                                            {activity.quantity_description && (
-                                              <div className="col-span-3 bg-background px-3 py-1.5 text-[11px] text-muted-foreground italic">{activity.quantity_description}</div>
+                                            {activity.loading_quantity_description && (
+                                              <div className="col-span-3 bg-background px-3 py-1.5 text-[11px] text-muted-foreground italic">{activity.loading_quantity_description}</div>
                                             )}
                                           </div>
                                         ) : canAct ? (
-                                          <Button size="sm" variant="outline" className="text-xs gap-1.5" onClick={() => openQuantitiesForm(activity)}>
-                                            <FileText className="w-3.5 h-3.5" />Record Discharge &amp; Received Quantity
+                                          <Button size="sm" variant="outline" className="text-xs gap-1.5" onClick={() => openLoadReceiptForm(activity)}>
+                                            <FileText className="w-3.5 h-3.5" />Record Loading Received Quantity
                                           </Button>
                                         ) : (
                                           <p className="text-xs text-muted-foreground">Not yet recorded</p>
+                                        )}
+                                      </div>
+                                    )}
+
+                                    {/* Receiving Vessels — BM can add at any point once Loading Completed;
+                                         each runs its own Cast Off -> Alongside -> Discharge Commenced ->
+                                         Discharge Completed sequence, independently. */}
+                                    {activity.complete_system_at && (
+                                      <div>
+                                        <div className="flex items-center justify-between mb-1.5">
+                                          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Receiving Vessels</p>
+                                          {isBM && addLegFormActivityId !== activity.id && (
+                                            <button className="text-[10px] text-primary underline" onClick={() => { setAddLegFormActivityId(activity.id); setNewLegName(""); setNewLegImo(""); setNewLegEta(""); }}>+ Add</button>
+                                          )}
+                                        </div>
+
+                                        {addLegFormActivityId === activity.id && (
+                                          <div className="rounded-lg border bg-muted/30 p-3 space-y-2 mb-2">
+                                            <div className="grid grid-cols-2 gap-2">
+                                              <div className="space-y-1">
+                                                <Label className="text-[10px] text-muted-foreground">Receiving Vessel Name</Label>
+                                                <Input className="h-8 text-xs" value={newLegName} onChange={(e) => setNewLegName(e.target.value)} />
+                                              </div>
+                                              <div className="space-y-1">
+                                                <Label className="text-[10px] text-muted-foreground">IMO Number (optional)</Label>
+                                                <Input className="h-8 text-xs" value={newLegImo} onChange={(e) => setNewLegImo(e.target.value)} />
+                                              </div>
+                                            </div>
+                                            <div className="space-y-1">
+                                              <Label className="text-[10px] text-muted-foreground">ETA (optional)</Label>
+                                              <Input type="datetime-local" className="h-8 text-xs" value={newLegEta} onChange={(e) => setNewLegEta(e.target.value)} />
+                                            </div>
+                                            <div className="flex gap-2">
+                                              <Button size="sm" className="flex-1 text-xs" disabled={!newLegName.trim() || addLegMutation.isPending} onClick={() => addLegMutation.mutate(activity.id)}>
+                                                {addLegMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Add Receiving Vessel"}
+                                              </Button>
+                                              <Button size="sm" variant="ghost" className="text-xs" onClick={() => setAddLegFormActivityId(null)}>Cancel</Button>
+                                            </div>
+                                          </div>
+                                        )}
+
+                                        {activity.legs.length === 0 ? (
+                                          <p className="text-xs text-muted-foreground">No receiving vessels added yet.</p>
+                                        ) : (
+                                          <div className="space-y-3">
+                                            {activity.legs.map((leg) => {
+                                              const legStageIdx = leg.stage ? LEG_STAGES.findIndex((s) => s.value === leg.stage) : -1;
+                                              const nextLegStage = LEG_STAGES[legStageIdx + 1];
+                                              return (
+                                                <div key={leg.id} className={`rounded-lg border overflow-hidden ${leg.cancelled_at ? "opacity-60" : ""}`}>
+                                                  <div className="px-3 py-2 bg-muted/20 flex items-center justify-between">
+                                                    <div>
+                                                      <p className="text-xs font-semibold">{leg.receiving_vessel_name}{leg.imo_number ? ` · IMO ${leg.imo_number}` : ""}</p>
+                                                      {leg.eta_at && <p className="text-[10px] text-muted-foreground">ETA {formatDateTime(leg.eta_at)}</p>}
+                                                    </div>
+                                                    {leg.cancelled_at ? (
+                                                      <Badge variant="outline" className="text-[10px]">Cancelled</Badge>
+                                                    ) : isBM && cancelLegFormId !== leg.id ? (
+                                                      <button className="text-[10px] text-destructive underline" onClick={() => { setCancelLegFormId(leg.id); setCancelLegReason(""); }}>Cancel</button>
+                                                    ) : null}
+                                                  </div>
+
+                                                  {cancelLegFormId === leg.id && (
+                                                    <div className="px-3 py-2 border-t bg-muted/10 space-y-2">
+                                                      <Textarea className="text-xs min-h-[40px] resize-none" placeholder="Reason for cancelling (required)…" value={cancelLegReason} onChange={(e) => setCancelLegReason(e.target.value)} />
+                                                      <div className="flex gap-2">
+                                                        <Button size="sm" variant="destructive" className="flex-1 text-xs" disabled={!cancelLegReason.trim() || cancelLegMutation.isPending} onClick={() => cancelLegMutation.mutate(leg.id)}>
+                                                          {cancelLegMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Confirm Cancel"}
+                                                        </Button>
+                                                        <Button size="sm" variant="ghost" className="text-xs" onClick={() => setCancelLegFormId(null)}>Back</Button>
+                                                      </div>
+                                                    </div>
+                                                  )}
+
+                                                  {leg.cancelled_at ? (
+                                                    <p className="px-3 py-2 text-[11px] text-muted-foreground italic">{leg.cancelled_reason}</p>
+                                                  ) : (
+                                                    <div className="p-3 space-y-3">
+                                                      {/* 4-stage timeline */}
+                                                      <div className="flex items-center gap-1 overflow-x-auto pb-1">
+                                                        {LEG_STAGES.map((s, i) => {
+                                                          const done = i <= legStageIdx;
+                                                          const current = i === legStageIdx + 1;
+                                                          return (
+                                                            <div key={s.value} className="flex items-center gap-1 shrink-0">
+                                                              <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold ${
+                                                                done ? "bg-emerald-500 text-white" : current ? "bg-primary text-white" : "bg-muted text-muted-foreground"
+                                                              }`}>
+                                                                {done ? "✓" : i + 1}
+                                                              </div>
+                                                              <span className={`text-[10px] ${done ? "text-muted-foreground line-through" : current ? "font-semibold" : "text-muted-foreground"}`}>
+                                                                {s.label}
+                                                              </span>
+                                                              {i < LEG_STAGES.length - 1 && <ChevronRight className="w-2.5 h-2.5 text-muted-foreground/30 shrink-0" />}
+                                                            </div>
+                                                          );
+                                                        })}
+                                                      </div>
+
+                                                      {/* Dual system/user timings already logged */}
+                                                      {legStageIdx >= 0 && (
+                                                        <div className="grid grid-cols-2 gap-px border rounded-md overflow-hidden text-[10px]">
+                                                          {LEG_STAGES.slice(0, legStageIdx + 1).map((s) => (
+                                                            <Fragment key={s.value}>
+                                                              <div className="bg-muted/20 px-2 py-1.5">
+                                                                <p className="text-[8px] text-muted-foreground uppercase">{s.label} — system</p>
+                                                                <p className="font-mono">{formatDateTime((leg as unknown as Record<string, string>)[`stage_${s.value}_system_at`])}</p>
+                                                              </div>
+                                                              <div className="bg-muted/20 px-2 py-1.5">
+                                                                <p className="text-[8px] text-muted-foreground uppercase">{s.label} — you entered</p>
+                                                                <p className="font-mono">{formatDateTime((leg as unknown as Record<string, string>)[`stage_${s.value}_user_at`])}</p>
+                                                              </div>
+                                                            </Fragment>
+                                                          ))}
+                                                        </div>
+                                                      )}
+                                                      {isBM && (
+                                                        editLegTimingId === leg.id ? (
+                                                          <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+                                                            <div className="grid grid-cols-2 gap-2">
+                                                              {LEG_STAGES.slice(0, legStageIdx + 1).map((s) => (
+                                                                <div key={s.value} className="space-y-1">
+                                                                  <Label className="text-[10px] text-muted-foreground">{s.label} (you entered)</Label>
+                                                                  <Input
+                                                                    type="datetime-local" className="h-8 text-xs"
+                                                                    value={editLegTimingFields[`stage_${s.value}_user_at`] ?? ""}
+                                                                    onChange={(e) => setEditLegTimingFields((f) => ({ ...f, [`stage_${s.value}_user_at`]: e.target.value }))}
+                                                                  />
+                                                                </div>
+                                                              ))}
+                                                            </div>
+                                                            <Textarea className="text-xs min-h-[40px] resize-none" placeholder="Reason for correction…" value={editLegTimingReason} onChange={(e) => setEditLegTimingReason(e.target.value)} />
+                                                            <div className="flex gap-2">
+                                                              <Button size="sm" className="flex-1 text-xs" disabled={!editLegTimingReason.trim() || correctLegTimingMutation.isPending} onClick={() => correctLegTimingMutation.mutate(leg.id)}>
+                                                                {correctLegTimingMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Save Correction"}
+                                                              </Button>
+                                                              <Button size="sm" variant="ghost" className="text-xs" onClick={() => setEditLegTimingId(null)}>Cancel</Button>
+                                                            </div>
+                                                          </div>
+                                                        ) : legStageIdx >= 0 && (
+                                                          <button className="text-[10px] text-primary underline" onClick={() => openEditLegTiming(leg)}>Correct a timing</button>
+                                                        )
+                                                      )}
+
+                                                      {/* Advance to next stage */}
+                                                      {canAct && nextLegStage && (
+                                                        legStageFormLegId === leg.id ? (
+                                                          <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+                                                            <Label className="text-[10px] text-muted-foreground">{nextLegStage.label} — occurred at</Label>
+                                                            <Input type="datetime-local" className="h-8 text-xs" value={legStageOccurredAt} onChange={(e) => setLegStageOccurredAt(e.target.value)} />
+                                                            <div className="flex gap-2">
+                                                              <Button
+                                                                size="sm" className="flex-1 text-xs"
+                                                                disabled={!legStageOccurredAt || advanceLegStageMutation.isPending}
+                                                                onClick={() => { setLegStageTarget(nextLegStage.value); advanceLegStageMutation.mutate(leg.id); }}
+                                                              >
+                                                                {advanceLegStageMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : `Log ${nextLegStage.label}`}
+                                                              </Button>
+                                                              <Button size="sm" variant="ghost" className="text-xs" onClick={() => { setLegStageFormLegId(null); setLegStageOccurredAt(""); }}>Cancel</Button>
+                                                            </div>
+                                                          </div>
+                                                        ) : (
+                                                          <Button size="sm" variant="outline" className="text-xs gap-1.5" onClick={() => { setLegStageFormLegId(leg.id); setLegStageTarget(nextLegStage.value); setLegStageOccurredAt(""); }}>
+                                                            <PlayCircle className="w-3.5 h-3.5" />Log {nextLegStage.label}
+                                                          </Button>
+                                                        )
+                                                      )}
+
+                                                      {/* HSE — non-blocking, available once cast off */}
+                                                      {canAct && legStageIdx >= 0 && (
+                                                        <div>
+                                                          {leg.hse_result ? (
+                                                            <div className={`rounded-md px-3 py-2 text-xs flex items-center gap-2 ${leg.hse_result === "satisfactory" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
+                                                              <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+                                                              HSE recorded — {leg.hse_result === "satisfactory" ? "Satisfactory" : "Issues noted (non-blocking)"}
+                                                            </div>
+                                                          ) : legHseFormLegId === leg.id ? (
+                                                            <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+                                                              <p className="text-xs font-semibold">HSE Safety Checklist</p>
+                                                              {legHseChecklist.map((item, i) => (
+                                                                <label key={i} className="flex items-center gap-2 text-xs">
+                                                                  <input type="checkbox" checked={item.passed} onChange={(e) => setLegHseChecklist((rows) => rows.map((r, idx) => idx === i ? { ...r, passed: e.target.checked } : r))} />
+                                                                  {item.item}
+                                                                </label>
+                                                              ))}
+                                                              <Textarea className="text-xs min-h-[50px] resize-none" placeholder="Notes…" value={legHseNotes} onChange={(e) => setLegHseNotes(e.target.value)} />
+                                                              <div className="flex gap-2">
+                                                                <Button size="sm" className="flex-1 text-xs" disabled={recordLegHseMutation.isPending} onClick={() => recordLegHseMutation.mutate(leg.id)}>
+                                                                  {recordLegHseMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Submit HSE Checklist"}
+                                                                </Button>
+                                                                <Button size="sm" variant="ghost" className="text-xs" onClick={() => setLegHseFormLegId(null)}>Cancel</Button>
+                                                              </div>
+                                                            </div>
+                                                          ) : (
+                                                            <Button size="sm" variant="outline" className="text-xs gap-1.5" onClick={() => openLegHseForm(leg.id)}>
+                                                              <ShieldCheck className="w-3.5 h-3.5" />Record HSE Checklist
+                                                            </Button>
+                                                          )}
+                                                        </div>
+                                                      )}
+
+                                                      {/* Discharge Quantity — once this leg reaches Discharge Completed */}
+                                                      {leg.stage === "discharge_completed" && (
+                                                        <div>
+                                                          <div className="flex items-center justify-between mb-1.5">
+                                                            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Discharge Quantity</p>
+                                                            {leg.quantity_recorded_at && isBM && legQtyFormLegId !== leg.id && (
+                                                              <button className="text-[10px] text-primary underline" onClick={() => openLegQtyForm(leg)}>Edit</button>
+                                                            )}
+                                                          </div>
+                                                          {legQtyFormLegId === leg.id ? (
+                                                            <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+                                                              <div className="grid grid-cols-2 gap-2">
+                                                                <div className="space-y-1">
+                                                                  <Label className="text-[10px] text-muted-foreground">Discharged Quantity (L)</Label>
+                                                                  <Input type="number" className="h-8 text-xs" value={legQtyDischarged} onChange={(e) => setLegQtyDischarged(e.target.value)} />
+                                                                </div>
+                                                                <div className="space-y-1">
+                                                                  <Label className="text-[10px] text-muted-foreground">Density</Label>
+                                                                  <Input type="number" step="0.0001" className="h-8 text-xs" value={legQtyDensity} onChange={(e) => setLegQtyDensity(e.target.value)} />
+                                                                </div>
+                                                                <div className="space-y-1">
+                                                                  <Label className="text-[10px] text-muted-foreground">Temp Before Loading (°C)</Label>
+                                                                  <Input type="number" step="0.01" className="h-8 text-xs" value={legQtyTempBefore} onChange={(e) => setLegQtyTempBefore(e.target.value)} />
+                                                                </div>
+                                                                <div className="space-y-1">
+                                                                  <Label className="text-[10px] text-muted-foreground">Temp After Loading (°C)</Label>
+                                                                  <Input type="number" step="0.01" className="h-8 text-xs" value={legQtyTempAfter} onChange={(e) => setLegQtyTempAfter(e.target.value)} />
+                                                                </div>
+                                                                <div className="space-y-1">
+                                                                  <Label className="text-[10px] text-muted-foreground">VCF</Label>
+                                                                  <Input type="number" step="0.0001" className="h-8 text-xs" value={legQtyVcf} onChange={(e) => setLegQtyVcf(e.target.value)} />
+                                                                </div>
+                                                                <div className="space-y-1">
+                                                                  <Label className="text-[10px] text-muted-foreground">GOV</Label>
+                                                                  <Input type="number" className="h-8 text-xs" value={legQtyGov} onChange={(e) => setLegQtyGov(e.target.value)} />
+                                                                </div>
+                                                              </div>
+                                                              {legQtyGov && legQtyVcf && legQtyDensity && (
+                                                                <div className="grid grid-cols-2 gap-px border rounded-md overflow-hidden text-[11px]">
+                                                                  <div className="bg-background px-2.5 py-1.5">
+                                                                    <p className="text-[9px] text-muted-foreground uppercase">GSV (computed)</p>
+                                                                    <p className="font-mono font-semibold">{(parseFloat(legQtyGov) * parseFloat(legQtyVcf)).toLocaleString()}</p>
+                                                                  </div>
+                                                                  <div className="bg-background px-2.5 py-1.5">
+                                                                    <p className="text-[9px] text-muted-foreground uppercase">MTvac (computed)</p>
+                                                                    <p className="font-mono font-semibold">{(parseFloat(legQtyGov) * parseFloat(legQtyVcf) * parseFloat(legQtyDensity)).toLocaleString()}</p>
+                                                                  </div>
+                                                                </div>
+                                                              )}
+                                                              <Textarea className="text-xs min-h-[50px] resize-none" placeholder="Description (optional)…" value={legQtyDescription} onChange={(e) => setLegQtyDescription(e.target.value)} />
+                                                              {leg.quantity_recorded_at && (
+                                                                <Textarea className="text-xs min-h-[40px] resize-none" placeholder="Reason for correction (required)…" value={legQtyReason} onChange={(e) => setLegQtyReason(e.target.value)} />
+                                                              )}
+                                                              <div className="flex gap-2">
+                                                                <Button
+                                                                  size="sm" className="flex-1 text-xs"
+                                                                  disabled={!legQtyDischarged || !legQtyDensity || !legQtyTempBefore || !legQtyTempAfter || !legQtyVcf || !legQtyGov || (!!leg.quantity_recorded_at && !legQtyReason.trim()) || recordLegQtyMutation.isPending}
+                                                                  onClick={() => recordLegQtyMutation.mutate(leg.id)}
+                                                                >
+                                                                  {recordLegQtyMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Save Quantities"}
+                                                                </Button>
+                                                                <Button size="sm" variant="ghost" className="text-xs" onClick={resetLegQtyForm}>Cancel</Button>
+                                                              </div>
+                                                            </div>
+                                                          ) : leg.quantity_recorded_at ? (
+                                                            <div className="grid grid-cols-2 gap-px border rounded-md overflow-hidden text-xs">
+                                                              <div className="bg-emerald-50/40 px-3 py-2">
+                                                                <p className="text-[9px] text-muted-foreground uppercase">Discharged</p>
+                                                                <p className="font-mono font-semibold">{parseFloat(leg.quantity_discharged_litres ?? "0").toLocaleString()} L</p>
+                                                              </div>
+                                                              <div className="bg-muted/20 px-3 py-2">
+                                                                <p className="text-[9px] text-muted-foreground uppercase">Recorded</p>
+                                                                <p className="font-mono font-semibold text-[10px]">{formatDateTime(leg.quantity_recorded_at)}</p>
+                                                              </div>
+                                                              {leg.quantity_description && (
+                                                                <div className="col-span-2 bg-background px-3 py-1.5 text-[11px] text-muted-foreground italic">{leg.quantity_description}</div>
+                                                              )}
+                                                            </div>
+                                                          ) : canAct ? (
+                                                            <Button size="sm" variant="outline" className="text-xs gap-1.5" onClick={() => openLegQtyForm(leg)}>
+                                                              <FileText className="w-3.5 h-3.5" />Record Discharge Quantity
+                                                            </Button>
+                                                          ) : null}
+                                                        </div>
+                                                      )}
+                                                    </div>
+                                                  )}
+                                                </div>
+                                              );
+                                            })}
+                                          </div>
                                         )}
                                       </div>
                                     )}

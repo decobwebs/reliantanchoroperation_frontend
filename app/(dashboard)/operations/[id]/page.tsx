@@ -100,6 +100,7 @@ import type {
   Vessel,
   VesselActivity,
   VesselActivityLeg,
+  VesselActivityUpdate,
   TruckSafetyAudit,
   AuditResult,
   AuditPhase,
@@ -1742,61 +1743,25 @@ export default function OperationDetailPage({
     onError: (err) => toast.error(getErrorMessage(err)),
   });
 
-  const [quantitiesFormActivityId, setQuantitiesFormActivityId] = useState<string | null>(null);
-  const [qtyDischarged, setQtyDischarged] = useState("");
-  const [qtyReceived, setQtyReceived] = useState("");
-  const [qtyDensity, setQtyDensity] = useState("");
-  const [qtyTemperature, setQtyTemperature] = useState("");
-  const [qtyVcf, setQtyVcf] = useState("");
-  const [qtyGov, setQtyGov] = useState("");
-  const [qtyDescription, setQtyDescription] = useState("");
-  const [qtyReason, setQtyReason] = useState("");
-  const resetQuantitiesForm = () => {
-    setQuantitiesFormActivityId(null);
-    setQtyDischarged(""); setQtyReceived(""); setQtyDensity("");
-    setQtyTemperature(""); setQtyVcf(""); setQtyGov(""); setQtyDescription(""); setQtyReason("");
-  };
-  const openQuantitiesForm = (activity: VesselActivity) => {
-    setQuantitiesFormActivityId(activity.id);
-    setQtyDischarged(activity.discharged_quantity_litres ?? "");
-    setQtyReceived(activity.received_quantity_litres ?? "");
-    setQtyDensity(activity.density ?? "");
-    setQtyTemperature(activity.temperature_celsius ?? "");
-    setQtyVcf(activity.vcf ?? "");
-    setQtyGov(activity.gov ?? "");
-    setQtyDescription(activity.quantity_description ?? "");
-    setQtyReason("");
-  };
-
-  const recordVesselQuantitiesMutation = useMutation({
-    mutationFn: async (activityId: string) => {
-      await api.post(`/vessel-activities/${activityId}/quantities`, {
-        discharged_quantity_litres: parseFloat(qtyDischarged),
-        received_quantity_litres: parseFloat(qtyReceived),
-        density: parseFloat(qtyDensity),
-        temperature_celsius: parseFloat(qtyTemperature),
-        vcf: parseFloat(qtyVcf),
-        gov: parseFloat(qtyGov),
-        description: qtyDescription.trim() || undefined,
-        reason: qtyReason.trim() || undefined,
-      });
-    },
-    onSuccess: () => {
-      toast.success("Quantities recorded");
-      resetQuantitiesForm();
-      refetchVesselActivities();
-    },
-    onError: (err) => toast.error(getErrorMessage(err)),
-  });
-
   const [editTimingActivityId, setEditTimingActivityId] = useState<string | null>(null);
   const [editCommenceUserAt, setEditCommenceUserAt] = useState("");
   const [editCompleteUserAt, setEditCompleteUserAt] = useState("");
+  // The system-recorded instants are correctable too — they only record when
+  // the button was pressed, and a BM must be able to fix one logged late or
+  // against the wrong run.
+  const [editCommenceSystemAt, setEditCommenceSystemAt] = useState("");
+  const [editCompleteSystemAt, setEditCompleteSystemAt] = useState("");
+  const [editCommenceDesc, setEditCommenceDesc] = useState("");
+  const [editCompleteDesc, setEditCompleteDesc] = useState("");
   const [editTimingReason, setEditTimingReason] = useState("");
   const openEditTiming = (activity: VesselActivity) => {
     setEditTimingActivityId(activity.id);
     setEditCommenceUserAt(activity.commence_user_at ? activity.commence_user_at.slice(0, 16) : "");
     setEditCompleteUserAt(activity.complete_user_at ? activity.complete_user_at.slice(0, 16) : "");
+    setEditCommenceSystemAt(activity.commence_system_at ? activity.commence_system_at.slice(0, 16) : "");
+    setEditCompleteSystemAt(activity.complete_system_at ? activity.complete_system_at.slice(0, 16) : "");
+    setEditCommenceDesc(activity.commence_description ?? "");
+    setEditCompleteDesc(activity.complete_description ?? "");
     setEditTimingReason("");
   };
 
@@ -1805,6 +1770,10 @@ export default function OperationDetailPage({
       await api.patch(`/vessel-activities/${activityId}/vessel-operation-timing`, {
         commence_user_at: editCommenceUserAt ? new Date(editCommenceUserAt).toISOString() : undefined,
         complete_user_at: editCompleteUserAt ? new Date(editCompleteUserAt).toISOString() : undefined,
+        commence_system_at: editCommenceSystemAt ? new Date(editCommenceSystemAt).toISOString() : undefined,
+        complete_system_at: editCompleteSystemAt ? new Date(editCompleteSystemAt).toISOString() : undefined,
+        commence_description: editCommenceDesc,
+        complete_description: editCompleteDesc,
         reason: editTimingReason.trim(),
       });
     },
@@ -2012,6 +1981,153 @@ export default function OperationDetailPage({
       toast.success("Receiving vessel cancelled");
       setCancelLegFormId(null); setCancelLegReason("");
       refetchVesselActivities();
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+
+  // ── BM corrections — the BM can fix any recorded detail. Every one of
+  // these sends a required reason, which the backend audit-logs. Nothing is
+  // deletable: a correction edits the record and marks it as edited.
+
+  // Correct a posted update (content and/or replacement image)
+  const [editUpdateId, setEditUpdateId] = useState<string | null>(null);
+  const [editUpdateContent, setEditUpdateContent] = useState("");
+  const [editUpdateReason, setEditUpdateReason] = useState("");
+  const [editUpdateImage, setEditUpdateImage] = useState<File | null>(null);
+  const openEditUpdate = (u: VesselActivityUpdate) => {
+    setEditUpdateId(u.id); setEditUpdateContent(u.content);
+    setEditUpdateReason(""); setEditUpdateImage(null);
+  };
+  const resetEditUpdate = () => {
+    setEditUpdateId(null); setEditUpdateContent(""); setEditUpdateReason(""); setEditUpdateImage(null);
+  };
+  const editUpdateMutation = useMutation({
+    mutationFn: async (updateId: string) => {
+      const form = new FormData();
+      form.append("reason", editUpdateReason.trim());
+      form.append("content", editUpdateContent.trim());
+      if (editUpdateImage) form.append("image", editUpdateImage);
+      await api.patch(`/vessel-activity-updates/${updateId}`, form, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+    },
+    onSuccess: () => { toast.success("Update corrected"); resetEditUpdate(); refetchVesselActivities(); },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  // Correct a receiving vessel's identity
+  const [editLegId, setEditLegId] = useState<string | null>(null);
+  const [editLegName, setEditLegName] = useState("");
+  const [editLegImo, setEditLegImo] = useState("");
+  const [editLegEta, setEditLegEta] = useState("");
+  const [editLegReason, setEditLegReason] = useState("");
+  const openEditLeg = (leg: VesselActivityLeg) => {
+    setEditLegId(leg.id); setEditLegName(leg.receiving_vessel_name);
+    setEditLegImo(leg.imo_number ?? ""); setEditLegEta(leg.eta_at ? leg.eta_at.slice(0, 16) : "");
+    setEditLegReason("");
+  };
+  const editLegMutation = useMutation({
+    mutationFn: async (legId: string) => {
+      await api.patch(`/vessel-activity-legs/${legId}`, {
+        receiving_vessel_name: editLegName.trim(),
+        imo_number: editLegImo.trim() || undefined,
+        eta_at: editLegEta ? new Date(editLegEta).toISOString() : undefined,
+        reason: editLegReason.trim(),
+      });
+    },
+    onSuccess: () => { toast.success("Receiving vessel updated"); setEditLegId(null); refetchVesselActivities(); },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  // Roll a leg back to an earlier stage (blocked once a BDN exists)
+  const [rollbackLegId, setRollbackLegId] = useState<string | null>(null);
+  const [rollbackStage, setRollbackStage] = useState("");
+  const [rollbackReason, setRollbackReason] = useState("");
+  const rollbackLegMutation = useMutation({
+    mutationFn: async (legId: string) => {
+      await api.patch(`/vessel-activity-legs/${legId}/timing`, {
+        stage: rollbackStage,
+        reason: rollbackReason.trim(),
+      });
+    },
+    onSuccess: () => {
+      toast.success("Stage rolled back");
+      setRollbackLegId(null); setRollbackStage(""); setRollbackReason("");
+      refetchVesselActivities();
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  // Restore a cancelled receiving vessel
+  const [uncancelLegId, setUncancelLegId] = useState<string | null>(null);
+  const [uncancelReason, setUncancelReason] = useState("");
+  const uncancelLegMutation = useMutation({
+    mutationFn: async (legId: string) => {
+      await api.post(`/vessel-activity-legs/${legId}/uncancel`, { reason: uncancelReason.trim() });
+    },
+    onSuccess: () => {
+      toast.success("Receiving vessel restored");
+      setUncancelLegId(null); setUncancelReason(""); refetchVesselActivities();
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  // Correct the Initial ROB (allowed even after completion)
+  const [editInitialRobId, setEditInitialRobId] = useState<string | null>(null);
+  const [editInitialRob, setEditInitialRob] = useState("");
+  const [editInitialRobReason, setEditInitialRobReason] = useState("");
+  const editInitialRobMutation = useMutation({
+    mutationFn: async (activityId: string) => {
+      await api.patch(`/vessel-activities/${activityId}/initial-rob`, {
+        initial_rob_mt: parseFloat(editInitialRob),
+        reason: editInitialRobReason.trim(),
+      });
+    },
+    onSuccess: () => {
+      toast.success("Initial ROB corrected");
+      setEditInitialRobId(null); setEditInitialRob(""); setEditInitialRobReason("");
+      refetchVesselActivities();
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  // Re-open a recorded HSE checklist to correct it (activity or leg)
+  const [correctHseTarget, setCorrectHseTarget] = useState<{ kind: "activity" | "leg"; id: string } | null>(null);
+  const [correctHseReason, setCorrectHseReason] = useState("");
+  const openCorrectHse = (
+    kind: "activity" | "leg",
+    id: string,
+    checklist: { item: string; passed: boolean; notes?: string }[],
+    notes?: string,
+  ) => {
+    setCorrectHseTarget({ kind, id });
+    setCorrectHseReason("");
+    const rows = checklist.length
+      ? checklist.map((c) => ({ item: c.item, passed: c.passed, notes: c.notes ?? "" }))
+      : DEFAULT_HSE_CHECKLIST;
+    if (kind === "activity") { setHseChecklist(rows); setHseNotes(notes ?? ""); }
+    else { setLegHseChecklist(rows); setLegHseNotes(notes ?? ""); }
+  };
+  const correctHseMutation = useMutation({
+    mutationFn: async () => {
+      if (!correctHseTarget) return;
+      const isLeg = correctHseTarget.kind === "leg";
+      const rows = isLeg ? legHseChecklist : hseChecklist;
+      const body = {
+        checklist: rows.map((c) => ({ item: c.item, passed: c.passed, notes: c.notes.trim() || undefined })),
+        result: rows.every((c) => c.passed) ? "satisfactory" : "not_satisfactory",
+        notes: (isLeg ? legHseNotes : hseNotes).trim() || undefined,
+        reason: correctHseReason.trim(),
+      };
+      await api.post(
+        isLeg ? `/vessel-activity-legs/${correctHseTarget.id}/hse` : `/vessel-activities/${correctHseTarget.id}/hse`,
+        body,
+      );
+    },
+    onSuccess: () => {
+      toast.success("HSE checklist corrected");
+      setCorrectHseTarget(null); setCorrectHseReason(""); refetchVesselActivities();
     },
     onError: (err) => toast.error(getErrorMessage(err)),
   });
@@ -5610,17 +5726,30 @@ export default function OperationDetailPage({
 
                                       {editTimingActivityId === activity.id ? (
                                         <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+                                          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Correct the loading record</p>
                                           <div className="grid grid-cols-2 gap-2">
                                             <div className="space-y-1">
-                                              <Label className="text-[10px] text-muted-foreground">Loading Commenced (you entered)</Label>
+                                              <Label className="text-[10px] text-muted-foreground">Commenced — you entered</Label>
                                               <Input type="datetime-local" className="h-8 text-xs" value={editCommenceUserAt} onChange={(e) => setEditCommenceUserAt(e.target.value)} />
                                             </div>
                                             <div className="space-y-1">
-                                              <Label className="text-[10px] text-muted-foreground">Loading Completed (you entered)</Label>
+                                              <Label className="text-[10px] text-muted-foreground">Commenced — system recorded</Label>
+                                              <Input type="datetime-local" className="h-8 text-xs" value={editCommenceSystemAt} onChange={(e) => setEditCommenceSystemAt(e.target.value)} />
+                                            </div>
+                                            <div className="space-y-1">
+                                              <Label className="text-[10px] text-muted-foreground">Completed — you entered</Label>
                                               <Input type="datetime-local" className="h-8 text-xs" value={editCompleteUserAt} onChange={(e) => setEditCompleteUserAt(e.target.value)} disabled={!activity.complete_system_at} />
                                             </div>
+                                            <div className="space-y-1">
+                                              <Label className="text-[10px] text-muted-foreground">Completed — system recorded</Label>
+                                              <Input type="datetime-local" className="h-8 text-xs" value={editCompleteSystemAt} onChange={(e) => setEditCompleteSystemAt(e.target.value)} disabled={!activity.complete_system_at} />
+                                            </div>
                                           </div>
-                                          <Textarea className="text-xs min-h-[50px] resize-none" placeholder="Reason for correction…" value={editTimingReason} onChange={(e) => setEditTimingReason(e.target.value)} />
+                                          <Label className="text-[10px] text-muted-foreground">Commenced comment</Label>
+                                          <Textarea className="text-xs min-h-[40px] resize-none" value={editCommenceDesc} onChange={(e) => setEditCommenceDesc(e.target.value)} />
+                                          <Label className="text-[10px] text-muted-foreground">Completed comment</Label>
+                                          <Textarea className="text-xs min-h-[40px] resize-none" value={editCompleteDesc} onChange={(e) => setEditCompleteDesc(e.target.value)} />
+                                          <Textarea className="text-xs min-h-[50px] resize-none" placeholder="Reason for correction (required)…" value={editTimingReason} onChange={(e) => setEditTimingReason(e.target.value)} />
                                           <div className="flex gap-2">
                                             <Button size="sm" className="flex-1 text-xs" disabled={!editTimingReason.trim() || correctTimingMutation.isPending} onClick={() => correctTimingMutation.mutate(activity.id)}>
                                               {correctTimingMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Save Correction"}
@@ -5649,6 +5778,27 @@ export default function OperationDetailPage({
                                           />
                                         </div>
                                       )}
+                                      {isBM && (
+                                        editInitialRobId === activity.id ? (
+                                          <div className="rounded-lg border bg-muted/30 p-3 space-y-2 mt-2">
+                                            <Label className="text-[10px] text-muted-foreground">Initial ROB (L)</Label>
+                                            <Input type="number" className="h-8 text-xs" value={editInitialRob} onChange={(e) => setEditInitialRob(e.target.value)} />
+                                            <Textarea className="text-xs min-h-[40px] resize-none" placeholder="Reason for correction (required)…" value={editInitialRobReason} onChange={(e) => setEditInitialRobReason(e.target.value)} />
+                                            <div className="flex gap-2">
+                                              <Button size="sm" className="flex-1 text-xs" disabled={!editInitialRob || !editInitialRobReason.trim() || editInitialRobMutation.isPending} onClick={() => editInitialRobMutation.mutate(activity.id)}>
+                                                {editInitialRobMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Save Correction"}
+                                              </Button>
+                                              <Button size="sm" variant="ghost" className="text-xs" onClick={() => setEditInitialRobId(null)}>Cancel</Button>
+                                            </div>
+                                          </div>
+                                        ) : (
+                                          <p className="text-[10px] text-muted-foreground mt-1.5">
+                                            Initial ROB: <span className="font-mono">{activity.initial_rob_mt ? parseFloat(activity.initial_rob_mt).toLocaleString() : "—"}</span>
+                                            <button className="ml-1.5 text-primary underline" onClick={() => { setEditInitialRobId(activity.id); setEditInitialRob(activity.initial_rob_mt ?? ""); setEditInitialRobReason(""); }}>Correct</button>
+                                          </p>
+                                        )
+                                      )}
+
                                       {(activity.commence_description || activity.complete_description) && (
                                         <div className="mt-1.5 space-y-1">
                                           {activity.commence_description && (
@@ -5665,13 +5815,38 @@ export default function OperationDetailPage({
                                       )}
                                     </div>
 
-                                    {/* HSE checklist — available any time once commenced, non-blocking */}
-                                    {canAct && (
+                                    {/* HSE checklist — available any time once commenced, non-blocking.
+                                         Gated on BM/OS to match the backend's _hse_roles; the assigned
+                                         Marine Manager would otherwise see a button that 403s. */}
+                                    {(isBM || isOS) && (
                                       <div>
-                                        {activity.hse_result ? (
-                                          <div className={`rounded-md px-3 py-2 text-xs flex items-center gap-2 ${activity.hse_result === "satisfactory" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
-                                            <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
-                                            HSE checklist recorded — {activity.hse_result === "satisfactory" ? "Satisfactory" : "Issues noted (recorded, non-blocking)"}
+                                        {activity.hse_result && correctHseTarget?.id !== activity.id ? (
+                                          <div className={`rounded-md px-3 py-2 text-xs flex items-center justify-between gap-2 ${activity.hse_result === "satisfactory" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
+                                            <span className="flex items-center gap-2">
+                                              <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+                                              HSE checklist recorded — {activity.hse_result === "satisfactory" ? "Satisfactory" : "Issues noted (recorded, non-blocking)"}
+                                            </span>
+                                            {isBM && (
+                                              <button className="text-[10px] underline shrink-0" onClick={() => openCorrectHse("activity", activity.id, activity.hse_checklist, activity.hse_notes)}>Correct</button>
+                                            )}
+                                          </div>
+                                        ) : correctHseTarget?.kind === "activity" && correctHseTarget.id === activity.id ? (
+                                          <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+                                            <p className="text-xs font-semibold">Correct HSE Checklist</p>
+                                            {hseChecklist.map((item, i) => (
+                                              <label key={i} className="flex items-center gap-2 text-xs">
+                                                <input type="checkbox" checked={item.passed} onChange={(e) => setHseChecklist((rows) => rows.map((r, idx) => idx === i ? { ...r, passed: e.target.checked } : r))} />
+                                                {item.item}
+                                              </label>
+                                            ))}
+                                            <Textarea className="text-xs min-h-[50px] resize-none" placeholder="Notes…" value={hseNotes} onChange={(e) => setHseNotes(e.target.value)} />
+                                            <Textarea className="text-xs min-h-[40px] resize-none" placeholder="Reason for correction (required)…" value={correctHseReason} onChange={(e) => setCorrectHseReason(e.target.value)} />
+                                            <div className="flex gap-2">
+                                              <Button size="sm" className="flex-1 text-xs" disabled={!correctHseReason.trim() || correctHseMutation.isPending} onClick={() => correctHseMutation.mutate()}>
+                                                {correctHseMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Save Correction"}
+                                              </Button>
+                                              <Button size="sm" variant="ghost" className="text-xs" onClick={() => setCorrectHseTarget(null)}>Cancel</Button>
+                                            </div>
                                           </div>
                                         ) : hseFormActivityId === activity.id ? (
                                           <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
@@ -5705,11 +5880,42 @@ export default function OperationDetailPage({
                                         <div className="space-y-1.5 mb-2 max-h-56 overflow-y-auto pr-1">
                                           {activity.updates.map((u) => (
                                             <div key={u.id} className="text-[11px] border-l-2 border-muted pl-2 py-0.5">
-                                              <span className="font-medium text-foreground">{u.recorded_by_name ?? "—"}</span>
-                                              <span className="ml-1 text-muted-foreground">{formatDateTime(u.recorded_at)}</span>
-                                              <p className="text-foreground/80">{u.content}</p>
-                                              {u.image_url && (
-                                                <a href={u.image_url} target="_blank" rel="noopener noreferrer" className="text-primary underline text-[10px]">View image</a>
+                                              {editUpdateId === u.id ? (
+                                                <div className="rounded-lg border bg-muted/30 p-2 space-y-2">
+                                                  <Textarea className="text-xs min-h-[60px] resize-none" value={editUpdateContent} onChange={(e) => setEditUpdateContent(e.target.value)} />
+                                                  <div className="space-y-1">
+                                                    <Label className="text-[10px] text-muted-foreground">Replace image (optional)</Label>
+                                                    <input type="file" accept="image/*" className="text-xs" onChange={(e) => setEditUpdateImage(e.target.files?.[0] ?? null)} />
+                                                  </div>
+                                                  <Textarea className="text-xs min-h-[40px] resize-none" placeholder="Reason for correction (required)…" value={editUpdateReason} onChange={(e) => setEditUpdateReason(e.target.value)} />
+                                                  <div className="flex gap-2">
+                                                    <Button size="sm" className="flex-1 text-xs" disabled={!editUpdateReason.trim() || !editUpdateContent.trim() || editUpdateMutation.isPending} onClick={() => editUpdateMutation.mutate(u.id)}>
+                                                      {editUpdateMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Save Correction"}
+                                                    </Button>
+                                                    <Button size="sm" variant="ghost" className="text-xs" onClick={resetEditUpdate}>Cancel</Button>
+                                                  </div>
+                                                </div>
+                                              ) : (
+                                                <>
+                                                  <div className="flex items-start justify-between gap-2">
+                                                    <div>
+                                                      <span className="font-medium text-foreground">{u.recorded_by_name ?? "—"}</span>
+                                                      <span className="ml-1 text-muted-foreground">{formatDateTime(u.recorded_at)}</span>
+                                                      {u.edited_at && (
+                                                        <span className="ml-1.5 text-[9px] text-amber-700 bg-amber-50 rounded px-1 py-px" title={`Corrected by ${u.edited_by_name ?? "BM"}: ${u.edit_reason ?? ""}`}>
+                                                          edited
+                                                        </span>
+                                                      )}
+                                                    </div>
+                                                    {isBM && (
+                                                      <button className="text-[10px] text-primary underline shrink-0" onClick={() => openEditUpdate(u)}>Edit</button>
+                                                    )}
+                                                  </div>
+                                                  <p className="text-foreground/80">{u.content}</p>
+                                                  {u.image_url && (
+                                                    <a href={u.image_url} target="_blank" rel="noopener noreferrer" className="text-primary underline text-[10px]">View image</a>
+                                                  )}
+                                                </>
                                               )}
                                             </div>
                                           ))}
@@ -5913,12 +6119,60 @@ export default function OperationDetailPage({
                                                       <p className="text-xs font-semibold">{leg.receiving_vessel_name}{leg.imo_number ? ` · IMO ${leg.imo_number}` : ""}</p>
                                                       {leg.eta_at && <p className="text-[10px] text-muted-foreground">ETA {formatDateTime(leg.eta_at)}</p>}
                                                     </div>
-                                                    {leg.cancelled_at ? (
-                                                      <Badge variant="outline" className="text-[10px]">Cancelled</Badge>
-                                                    ) : isBM && cancelLegFormId !== leg.id ? (
-                                                      <button className="text-[10px] text-destructive underline" onClick={() => { setCancelLegFormId(leg.id); setCancelLegReason(""); }}>Cancel</button>
-                                                    ) : null}
+                                                    <div className="flex items-center gap-2 shrink-0">
+                                                      {leg.cancelled_at ? (
+                                                        <>
+                                                          <Badge variant="outline" className="text-[10px]">Cancelled</Badge>
+                                                          {isBM && uncancelLegId !== leg.id && (
+                                                            <button className="text-[10px] text-primary underline" onClick={() => { setUncancelLegId(leg.id); setUncancelReason(""); }}>Restore</button>
+                                                          )}
+                                                        </>
+                                                      ) : isBM && cancelLegFormId !== leg.id ? (
+                                                        <>
+                                                          <button className="text-[10px] text-primary underline" onClick={() => openEditLeg(leg)}>Edit</button>
+                                                          <button className="text-[10px] text-destructive underline" onClick={() => { setCancelLegFormId(leg.id); setCancelLegReason(""); }}>Cancel</button>
+                                                        </>
+                                                      ) : null}
+                                                    </div>
                                                   </div>
+
+                                                  {editLegId === leg.id && (
+                                                    <div className="px-3 py-2 border-t bg-muted/10 space-y-2">
+                                                      <div className="grid grid-cols-2 gap-2">
+                                                        <div className="space-y-1">
+                                                          <Label className="text-[10px] text-muted-foreground">Receiving Vessel Name</Label>
+                                                          <Input className="h-8 text-xs" value={editLegName} onChange={(e) => setEditLegName(e.target.value)} />
+                                                        </div>
+                                                        <div className="space-y-1">
+                                                          <Label className="text-[10px] text-muted-foreground">IMO Number</Label>
+                                                          <Input className="h-8 text-xs" value={editLegImo} onChange={(e) => setEditLegImo(e.target.value)} />
+                                                        </div>
+                                                      </div>
+                                                      <div className="space-y-1">
+                                                        <Label className="text-[10px] text-muted-foreground">ETA</Label>
+                                                        <Input type="datetime-local" className="h-8 text-xs" value={editLegEta} onChange={(e) => setEditLegEta(e.target.value)} />
+                                                      </div>
+                                                      <Textarea className="text-xs min-h-[40px] resize-none" placeholder="Reason for correction (required)…" value={editLegReason} onChange={(e) => setEditLegReason(e.target.value)} />
+                                                      <div className="flex gap-2">
+                                                        <Button size="sm" className="flex-1 text-xs" disabled={!editLegName.trim() || !editLegReason.trim() || editLegMutation.isPending} onClick={() => editLegMutation.mutate(leg.id)}>
+                                                          {editLegMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Save Correction"}
+                                                        </Button>
+                                                        <Button size="sm" variant="ghost" className="text-xs" onClick={() => setEditLegId(null)}>Cancel</Button>
+                                                      </div>
+                                                    </div>
+                                                  )}
+
+                                                  {uncancelLegId === leg.id && (
+                                                    <div className="px-3 py-2 border-t bg-muted/10 space-y-2">
+                                                      <Textarea className="text-xs min-h-[40px] resize-none" placeholder="Reason for restoring (required)…" value={uncancelReason} onChange={(e) => setUncancelReason(e.target.value)} />
+                                                      <div className="flex gap-2">
+                                                        <Button size="sm" className="flex-1 text-xs" disabled={!uncancelReason.trim() || uncancelLegMutation.isPending} onClick={() => uncancelLegMutation.mutate(leg.id)}>
+                                                          {uncancelLegMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Restore Receiving Vessel"}
+                                                        </Button>
+                                                        <Button size="sm" variant="ghost" className="text-xs" onClick={() => setUncancelLegId(null)}>Cancel</Button>
+                                                      </div>
+                                                    </div>
+                                                  )}
 
                                                   {cancelLegFormId === leg.id && (
                                                     <div className="px-3 py-2 border-t bg-muted/10 space-y-2">
@@ -5979,8 +6233,35 @@ export default function OperationDetailPage({
                                                             </div>
                                                           </div>
                                                         ) : legStageIdx >= 0 && (
-                                                          <button className="text-[10px] text-primary underline" onClick={() => openEditLegTiming(leg)}>Correct a timing</button>
+                                                          <div className="flex items-center gap-3">
+                                                            <button className="text-[10px] text-primary underline" onClick={() => openEditLegTiming(leg)}>Correct a timing</button>
+                                                            {rollbackLegId === leg.id ? null : (
+                                                              <button className="text-[10px] text-primary underline" onClick={() => { setRollbackLegId(leg.id); setRollbackStage(""); setRollbackReason(""); }}>Roll back a stage</button>
+                                                            )}
+                                                          </div>
                                                         )
+                                                      )}
+
+                                                      {rollbackLegId === leg.id && (
+                                                        <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+                                                          <Label className="text-[10px] text-muted-foreground">Roll this receiving vessel back to</Label>
+                                                          <Select value={rollbackStage} onValueChange={setRollbackStage}>
+                                                            <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select stage…" /></SelectTrigger>
+                                                            <SelectContent>
+                                                              {LEG_STAGES.slice(0, Math.max(legStageIdx, 0)).map((st) => (
+                                                                <SelectItem key={st.value} value={st.value} className="text-xs">{st.label}</SelectItem>
+                                                              ))}
+                                                            </SelectContent>
+                                                          </Select>
+                                                          <Textarea className="text-xs min-h-[40px] resize-none" placeholder="Reason for rolling back (required)…" value={rollbackReason} onChange={(e) => setRollbackReason(e.target.value)} />
+                                                          <p className="text-[10px] text-muted-foreground">A stage cannot be rolled back once a Vessel BDN has been submitted for this receiving vessel — reject that BDN first.</p>
+                                                          <div className="flex gap-2">
+                                                            <Button size="sm" className="flex-1 text-xs" disabled={!rollbackStage || !rollbackReason.trim() || rollbackLegMutation.isPending} onClick={() => rollbackLegMutation.mutate(leg.id)}>
+                                                              {rollbackLegMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Roll Back"}
+                                                            </Button>
+                                                            <Button size="sm" variant="ghost" className="text-xs" onClick={() => setRollbackLegId(null)}>Cancel</Button>
+                                                          </div>
+                                                        </div>
                                                       )}
 
                                                       {/* Advance to next stage */}
@@ -6007,13 +6288,37 @@ export default function OperationDetailPage({
                                                         )
                                                       )}
 
-                                                      {/* HSE — non-blocking, available once cast off */}
-                                                      {canAct && legStageIdx >= 0 && (
+                                                      {/* HSE — non-blocking, available once cast off.
+                                                           BM/OS only, matching the backend's _hse_roles. */}
+                                                      {(isBM || isOS) && legStageIdx >= 0 && (
                                                         <div>
-                                                          {leg.hse_result ? (
-                                                            <div className={`rounded-md px-3 py-2 text-xs flex items-center gap-2 ${leg.hse_result === "satisfactory" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
-                                                              <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
-                                                              HSE recorded — {leg.hse_result === "satisfactory" ? "Satisfactory" : "Issues noted (non-blocking)"}
+                                                          {leg.hse_result && correctHseTarget?.id !== leg.id ? (
+                                                            <div className={`rounded-md px-3 py-2 text-xs flex items-center justify-between gap-2 ${leg.hse_result === "satisfactory" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
+                                                              <span className="flex items-center gap-2">
+                                                                <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+                                                                HSE recorded — {leg.hse_result === "satisfactory" ? "Satisfactory" : "Issues noted (non-blocking)"}
+                                                              </span>
+                                                              {isBM && (
+                                                                <button className="text-[10px] underline shrink-0" onClick={() => openCorrectHse("leg", leg.id, leg.hse_checklist, leg.hse_notes)}>Correct</button>
+                                                              )}
+                                                            </div>
+                                                          ) : correctHseTarget?.kind === "leg" && correctHseTarget.id === leg.id ? (
+                                                            <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+                                                              <p className="text-xs font-semibold">Correct HSE Checklist</p>
+                                                              {legHseChecklist.map((item, i) => (
+                                                                <label key={i} className="flex items-center gap-2 text-xs">
+                                                                  <input type="checkbox" checked={item.passed} onChange={(e) => setLegHseChecklist((rows) => rows.map((r, idx) => idx === i ? { ...r, passed: e.target.checked } : r))} />
+                                                                  {item.item}
+                                                                </label>
+                                                              ))}
+                                                              <Textarea className="text-xs min-h-[50px] resize-none" placeholder="Notes…" value={legHseNotes} onChange={(e) => setLegHseNotes(e.target.value)} />
+                                                              <Textarea className="text-xs min-h-[40px] resize-none" placeholder="Reason for correction (required)…" value={correctHseReason} onChange={(e) => setCorrectHseReason(e.target.value)} />
+                                                              <div className="flex gap-2">
+                                                                <Button size="sm" className="flex-1 text-xs" disabled={!correctHseReason.trim() || correctHseMutation.isPending} onClick={() => correctHseMutation.mutate()}>
+                                                                  {correctHseMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Save Correction"}
+                                                                </Button>
+                                                                <Button size="sm" variant="ghost" className="text-xs" onClick={() => setCorrectHseTarget(null)}>Cancel</Button>
+                                                              </div>
                                                             </div>
                                                           ) : legHseFormLegId === leg.id ? (
                                                             <div className="rounded-lg border bg-muted/30 p-3 space-y-2">

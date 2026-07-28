@@ -794,6 +794,11 @@ export interface VesselActivityUpdate {
   recorded_by: string;
   recorded_by_name?: string;
   recorded_at: string;
+  // BM correction markers — a corrected record stays visibly corrected.
+  edited_at?: string;
+  edited_by?: string;
+  edited_by_name?: string;
+  edit_reason?: string;
 }
 
 export interface VesselActivityLeg {

@@ -1,6 +1,7 @@
 "use client";
 
 import { use, useState, useRef } from "react";
+import type { Dispatch, SetStateAction } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -1614,15 +1615,164 @@ export default function OperationDetailPage({
     onError: (err) => toast.error(getErrorMessage(err)),
   });
 
-  const DEFAULT_HSE_CHECKLIST: { item: string; passed: boolean; notes: string }[] = [
-    { item: "Fire extinguisher accessible", passed: false, notes: "" },
-    { item: "Spill kit available", passed: false, notes: "" },
-    { item: "Communication established with vessel crew", passed: false, notes: "" },
-    { item: "PPE worn by all personnel", passed: false, notes: "" },
+  // ── HSE checklists — the client's own forms, verbatim.
+  //
+  // Two different operations, two different forms. LOADING on a TTS
+  // operation is trucks discharging into the barge, so it uses the
+  // transshipment form. Each DELIVERY leg is a ship-to-ship transfer with no
+  // trucks involved at all, so it uses the vessel-to-vessel form.
+  //
+  // Sections are stored on each item, not just rendered, so a signed-off
+  // checklist still reads the way it was signed even if a template changes.
+  const LOADING_HSE_TEMPLATE: { section: string; item: string }[] = [
+    ...[
+      "Confirm vessel arrival time and storage capacity",
+      "Confirm barge size is minimum of 15 metres breadth and securely placed",
+      "Confirm depth of the jetty",
+      "Verify truck scheduling and coordination",
+      "Obtain necessary port, safety permits and Navy Clearance",
+      "Conduct equipment inspections (hoses, pumps, connections)",
+      "Inspect trucks for product type, quantity, and seal integrity",
+      "Review weather conditions for safe operation",
+      "Ensure availability of spill response kits and fire suppression equipment",
+      "Conduct safety briefing for all personnel",
+      "Verify PPE availability (fire-resistant clothing, gloves, boots, helmets)",
+      "Confirm vessel readiness and jetty clearance",
+    ].map((item) => ({ section: "A. Pre-Operation", item })),
+    ...[
+      "Ensure trucks are positioned in the correct designated area",
+      "Ullage truck compartments",
+      "Inspect trucks for any visible damage or leaks",
+      "Confirm truck waybill",
+      "Record product type and quantity",
+      "Securely connect hoses and pipelines between trucks and vessel",
+      "Securely connect flow meter between trucks and vessel",
+      "Pump 250/300 litres into drum to confirm flow meter accuracy",
+      "Is flow meter reading accurate?",
+      "Assign pump operators for product flow management",
+      "Begin product transfer at a controlled rate",
+      "Monitor flow meters and tank levels",
+      "Maintain communication between Jetty Supervisor, vessel crew, and truck drivers",
+      "Address any leaks or spills immediately",
+    ].map((item) => ({ section: "B. Transshipment Operation", item })),
+    ...[
+      "Continuous safety checks by Safety Officer",
+      "Monitor for leaks, spills, or equipment malfunctions",
+      "Adjust product flow rate as needed",
+      "Ensure environmental protection protocols are followed",
+      "Document any issues or incidents during the transfer process",
+    ].map((item) => ({ section: "C. Monitoring", item })),
+    ...[
+      "Safely disconnect hoses and pipelines",
+      "Confirm truck empty tanks are carried out and empty",
+      "Confirm truck have no hidden tanks (Aso Rock)",
+      "Seal truck valves and drain any remaining product",
+      "Conduct final inspection for spills or leaks",
+      "Complete all necessary documentation (bills of lading, transfer logs)",
+      "Ensure all parties sign required documents",
+      "Submit reports to port authorities and internal stakeholders",
+      "Detain/release truck with loss or average",
+      "Conduct a post-operation debrief with the team",
+      "Clean and store equipment appropriately",
+    ].map((item) => ({ section: "D. Post-Operation", item })),
   ];
+
+  const LEG_HSE_TEMPLATE: { section: string; item: string }[] = [
+    ...[
+      "Confirm vessel details, ETA, and berth allocations",
+      "Secure all necessary permits and approvals",
+      "Complete a risk assessment and review weather/sea conditions",
+      "Inspect hoses, fenders, mooring lines, and transfer equipment",
+      "Verify spill kits and fire extinguishing systems are in place and operational",
+      "Conduct vessel-to-vessel radio checks",
+      "Review and verify product type, quantity, and quality",
+      "Ensure all personnel are equipped with PPE (fire-resistant, boots, helmets)",
+      "Conduct a safety briefing with all crew members",
+      "Deploy fenders and securely moor vessels",
+    ].map((item) => ({ section: "A. Pre-Operation", item })),
+    ...[
+      "Connect hoses securely between vessels",
+      "Connect flow metre between vessels",
+      "Check all hose connections and ensure the system is grounded",
+      "Transfer 30m3 to the receiving vessel and compare figures",
+      "Begin product transfer at a low rate",
+      "Monitor flow meters, pressure gauges, and system integrity",
+      "Gradually increase the flow rate and monitor for leaks or issues",
+      "Ensure Pump Operators are continuously monitoring the transfer",
+      "Maintain clear communication between both vessels",
+      "Regularly check fenders and mooring line tensions",
+    ].map((item) => ({ section: "B. Transfer Operation", item })),
+    ...[
+      "Continuously monitor for leaks, spills, or hazards",
+      "Ensure emergency shutdown systems are ready and operational",
+      "Check vessel stability and mooring tensions periodically",
+      "Maintain communication and record any issues or clothing irregularities",
+    ].map((item) => ({ section: "C. Mid-Operation Safety", item })),
+    ...[
+      "Reduce flow rate as transfer nears completion",
+      "Safely disconnect hoses and drain any residual product",
+      "Cap and seal all hose connections",
+      "Conduct a final inspection for leaks, spills, or damage",
+      "Dispose of waste materials and clean up the area",
+      "Complete all transfer logs and compliance documentation",
+      "Ensure signatures from relevant personnel",
+      "Release mooring lines and retrieve fenders",
+      "Ensure safe vessel departure following port authority regulations",
+    ].map((item) => ({ section: "D. Post-Operation", item })),
+  ];
+
+
+  /** Renders a checklist grouped by its A/B/C/D sections, each line a tick
+   *  plus an optional note — some lines record a figure ("Transfer 30m3 and
+   *  compare figures") rather than a plain yes/no. */
+  const renderHseChecklist = (
+    rows: { section: string; item: string; passed: boolean; notes: string }[],
+    setRows: Dispatch<SetStateAction<{ section: string; item: string; passed: boolean; notes: string }[]>>,
+  ) => {
+    let lastSection = "";
+    return (
+      <div className="max-h-80 overflow-y-auto pr-1 space-y-1">
+        {rows.map((row, i) => {
+          const header = row.section && row.section !== lastSection ? row.section : null;
+          lastSection = row.section || lastSection;
+          return (
+            <div key={i}>
+              {header && (
+                <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mt-2 mb-1">{header}</p>
+              )}
+              <div className="flex items-start gap-2">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 shrink-0"
+                  checked={row.passed}
+                  onChange={(e) => setRows((prev) => prev.map((r, idx) => idx === i ? { ...r, passed: e.target.checked } : r))}
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs leading-snug">{row.item}</p>
+                  <Input
+                    className="h-6 text-[11px] mt-0.5"
+                    placeholder="Note / figure (optional)…"
+                    value={row.notes}
+                    onChange={(e) => setRows((prev) => prev.map((r, idx) => idx === i ? { ...r, notes: e.target.value } : r))}
+                  />
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  const blankChecklist = (template: { section: string; item: string }[]) =>
+    template.map((t) => ({ section: t.section, item: t.item, passed: false, notes: "" }));
+
+  const DEFAULT_HSE_CHECKLIST = blankChecklist(LOADING_HSE_TEMPLATE);
+  const DEFAULT_LEG_HSE_CHECKLIST = blankChecklist(LEG_HSE_TEMPLATE);
   const [hseFormActivityId, setHseFormActivityId] = useState<string | null>(null);
   const [hseChecklist, setHseChecklist] = useState(DEFAULT_HSE_CHECKLIST);
   const [hseNotes, setHseNotes] = useState("");
+  const [hseOfficer, setHseOfficer] = useState("");
   const openHseForm = (activityId: string) => {
     setHseFormActivityId(activityId);
     setHseChecklist(DEFAULT_HSE_CHECKLIST);
@@ -1637,9 +1787,10 @@ export default function OperationDetailPage({
   const recordHseMutation = useMutation({
     mutationFn: async (activityId: string) => {
       await api.post(`/vessel-activities/${activityId}/hse`, {
-        checklist: hseChecklist.map((c) => ({ item: c.item, passed: c.passed, notes: c.notes.trim() || undefined })),
+        checklist: hseChecklist.map((c) => ({ section: c.section, item: c.item, passed: c.passed, notes: c.notes.trim() || undefined })),
         result: hseChecklist.every((c) => c.passed) ? "satisfactory" : "not_satisfactory",
         notes: hseNotes.trim() || undefined,
+        safety_officer: hseOfficer.trim() || undefined,
       });
     },
     onSuccess: () => {
@@ -1873,19 +2024,22 @@ export default function OperationDetailPage({
   });
 
   const [legHseFormLegId, setLegHseFormLegId] = useState<string | null>(null);
-  const [legHseChecklist, setLegHseChecklist] = useState(DEFAULT_HSE_CHECKLIST);
+  const [legHseChecklist, setLegHseChecklist] = useState(DEFAULT_LEG_HSE_CHECKLIST);
   const [legHseNotes, setLegHseNotes] = useState("");
+  const [legHseOfficer, setLegHseOfficer] = useState("");
   const openLegHseForm = (legId: string) => {
     setLegHseFormLegId(legId);
-    setLegHseChecklist(DEFAULT_HSE_CHECKLIST);
+    setLegHseChecklist(DEFAULT_LEG_HSE_CHECKLIST);
     setLegHseNotes("");
+    setLegHseOfficer("");
   };
   const recordLegHseMutation = useMutation({
     mutationFn: async (legId: string) => {
       await api.post(`/vessel-activity-legs/${legId}/hse`, {
-        checklist: legHseChecklist.map((c) => ({ item: c.item, passed: c.passed, notes: c.notes.trim() || undefined })),
+        checklist: legHseChecklist.map((c) => ({ section: c.section, item: c.item, passed: c.passed, notes: c.notes.trim() || undefined })),
         result: legHseChecklist.every((c) => c.passed) ? "satisfactory" : "not_satisfactory",
         notes: legHseNotes.trim() || undefined,
+        safety_officer: legHseOfficer.trim() || undefined,
       });
     },
     onSuccess: () => {
@@ -2098,14 +2252,14 @@ export default function OperationDetailPage({
   const openCorrectHse = (
     kind: "activity" | "leg",
     id: string,
-    checklist: { item: string; passed: boolean; notes?: string }[],
+    checklist: { section?: string; item: string; passed: boolean; notes?: string }[],
     notes?: string,
   ) => {
     setCorrectHseTarget({ kind, id });
     setCorrectHseReason("");
     const rows = checklist.length
-      ? checklist.map((c) => ({ item: c.item, passed: c.passed, notes: c.notes ?? "" }))
-      : DEFAULT_HSE_CHECKLIST;
+      ? checklist.map((c) => ({ section: c.section ?? "", item: c.item, passed: c.passed, notes: c.notes ?? "" }))
+      : (kind === "leg" ? DEFAULT_LEG_HSE_CHECKLIST : DEFAULT_HSE_CHECKLIST);
     if (kind === "activity") { setHseChecklist(rows); setHseNotes(notes ?? ""); }
     else { setLegHseChecklist(rows); setLegHseNotes(notes ?? ""); }
   };
@@ -2115,9 +2269,10 @@ export default function OperationDetailPage({
       const isLeg = correctHseTarget.kind === "leg";
       const rows = isLeg ? legHseChecklist : hseChecklist;
       const body = {
-        checklist: rows.map((c) => ({ item: c.item, passed: c.passed, notes: c.notes.trim() || undefined })),
+        checklist: rows.map((c) => ({ section: c.section, item: c.item, passed: c.passed, notes: c.notes.trim() || undefined })),
         result: rows.every((c) => c.passed) ? "satisfactory" : "not_satisfactory",
         notes: (isLeg ? legHseNotes : hseNotes).trim() || undefined,
+        safety_officer: (isLeg ? legHseOfficer : hseOfficer).trim() || undefined,
         reason: correctHseReason.trim(),
       };
       await api.post(
@@ -5832,14 +5987,13 @@ export default function OperationDetailPage({
                                           </div>
                                         ) : correctHseTarget?.kind === "activity" && correctHseTarget.id === activity.id ? (
                                           <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
-                                            <p className="text-xs font-semibold">Correct HSE Checklist</p>
-                                            {hseChecklist.map((item, i) => (
-                                              <label key={i} className="flex items-center gap-2 text-xs">
-                                                <input type="checkbox" checked={item.passed} onChange={(e) => setHseChecklist((rows) => rows.map((r, idx) => idx === i ? { ...r, passed: e.target.checked } : r))} />
-                                                {item.item}
-                                              </label>
-                                            ))}
-                                            <Textarea className="text-xs min-h-[50px] resize-none" placeholder="Notes…" value={hseNotes} onChange={(e) => setHseNotes(e.target.value)} />
+                                            <p className="text-xs font-semibold">Correct Transshipment Safety Checklist</p>
+                                            <div className="space-y-1">
+                                              <Label className="text-[10px] text-muted-foreground">Name of Safety Officer</Label>
+                                              <Input className="h-8 text-xs" value={hseOfficer} onChange={(e) => setHseOfficer(e.target.value)} />
+                                            </div>
+                                            {renderHseChecklist(hseChecklist, setHseChecklist)}
+                                            <Textarea className="text-xs min-h-[50px] resize-none" placeholder="Overall notes…" value={hseNotes} onChange={(e) => setHseNotes(e.target.value)} />
                                             <Textarea className="text-xs min-h-[40px] resize-none" placeholder="Reason for correction (required)…" value={correctHseReason} onChange={(e) => setCorrectHseReason(e.target.value)} />
                                             <div className="flex gap-2">
                                               <Button size="sm" className="flex-1 text-xs" disabled={!correctHseReason.trim() || correctHseMutation.isPending} onClick={() => correctHseMutation.mutate()}>
@@ -5850,14 +6004,19 @@ export default function OperationDetailPage({
                                           </div>
                                         ) : hseFormActivityId === activity.id ? (
                                           <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
-                                            <p className="text-xs font-semibold">HSE Safety Checklist</p>
-                                            {hseChecklist.map((item, i) => (
-                                              <label key={i} className="flex items-center gap-2 text-xs">
-                                                <input type="checkbox" checked={item.passed} onChange={(e) => setHseChecklist((rows) => rows.map((r, idx) => idx === i ? { ...r, passed: e.target.checked } : r))} />
-                                                {item.item}
-                                              </label>
-                                            ))}
-                                            <Textarea className="text-xs min-h-[50px] resize-none" placeholder="Notes…" value={hseNotes} onChange={(e) => setHseNotes(e.target.value)} />
+                                            <p className="text-xs font-semibold">Transshipment Safety Checklist</p>
+                                            <div className="grid grid-cols-2 gap-2 text-[11px] rounded-md border bg-background p-2">
+                                              <div><span className="text-muted-foreground">Bunker Tanker:</span> {activity.vessel_name ?? "—"}</div>
+                                              <div><span className="text-muted-foreground">Delivery Location:</span> {op.discharge_location ?? "—"}</div>
+                                              <div><span className="text-muted-foreground">Loading Commenced:</span> {activity.commence_system_at ? formatDateTime(activity.commence_system_at) : "—"}</div>
+                                              <div><span className="text-muted-foreground">Loading Completed:</span> {activity.complete_system_at ? formatDateTime(activity.complete_system_at) : "—"}</div>
+                                            </div>
+                                            <div className="space-y-1">
+                                              <Label className="text-[10px] text-muted-foreground">Name of Safety Officer</Label>
+                                              <Input className="h-8 text-xs" value={hseOfficer} onChange={(e) => setHseOfficer(e.target.value)} />
+                                            </div>
+                                            {renderHseChecklist(hseChecklist, setHseChecklist)}
+                                            <Textarea className="text-xs min-h-[50px] resize-none" placeholder="Overall notes…" value={hseNotes} onChange={(e) => setHseNotes(e.target.value)} />
                                             <div className="flex gap-2">
                                               <Button size="sm" className="flex-1 text-xs" disabled={recordHseMutation.isPending} onClick={() => recordHseMutation.mutate(activity.id)}>
                                                 {recordHseMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Submit HSE Checklist"}
@@ -6304,14 +6463,13 @@ export default function OperationDetailPage({
                                                             </div>
                                                           ) : correctHseTarget?.kind === "leg" && correctHseTarget.id === leg.id ? (
                                                             <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
-                                                              <p className="text-xs font-semibold">Correct HSE Checklist</p>
-                                                              {legHseChecklist.map((item, i) => (
-                                                                <label key={i} className="flex items-center gap-2 text-xs">
-                                                                  <input type="checkbox" checked={item.passed} onChange={(e) => setLegHseChecklist((rows) => rows.map((r, idx) => idx === i ? { ...r, passed: e.target.checked } : r))} />
-                                                                  {item.item}
-                                                                </label>
-                                                              ))}
-                                                              <Textarea className="text-xs min-h-[50px] resize-none" placeholder="Notes…" value={legHseNotes} onChange={(e) => setLegHseNotes(e.target.value)} />
+                                                              <p className="text-xs font-semibold">Correct Ship-to-Ship Safety Checklist</p>
+                                                              <div className="space-y-1">
+                                                                <Label className="text-[10px] text-muted-foreground">Name of Safety Officer</Label>
+                                                                <Input className="h-8 text-xs" value={legHseOfficer} onChange={(e) => setLegHseOfficer(e.target.value)} />
+                                                              </div>
+                                                              {renderHseChecklist(legHseChecklist, setLegHseChecklist)}
+                                                              <Textarea className="text-xs min-h-[50px] resize-none" placeholder="Overall notes…" value={legHseNotes} onChange={(e) => setLegHseNotes(e.target.value)} />
                                                               <Textarea className="text-xs min-h-[40px] resize-none" placeholder="Reason for correction (required)…" value={correctHseReason} onChange={(e) => setCorrectHseReason(e.target.value)} />
                                                               <div className="flex gap-2">
                                                                 <Button size="sm" className="flex-1 text-xs" disabled={!correctHseReason.trim() || correctHseMutation.isPending} onClick={() => correctHseMutation.mutate()}>
@@ -6322,14 +6480,23 @@ export default function OperationDetailPage({
                                                             </div>
                                                           ) : legHseFormLegId === leg.id ? (
                                                             <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
-                                                              <p className="text-xs font-semibold">HSE Safety Checklist</p>
-                                                              {legHseChecklist.map((item, i) => (
-                                                                <label key={i} className="flex items-center gap-2 text-xs">
-                                                                  <input type="checkbox" checked={item.passed} onChange={(e) => setLegHseChecklist((rows) => rows.map((r, idx) => idx === i ? { ...r, passed: e.target.checked } : r))} />
-                                                                  {item.item}
-                                                                </label>
-                                                              ))}
-                                                              <Textarea className="text-xs min-h-[50px] resize-none" placeholder="Notes…" value={legHseNotes} onChange={(e) => setLegHseNotes(e.target.value)} />
+                                                              <p className="text-xs font-semibold">Ship-to-Ship Safety Checklist</p>
+                                                              <div className="grid grid-cols-2 gap-2 text-[11px] rounded-md border bg-background p-2">
+                                                                <div><span className="text-muted-foreground">Bunker Tanker:</span> {activity.vessel_name ?? "—"}</div>
+                                                                <div><span className="text-muted-foreground">Receiving Vessel:</span> {leg.receiving_vessel_name}</div>
+                                                                <div><span className="text-muted-foreground">Delivery Location:</span> {op.discharge_location ?? "—"}</div>
+                                                                <div><span className="text-muted-foreground">Alongside:</span> {leg.stage_alongside_system_at ? formatDateTime(leg.stage_alongside_system_at) : "—"}</div>
+                                                                <div><span className="text-muted-foreground">Commenced Pumping:</span> {leg.stage_discharge_commenced_system_at ? formatDateTime(leg.stage_discharge_commenced_system_at) : "—"}</div>
+                                                                <div><span className="text-muted-foreground">Completed Receiving:</span> {leg.stage_discharge_completed_system_at ? formatDateTime(leg.stage_discharge_completed_system_at) : "—"}</div>
+                                                                <div><span className="text-muted-foreground">Quantity Delivered:</span> {leg.quantity_discharged_litres ? `${parseFloat(leg.quantity_discharged_litres).toLocaleString()} L` : "—"}</div>
+                                                                <div><span className="text-muted-foreground">Product:</span> {op.products?.length ? op.products.map((pr) => pr.product_type).join(", ") : (op.product_type ?? "—")}</div>
+                                                              </div>
+                                                              <div className="space-y-1">
+                                                                <Label className="text-[10px] text-muted-foreground">Name of Safety Officer</Label>
+                                                                <Input className="h-8 text-xs" value={legHseOfficer} onChange={(e) => setLegHseOfficer(e.target.value)} />
+                                                              </div>
+                                                              {renderHseChecklist(legHseChecklist, setLegHseChecklist)}
+                                                              <Textarea className="text-xs min-h-[50px] resize-none" placeholder="Overall notes…" value={legHseNotes} onChange={(e) => setLegHseNotes(e.target.value)} />
                                                               <div className="flex gap-2">
                                                                 <Button size="sm" className="flex-1 text-xs" disabled={recordLegHseMutation.isPending} onClick={() => recordLegHseMutation.mutate(leg.id)}>
                                                                   {recordLegHseMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Submit HSE Checklist"}

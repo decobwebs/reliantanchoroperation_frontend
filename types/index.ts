@@ -113,6 +113,10 @@ export interface Operation {
     products: string[];
     is_valid: boolean;
   };
+  // Serialised by OperationOut — the real product list. `product_type` above
+  // is the legacy single-product scalar and is null on anything created
+  // through the current flow.
+  products?: { id: string; product_type: string; quantity_mt: string }[];
   color?: string;
   trucks_required?: number;
   version: number;
@@ -733,7 +737,7 @@ export interface VesselActivity {
   stage_discharge_completed_at?: string;
 
   // ── HSE ──
-  hse_checklist: { item: string; passed: boolean; notes?: string }[];
+  hse_checklist: { section?: string; item: string; passed: boolean; notes?: string }[];
   hse_result?: string;
   hse_conducted_by?: string;
   hse_conducted_at?: string;
@@ -820,7 +824,7 @@ export interface VesselActivityLeg {
   stage_discharge_completed_system_at?: string;
   stage_discharge_completed_user_at?: string;
 
-  hse_checklist: { item: string; passed: boolean; notes?: string }[];
+  hse_checklist: { section?: string; item: string; passed: boolean; notes?: string }[];
   hse_result?: string;
   hse_conducted_by?: string;
   hse_conducted_at?: string;

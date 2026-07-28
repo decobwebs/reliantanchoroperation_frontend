@@ -264,7 +264,9 @@ function getNextStepHint(op: Operation): { who: string; text: string } | null {
         ? { who: "Logistics", text: "Payment confirmed. Logistics records the deliveries in the Truck Reports tab, then submits completion." }
         : null; // vessel/full has a Start Vessel Ops button instead
     case "vessel_operations":
-      return { who: "Marine", text: "Vessel operations underway. Record the delivery, then raise the BDN in the BDN tab." };
+      return op.type === "vessel_only"
+        ? { who: "Marine", text: "Log the six journey stages in the Marine tab — Loading Commenced/Completed, then Cast Off → Alongside → Discharge Commenced → Discharge Completed for each receiving vessel. Raise a Vessel BDN per receiving vessel once it finishes." }
+        : { who: "Marine", text: "Vessel operations underway. Record the delivery, then raise the BDN in the BDN tab." };
     case "bdn_pending":
       return { who: "Bunker Manager", text: "A BDN has been submitted. Review it in the BDN tab — approve or reject." };
     default:
@@ -1723,16 +1725,18 @@ export default function OperationDetailPage({
 
   const [completeFormActivityId, setCompleteFormActivityId] = useState<string | null>(null);
   const [completeUserAt, setCompleteUserAt] = useState("");
+  const [completeDescription, setCompleteDescription] = useState("");
 
   const completeVesselOpMutation = useMutation({
     mutationFn: async (activityId: string) => {
       await api.post(`/vessel-activities/${activityId}/complete-vessel-operation`, {
         completed_user_at: new Date(completeUserAt).toISOString(),
+        description: completeDescription.trim() || undefined,
       });
     },
     onSuccess: () => {
       toast.success("Loading completed — add receiving vessels to begin delivery");
-      setCompleteFormActivityId(null); setCompleteUserAt("");
+      setCompleteFormActivityId(null); setCompleteUserAt(""); setCompleteDescription("");
       refetchVesselActivities();
     },
     onError: (err) => toast.error(getErrorMessage(err)),
@@ -2757,6 +2761,82 @@ export default function OperationDetailPage({
           );
         })()}
 
+        {/* ── Vessel journey progress ── the spec's six numbered stages, at a
+             glance, on every tab. Loading (1-2) happens once on the barge run;
+             delivery (3-6) repeats per receiving vessel, so those four
+             aggregate: a stage only counts as done once EVERY non-cancelled
+             receiving vessel has reached it, and the count shows how far
+             along the fleet is. */}
+        {op.type === "vessel_only" && op.status !== "cancelled" && op.status !== "archived" && (() => {
+          const acts = (vesselActivities ?? []).filter((a) => a.status !== "cancelled");
+          if (acts.length === 0) return null;
+          const legs = acts.flatMap((a) => (a.legs ?? []).filter((l) => !l.cancelled_at));
+          const legsAtLeast = (stage: string) => {
+            const order = LEG_STAGES.findIndex((s) => s.value === stage);
+            return legs.filter((l) => {
+              const idx = l.stage ? LEG_STAGES.findIndex((s) => s.value === l.stage) : -1;
+              return idx >= order;
+            }).length;
+          };
+          const steps = [
+            { n: 1, label: "Loading Commenced", done: acts.every((a) => !!a.commence_system_at), count: null as string | null },
+            { n: 2, label: "Loading Completed", done: acts.every((a) => !!a.complete_system_at), count: null as string | null },
+            ...LEG_STAGES.map((s, i) => {
+              const reached = legsAtLeast(s.value);
+              return {
+                n: i + 3,
+                label: s.label,
+                done: legs.length > 0 && reached === legs.length,
+                count: legs.length > 0 ? `${reached}/${legs.length}` : null,
+              };
+            }),
+          ];
+          const nextIdx = steps.findIndex((s) => !s.done);
+          return (
+            <Card className="border-0 shadow-sm">
+              <CardContent className="px-5 py-3.5">
+                <div className="flex items-center justify-between mb-2.5">
+                  <p className="text-[11px] font-bold uppercase tracking-wider">Vessel Journey</p>
+                  <p className="text-[10px] text-muted-foreground">
+                    {legs.length === 0
+                      ? "No receiving vessels added yet"
+                      : `${legs.length} receiving vessel${legs.length === 1 ? "" : "s"}`}
+                  </p>
+                </div>
+                <div className="overflow-x-auto pb-1">
+                  <div className="flex items-start min-w-max">
+                    {steps.map((s, i) => {
+                      const isNext = i === nextIdx;
+                      return (
+                        <div key={s.n} className="flex items-start">
+                          {i > 0 && <div className={`w-8 h-px mt-3.5 ${s.done || steps[i - 1].done ? "bg-emerald-300" : "bg-border"}`} />}
+                          <div className="flex flex-col items-center gap-1 w-[112px] text-center">
+                            <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold ring-4 ${
+                              s.done
+                                ? "bg-emerald-500 text-white ring-emerald-50"
+                                : isNext
+                                ? "bg-primary text-white ring-primary/10"
+                                : "bg-muted text-muted-foreground ring-transparent"
+                            }`}>
+                              {s.done ? "✓" : s.n}
+                            </div>
+                            <p className={`text-[10px] leading-tight ${s.done ? "text-muted-foreground" : isNext ? "font-semibold text-primary" : "text-muted-foreground/60"}`}>
+                              {s.label}
+                            </p>
+                            {s.count && (
+                              <p className={`text-[9px] font-mono ${s.done ? "text-emerald-600" : "text-muted-foreground/60"}`}>{s.count}</p>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })()}
+
         {/* ── BM: Pending Completion review card */}
         {isBM && op.status === "pending_completion" && (
           <Card className="border-orange-200 bg-orange-50/40 shadow-sm">
@@ -2772,9 +2852,25 @@ export default function OperationDetailPage({
                       No completion notes provided. Review the timeline for details.
                     </p>
                   )}
+                  {/* Which BDN gates completion depends on the operation type —
+                       a Vessel Only operation never involves a Truck BDN. */}
                   <p className="text-xs text-orange-700/80 mt-1.5">
-                    Awaiting the Ops Supervisor / Logistics Officer to submit a Truck BDN for this
-                    delivery (Truck BDN tab) — the operation completes once it's approved.
+                    {op.type === "vessel_only" ? (
+                      <>
+                        Awaiting the Ops Supervisor / Marine Manager to submit a Vessel BDN for each
+                        receiving vessel (Vessel BDN tab) — the operation completes once every one is approved.
+                      </>
+                    ) : op.type === "truck_only" ? (
+                      <>
+                        Awaiting the Ops Supervisor / Logistics Officer to submit a Truck BDN for this
+                        delivery (Truck BDN tab) — the operation completes once it&apos;s approved.
+                      </>
+                    ) : (
+                      <>
+                        Awaiting the Truck BDN and every vessel run&apos;s Vessel BDN — the operation
+                        completes once all of them are approved.
+                      </>
+                    )}
                   </p>
                 </div>
               </div>
@@ -5553,8 +5649,19 @@ export default function OperationDetailPage({
                                           />
                                         </div>
                                       )}
-                                      {activity.commence_description && (
-                                        <p className="text-[11px] text-muted-foreground italic mt-1.5">{activity.commence_description}</p>
+                                      {(activity.commence_description || activity.complete_description) && (
+                                        <div className="mt-1.5 space-y-1">
+                                          {activity.commence_description && (
+                                            <p className="text-[11px] text-muted-foreground italic">
+                                              <span className="not-italic font-medium">Commenced:</span> {activity.commence_description}
+                                            </p>
+                                          )}
+                                          {activity.complete_description && (
+                                            <p className="text-[11px] text-muted-foreground italic">
+                                              <span className="not-italic font-medium">Completed:</span> {activity.complete_description}
+                                            </p>
+                                          )}
+                                        </div>
                                       )}
                                     </div>
 
@@ -5638,15 +5745,17 @@ export default function OperationDetailPage({
                                           <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
                                             <Label className="text-[10px] text-muted-foreground">Completed At</Label>
                                             <Input type="datetime-local" className="h-8 text-xs" value={completeUserAt} onChange={(e) => setCompleteUserAt(e.target.value)} />
+                                            <Label className="text-[10px] text-muted-foreground">Comment (optional)</Label>
+                                            <Textarea className="text-xs min-h-[50px] resize-none" placeholder="Any notes on how loading finished — delays, shortfalls, conditions…" value={completeDescription} onChange={(e) => setCompleteDescription(e.target.value)} />
                                             <div className="flex gap-2">
                                               <Button size="sm" className="flex-1 text-xs bg-emerald-700 hover:bg-emerald-800" disabled={!completeUserAt || completeVesselOpMutation.isPending} onClick={() => completeVesselOpMutation.mutate(activity.id)}>
                                                 {completeVesselOpMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Mark Loading Completed"}
                                               </Button>
-                                              <Button size="sm" variant="ghost" className="text-xs" onClick={() => { setCompleteFormActivityId(null); setCompleteUserAt(""); }}>Cancel</Button>
+                                              <Button size="sm" variant="ghost" className="text-xs" onClick={() => { setCompleteFormActivityId(null); setCompleteUserAt(""); setCompleteDescription(""); }}>Cancel</Button>
                                             </div>
                                           </div>
                                         ) : (
-                                          <Button size="sm" className="text-xs gap-1.5 bg-emerald-700 hover:bg-emerald-800" onClick={() => { setCompleteFormActivityId(activity.id); setCompleteUserAt(""); }}>
+                                          <Button size="sm" className="text-xs gap-1.5 bg-emerald-700 hover:bg-emerald-800" onClick={() => { setCompleteFormActivityId(activity.id); setCompleteUserAt(""); setCompleteDescription(""); }}>
                                             <CheckCircle2 className="w-3.5 h-3.5" />Mark Loading Completed
                                           </Button>
                                         )}
@@ -6021,6 +6130,33 @@ export default function OperationDetailPage({
                                                 </div>
                                               );
                                             })}
+
+                                            {/* Continue-the-journey CTA — sits directly below the
+                                                 last receiving vessel so it's found right where a
+                                                 discharge finishes, not only at the top of the
+                                                 section. Completed vessels stay on screen above so
+                                                 the whole operation stays reviewable. */}
+                                            {isBM && addLegFormActivityId !== activity.id && (() => {
+                                              const live = activity.legs.filter((l) => !l.cancelled_at);
+                                              const allDone = live.length > 0 && live.every((l) => l.stage === "discharge_completed");
+                                              return (
+                                                <div className={`rounded-lg border border-dashed p-3 flex items-center justify-between gap-3 ${allDone ? "bg-emerald-50/40 border-emerald-300" : "bg-muted/20"}`}>
+                                                  <p className="text-[11px] text-muted-foreground">
+                                                    {allDone
+                                                      ? "All receiving vessels discharged. Add another to keep this operation going, or raise the Vessel BDNs."
+                                                      : "Delivering to another vessel on this same operation?"}
+                                                  </p>
+                                                  <Button
+                                                    size="sm"
+                                                    variant={allDone ? "default" : "outline"}
+                                                    className="text-xs gap-1.5 shrink-0"
+                                                    onClick={() => { setAddLegFormActivityId(activity.id); setNewLegName(""); setNewLegImo(""); setNewLegEta(""); }}
+                                                  >
+                                                    <PlusCircle className="w-3.5 h-3.5" />Add Another Receiving Vessel
+                                                  </Button>
+                                                </div>
+                                              );
+                                            })()}
                                           </div>
                                         )}
                                       </div>

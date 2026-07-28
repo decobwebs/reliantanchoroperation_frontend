@@ -761,6 +761,7 @@ export interface VesselActivity {
   commence_description?: string;
   complete_system_at?: string;
   complete_user_at?: string;
+  complete_description?: string;
   // Superseded (migration 039) — dead for rows created after the
   // six-stage + receiving-vessel-legs rebuild (migration 041).
   discharged_quantity_litres?: string;

@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState, useRef, Fragment } from "react";
+import { use, useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -419,6 +419,72 @@ function AssignTaskDialog({
   );
 }
 
+// ─── Vessel-only six-stage journey ───────────────────────────────────────────
+// The spec's journey is six numbered stages: Loading Commenced/Completed
+// happen ONCE on the barge run, then Cast Off -> Alongside -> Discharge
+// Commenced -> Discharge Completed repeat per receiving vessel. Every stage
+// stores both a system timestamp and the user's own stated time — both are
+// always shown together, side by side, and neither overwrites the other.
+
+/** One stage in the journey: a numbered node, its label, and its two times. */
+function JourneyStage({
+  number,
+  label,
+  systemAt,
+  userAt,
+  done,
+  current,
+  last,
+}: {
+  number: number;
+  label: string;
+  systemAt?: string | null;
+  userAt?: string | null;
+  done: boolean;
+  current: boolean;
+  last?: boolean;
+}) {
+  return (
+    <div className="flex gap-3">
+      {/* Rail: numbered node + connector down to the next stage */}
+      <div className="flex flex-col items-center shrink-0">
+        <div
+          className={`w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold ring-4 ${
+            done
+              ? "bg-emerald-500 text-white ring-emerald-50"
+              : current
+              ? "bg-primary text-white ring-primary/10"
+              : "bg-muted text-muted-foreground ring-transparent"
+          }`}
+        >
+          {done ? "✓" : number}
+        </div>
+        {!last && <div className={`w-px flex-1 min-h-[26px] ${done ? "bg-emerald-300" : "bg-border"}`} />}
+      </div>
+
+      {/* Body: label + the two timestamps */}
+      <div className={`flex-1 pb-4 ${last ? "pb-0" : ""}`}>
+        <p className={`text-xs leading-7 ${done ? "font-medium" : current ? "font-semibold text-primary" : "text-muted-foreground"}`}>
+          {label}
+          {current && <span className="ml-2 text-[10px] font-normal text-primary/70">← next</span>}
+        </p>
+        {done && (
+          <div className="grid grid-cols-2 gap-px rounded-md border overflow-hidden mt-0.5">
+            <div className="bg-muted/20 px-2.5 py-1.5">
+              <p className="text-[9px] uppercase tracking-wide text-muted-foreground">System recorded</p>
+              <p className="font-mono text-[11px] font-semibold">{formatDateTime(systemAt)}</p>
+            </div>
+            <div className="bg-muted/20 px-2.5 py-1.5">
+              <p className="text-[9px] uppercase tracking-wide text-muted-foreground">You entered</p>
+              <p className="font-mono text-[11px] font-semibold">{userAt ? formatDateTime(userAt) : "—"}</p>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main page ───────────────────────────────────────────────────────────────
 
 export default function OperationDetailPage({
@@ -431,11 +497,17 @@ export default function OperationDetailPage({
   const router   = useRouter();
   const qc       = useQueryClient();
 
-  const isBM = effectiveRole === "bunker_manager";
-  const isFM = effectiveRole === "finance_manager";
-  const isLO = effectiveRole === "logistics_officer";
-  const isMM = effectiveRole === "marine_manager";
-  const isOS = effectiveRole === "ops_supervisor";
+  // The Bunker Manager has full access to every role's actions at all times.
+  // "Acting as" switches which role's view is presented — it never removes
+  // the BM's own authority, and the BM is never blocked by whether a task or
+  // vessel activity happens to be assigned to them. Mirrors the backend
+  // (require_roles / acting_role both let a real BM through unconditionally).
+  const isRealBM = user?.role === "bunker_manager";
+  const isBM = isRealBM || effectiveRole === "bunker_manager";
+  const isFM = isRealBM || effectiveRole === "finance_manager";
+  const isLO = isRealBM || effectiveRole === "logistics_officer";
+  const isMM = isRealBM || effectiveRole === "marine_manager";
+  const isOS = isRealBM || effectiveRole === "ops_supervisor";
 
   const canSeeTasks            = isBM || isOS || isLO || isMM;
   const canSeeBDN              = isBM || isMM;
@@ -4751,7 +4823,10 @@ export default function OperationDetailPage({
                         // which checks the account's TRUE role, not the "acting as" preview role —
                         // a real Bunker Manager or Ops Supervisor always retains action authority
                         // here even while previewing the app as another role.
-                        const canAct       = isAssignee || user?.role === "bunker_manager" || user?.role === "ops_supervisor";
+                        // Mirrors the backend's _assert_authorized: the
+                        // assigned Marine Manager, any Ops Supervisor, or the
+                        // Bunker Manager (who is never assignee-gated).
+                        const canAct       = isAssignee || isBM || isOS;
                         const hasReceipt   = !!activity.vessel_received_mt;
                         const hasBunkering = !!activity.bunkering_start_at;
                         const hasDischarge = !!activity.quantity_discharged_mt;
@@ -5425,23 +5500,27 @@ export default function OperationDetailPage({
                                 ) : (
                                   <div className="px-5 py-3.5 space-y-3">
 
-                                    {/* Four-timings display — always shown together, never one overwriting the other */}
+                                    {/* ── Stages 1–2: LOADING (happens once on the barge run) ── */}
                                     <div>
-                                      <div className="flex items-center justify-between mb-1.5">
-                                        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Timings</p>
+                                      <div className="flex items-center justify-between mb-2">
+                                        <div>
+                                          <p className="text-[11px] font-bold uppercase tracking-wider text-foreground">Loading</p>
+                                          <p className="text-[10px] text-muted-foreground">Stages 1–2 · happens once, at the source</p>
+                                        </div>
                                         {isBM && editTimingActivityId !== activity.id && (
-                                          <button className="text-[10px] text-primary underline" onClick={() => openEditTiming(activity)}>Edit</button>
+                                          <button className="text-[10px] text-primary underline" onClick={() => openEditTiming(activity)}>Correct a timing</button>
                                         )}
                                       </div>
+
                                       {editTimingActivityId === activity.id ? (
                                         <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
                                           <div className="grid grid-cols-2 gap-2">
                                             <div className="space-y-1">
-                                              <Label className="text-[10px] text-muted-foreground">Commenced At (you entered)</Label>
+                                              <Label className="text-[10px] text-muted-foreground">Loading Commenced (you entered)</Label>
                                               <Input type="datetime-local" className="h-8 text-xs" value={editCommenceUserAt} onChange={(e) => setEditCommenceUserAt(e.target.value)} />
                                             </div>
                                             <div className="space-y-1">
-                                              <Label className="text-[10px] text-muted-foreground">Completed At (you entered)</Label>
+                                              <Label className="text-[10px] text-muted-foreground">Loading Completed (you entered)</Label>
                                               <Input type="datetime-local" className="h-8 text-xs" value={editCompleteUserAt} onChange={(e) => setEditCompleteUserAt(e.target.value)} disabled={!activity.complete_system_at} />
                                             </div>
                                           </div>
@@ -5454,23 +5533,24 @@ export default function OperationDetailPage({
                                           </div>
                                         </div>
                                       ) : (
-                                        <div className="grid grid-cols-2 gap-px border rounded-md overflow-hidden text-xs">
-                                          <div className="bg-muted/20 px-3 py-2">
-                                            <p className="text-[9px] text-muted-foreground uppercase">System Commenced</p>
-                                            <p className="font-mono font-semibold">{formatDateTime(activity.commence_system_at)}</p>
-                                          </div>
-                                          <div className="bg-muted/20 px-3 py-2">
-                                            <p className="text-[9px] text-muted-foreground uppercase">You Entered — Commenced</p>
-                                            <p className="font-mono font-semibold">{activity.commence_user_at ? formatDateTime(activity.commence_user_at) : "—"}</p>
-                                          </div>
-                                          <div className="bg-muted/20 px-3 py-2">
-                                            <p className="text-[9px] text-muted-foreground uppercase">System Completed</p>
-                                            <p className="font-mono font-semibold">{activity.complete_system_at ? formatDateTime(activity.complete_system_at) : "—"}</p>
-                                          </div>
-                                          <div className="bg-muted/20 px-3 py-2">
-                                            <p className="text-[9px] text-muted-foreground uppercase">You Entered — Completed</p>
-                                            <p className="font-mono font-semibold">{activity.complete_user_at ? formatDateTime(activity.complete_user_at) : "—"}</p>
-                                          </div>
+                                        <div className="rounded-lg border bg-background p-3">
+                                          <JourneyStage
+                                            number={1}
+                                            label="Loading Commenced"
+                                            systemAt={activity.commence_system_at}
+                                            userAt={activity.commence_user_at}
+                                            done={!!activity.commence_system_at}
+                                            current={false}
+                                          />
+                                          <JourneyStage
+                                            number={2}
+                                            label="Loading Completed"
+                                            systemAt={activity.complete_system_at}
+                                            userAt={activity.complete_user_at}
+                                            done={!!activity.complete_system_at}
+                                            current={!activity.complete_system_at}
+                                            last
+                                          />
                                         </div>
                                       )}
                                       {activity.commence_description && (
@@ -5670,10 +5750,18 @@ export default function OperationDetailPage({
                                          Discharge Completed sequence, independently. */}
                                     {activity.complete_system_at && (
                                       <div>
-                                        <div className="flex items-center justify-between mb-1.5">
-                                          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Receiving Vessels</p>
+                                        <div className="flex items-center justify-between mb-2">
+                                          <div>
+                                            <p className="text-[11px] font-bold uppercase tracking-wider text-foreground">Delivery · Receiving Vessels</p>
+                                            <p className="text-[10px] text-muted-foreground">
+                                              Stages 3–6 · repeat per receiving vessel
+                                              {activity.legs.length > 0 && ` · ${activity.legs.filter((l) => !l.cancelled_at && l.stage === "discharge_completed").length} of ${activity.legs.filter((l) => !l.cancelled_at).length} complete`}
+                                            </p>
+                                          </div>
                                           {isBM && addLegFormActivityId !== activity.id && (
-                                            <button className="text-[10px] text-primary underline" onClick={() => { setAddLegFormActivityId(activity.id); setNewLegName(""); setNewLegImo(""); setNewLegEta(""); }}>+ Add</button>
+                                            <Button size="sm" variant="outline" className="text-xs gap-1.5 h-7" onClick={() => { setAddLegFormActivityId(activity.id); setNewLegName(""); setNewLegImo(""); setNewLegEta(""); }}>
+                                              <PlusCircle className="w-3.5 h-3.5" />Add Receiving Vessel
+                                            </Button>
                                           )}
                                         </div>
 
@@ -5739,44 +5827,25 @@ export default function OperationDetailPage({
                                                     <p className="px-3 py-2 text-[11px] text-muted-foreground italic">{leg.cancelled_reason}</p>
                                                   ) : (
                                                     <div className="p-3 space-y-3">
-                                                      {/* 4-stage timeline */}
-                                                      <div className="flex items-center gap-1 overflow-x-auto pb-1">
+                                                      {/* Stages 3–6 for this receiving vessel — continues the
+                                                           operation's six-stage journey, numbered to match. */}
+                                                      <div className="rounded-lg border bg-background p-3">
                                                         {LEG_STAGES.map((s, i) => {
-                                                          const done = i <= legStageIdx;
-                                                          const current = i === legStageIdx + 1;
+                                                          const rec = leg as unknown as Record<string, string>;
                                                           return (
-                                                            <div key={s.value} className="flex items-center gap-1 shrink-0">
-                                                              <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold ${
-                                                                done ? "bg-emerald-500 text-white" : current ? "bg-primary text-white" : "bg-muted text-muted-foreground"
-                                                              }`}>
-                                                                {done ? "✓" : i + 1}
-                                                              </div>
-                                                              <span className={`text-[10px] ${done ? "text-muted-foreground line-through" : current ? "font-semibold" : "text-muted-foreground"}`}>
-                                                                {s.label}
-                                                              </span>
-                                                              {i < LEG_STAGES.length - 1 && <ChevronRight className="w-2.5 h-2.5 text-muted-foreground/30 shrink-0" />}
-                                                            </div>
+                                                            <JourneyStage
+                                                              key={s.value}
+                                                              number={i + 3}
+                                                              label={s.label}
+                                                              systemAt={rec[`stage_${s.value}_system_at`]}
+                                                              userAt={rec[`stage_${s.value}_user_at`]}
+                                                              done={i <= legStageIdx}
+                                                              current={i === legStageIdx + 1}
+                                                              last={i === LEG_STAGES.length - 1}
+                                                            />
                                                           );
                                                         })}
                                                       </div>
-
-                                                      {/* Dual system/user timings already logged */}
-                                                      {legStageIdx >= 0 && (
-                                                        <div className="grid grid-cols-2 gap-px border rounded-md overflow-hidden text-[10px]">
-                                                          {LEG_STAGES.slice(0, legStageIdx + 1).map((s) => (
-                                                            <Fragment key={s.value}>
-                                                              <div className="bg-muted/20 px-2 py-1.5">
-                                                                <p className="text-[8px] text-muted-foreground uppercase">{s.label} — system</p>
-                                                                <p className="font-mono">{formatDateTime((leg as unknown as Record<string, string>)[`stage_${s.value}_system_at`])}</p>
-                                                              </div>
-                                                              <div className="bg-muted/20 px-2 py-1.5">
-                                                                <p className="text-[8px] text-muted-foreground uppercase">{s.label} — you entered</p>
-                                                                <p className="font-mono">{formatDateTime((leg as unknown as Record<string, string>)[`stage_${s.value}_user_at`])}</p>
-                                                              </div>
-                                                            </Fragment>
-                                                          ))}
-                                                        </div>
-                                                      )}
                                                       {isBM && (
                                                         editLegTimingId === leg.id ? (
                                                           <div className="rounded-lg border bg-muted/30 p-3 space-y-2">

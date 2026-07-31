@@ -8,13 +8,14 @@ import { z } from "zod";
 import { Users, UserPlus, Loader2, Phone } from "lucide-react";
 import { toast } from "sonner";
 import { api, getErrorMessage } from "@/lib/api";
-import { Header } from "@/components/layout/Header";
-import { Card, CardContent } from "@/components/ui/card";
+import { DashboardShell } from "@/components/dashboard/DashboardShell";
+import { PanelCard } from "@/components/dashboard/PanelCard";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
   DialogContent,
@@ -30,18 +31,21 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ROLE_LABELS } from "@/lib/auth";
-import { getInitials } from "@/lib/utils";
+import { cn, getInitials } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { QueryError } from "@/components/shared/QueryError";
 import type { ApiResponse, User } from "@/types";
 
+// One distinct colour per role, all drawn from the shared tones.ts palette —
+// `slate` (added for this page) is the neutral sixth alongside the five
+// meaning-carrying tones, since a role isn't inherently good/bad/pending.
 const ROLE_COLOR: Record<string, string> = {
-  bunker_manager: "bg-primary/10 text-primary",
-  finance_manager: "bg-emerald-100 text-emerald-700",
-  ops_supervisor: "bg-blue-100 text-blue-700",
-  logistics_officer: "bg-amber-100 text-amber-700",
-  marine_manager: "bg-purple-100 text-purple-700",
-  client: "bg-gray-100 text-gray-700",
+  bunker_manager:     "bg-navy-100 text-navy-800 dark:bg-navy-500/20 dark:text-navy-200",
+  finance_manager:    "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300",
+  ops_supervisor:     "bg-brand-100 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300",
+  logistics_officer:  "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300",
+  marine_manager:     "bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300",
+  client:             "bg-slate-100 text-slate-700 dark:bg-slate-500/15 dark:text-slate-300",
 };
 
 const STAFF_ROLES = [
@@ -113,7 +117,10 @@ function CreateUserDialog() {
       </DialogTrigger>
       <DialogContent className="sm:max-w-md" aria-describedby={undefined}>
         <DialogHeader>
-          <DialogTitle>Create User Account</DialogTitle>
+          <DialogTitle className="flex items-center gap-2 text-[15px] font-bold tracking-tight">
+            <UserPlus className="h-4 w-4 text-brand-600" strokeWidth={2.2} />
+            Create User Account
+          </DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit((d) => mutation.mutate(d))} className="space-y-4 mt-2">
           <div className="space-y-1.5">
@@ -216,81 +223,74 @@ export default function AdminPage() {
 
   if (user && !isBM) {
     return (
-      <div>
-        <Header title="User Management" subtitle="Restricted" />
-        <div className="p-6">
-          <QueryError error={{ isAxiosError: true, response: { status: 403 } }} />
-        </div>
-      </div>
+      <DashboardShell icon={Users} iconTone="blue" showRole={false} title="User Management" subtitle="Restricted">
+        <QueryError error={{ isAxiosError: true, response: { status: 403 } }} />
+      </DashboardShell>
     );
   }
 
   return (
-    <div>
-      <Header
-        title="User Management"
-        subtitle={`${users?.length ?? 0} users registered`}
-        actions={<CreateUserDialog />}
-      />
-      <div className="p-6">
-        {isError ? (
-          <QueryError error={error} onRetry={() => refetch()} />
-        ) : isLoading ? (
-          <div className="flex items-center justify-center py-16">
-            <Loader2 className="w-7 h-7 animate-spin text-primary" />
-          </div>
-        ) : (
-          <Card className="border-0 shadow-sm">
-            <CardContent className="p-0">
-              {users?.length ? (
-                <div className="divide-y">
-                  {users.map((u) => (
-                    <div key={u.id} className="flex items-center gap-4 px-5 py-4">
-                      <Avatar className="w-9 h-9 shrink-0">
-                        <AvatarFallback className="text-xs bg-primary/10 text-primary font-semibold">
-                          {getInitials(u.full_name)}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{u.full_name}</p>
-                        <p className="text-xs text-muted-foreground truncate">{u.email}</p>
-                      </div>
+    <DashboardShell
+      icon={Users}
+      iconTone="blue"
+      showRole={false}
+      title="User Management"
+      subtitle={`${users?.length ?? 0} users registered`}
+      actions={<CreateUserDialog />}
+    >
+      {isError ? (
+        <QueryError error={error} onRetry={() => refetch()} />
+      ) : isLoading ? (
+        <Skeleton className="h-96 w-full rounded-2xl" />
+      ) : (
+        <PanelCard icon={Users} tone="blue" title="Registry" flush className="animate-rise">
+          {users?.length ? (
+            <div className="divide-y divide-border/70">
+              {users.map((u) => (
+                <div key={u.id} className="flex items-center gap-4 px-4 py-4 lg:px-5">
+                  <Avatar className="h-9 w-9 shrink-0">
+                    <AvatarFallback className="bg-brand-50 text-xs font-semibold text-brand-700 dark:bg-brand-500/15 dark:text-brand-300">
+                      {getInitials(u.full_name)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[13px] font-semibold text-foreground">{u.full_name}</p>
+                    <p className="truncate text-[12px] text-muted-foreground">{u.email}</p>
+                  </div>
 
-                      {u.phone ? (
-                        <div className="hidden md:flex items-center gap-1 text-xs text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                          <Phone className="w-3 h-3" />
-                          <span className="font-mono">{u.phone}</span>
-                        </div>
-                      ) : (
-                        <span className="hidden md:block text-xs text-muted-foreground/50 italic">
-                          No WhatsApp
-                        </span>
-                      )}
-
-                      <span
-                        className={`text-xs font-medium px-2 py-0.5 rounded ${ROLE_COLOR[u.role] ?? "bg-gray-100"}`}
-                      >
-                        {ROLE_LABELS[u.role] ?? u.role}
-                      </span>
-                      <Badge
-                        variant={u.is_active ? "default" : "secondary"}
-                        className="text-xs"
-                      >
-                        {u.is_active ? "Active" : "Inactive"}
-                      </Badge>
+                  {u.phone ? (
+                    <div className="hidden items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/15 dark:text-emerald-300 md:flex">
+                      <Phone className="h-3 w-3" />
+                      <span className="font-mono">{u.phone}</span>
                     </div>
-                  ))}
+                  ) : (
+                    <span className="hidden text-[11px] italic text-muted-foreground/50 md:block">
+                      No WhatsApp
+                    </span>
+                  )}
+
+                  <span
+                    className={cn("rounded-md px-2 py-0.5 text-[11px] font-semibold", ROLE_COLOR[u.role] ?? "bg-muted text-muted-foreground")}
+                  >
+                    {ROLE_LABELS[u.role] ?? u.role}
+                  </span>
+                  <Badge
+                    variant={u.is_active ? "default" : "secondary"}
+                    className="rounded-md text-[11px]"
+                  >
+                    {u.is_active ? "Active" : "Inactive"}
+                  </Badge>
                 </div>
-              ) : (
-                <div className="flex flex-col items-center py-16 text-muted-foreground">
-                  <Users className="w-10 h-10 mb-3 opacity-30" />
-                  <p className="text-sm">No users found</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        )}
-      </div>
-    </div>
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center py-16 text-center">
+              <Users className="h-9 w-9 text-muted-foreground/25" strokeWidth={1.5} />
+              <p className="mt-3 text-sm font-medium text-foreground">No users found</p>
+            </div>
+          )}
+        </PanelCard>
+      )}
+    </DashboardShell>
   );
 }

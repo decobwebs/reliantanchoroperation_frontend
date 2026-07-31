@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -11,13 +12,6 @@ import { completeSession } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 
 const schema = z
   .object({
@@ -30,6 +24,10 @@ const schema = z
   });
 
 type FormData = z.infer<typeof schema>;
+
+// Matches the login page's field treatment exactly, for visual parity.
+const fieldClass =
+  "h-11 rounded-lg border-border bg-card px-4 shadow-xs placeholder:text-muted-foreground/60";
 
 /**
  * Landing page for the "set your password" link a Bunker Manager's invite email
@@ -86,68 +84,74 @@ export default function SetPasswordPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-linear-to-br from-[oklch(0.18_0.06_240)] via-[oklch(0.22_0.07_240)] to-[oklch(0.15_0.05_240)] p-4">
-      <div
-        className="absolute inset-0 opacity-5"
-        style={{
-          backgroundImage:
-            "radial-gradient(circle at 1px 1px, white 1px, transparent 0)",
-          backgroundSize: "32px 32px",
-        }}
-      />
+    // Same bg-white + split-screen treatment as the login page, for visual
+    // parity — the panel image's left edge is #FEFEFE, so anything darker
+    // leaves a visible seam between the columns.
+    <div className="min-h-screen bg-white lg:grid lg:grid-cols-2">
+      {/* ── Form column ─────────────────────────────────────────────── */}
+      <div className="flex min-h-screen flex-col px-6 py-10 sm:px-10">
+        <div className="flex flex-1 items-center justify-center">
+          <div className="w-full max-w-[400px]">
+            <div className="mb-12 flex items-center gap-4">
+              <div className="h-14 w-14 shrink-0 overflow-hidden">
+                <Image
+                  src="/logo-mark.png"
+                  alt=""
+                  width={160}
+                  height={160}
+                  priority
+                  className="h-full w-full translate-y-[17%] scale-[1.75] object-cover"
+                />
+              </div>
+              <div>
+                <p className="text-2xl font-bold leading-none tracking-tight text-foreground">
+                  Reliant Anchor
+                </p>
+                <p className="mt-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-brand-600">
+                  Operations Management System
+                </p>
+              </div>
+            </div>
 
-      <div className="relative w-full max-w-md">
-        <div className="flex flex-col items-center mb-8">
-          <div className="flex items-center justify-center w-20 h-20 rounded-2xl bg-white mb-4 shadow-lg overflow-hidden">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/logo.jpeg" alt="Reliant Anchor Logistics" className="w-full h-full object-contain p-1" />
-          </div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">
-            Reliant Anchor
-          </h1>
-          <p className="text-sm text-white/50 mt-1">
-            Operations Management System
-          </p>
-        </div>
-
-        <Card className="border-0 shadow-2xl">
-          {linkError ? (
-            <CardContent className="pt-6 text-center space-y-3">
-              <AlertCircle className="w-10 h-10 text-destructive mx-auto" />
-              <CardTitle className="text-lg">Link invalid or expired</CardTitle>
-              <CardDescription>
-                This password-setup link is no longer valid. Ask your Bunker Manager
-                to resend it, or use &ldquo;Forgot password&rdquo; on the sign-in page.
-              </CardDescription>
-              <Button className="w-full mt-2" onClick={() => router.push("/login")}>
-                Back to sign in
-              </Button>
-            </CardContent>
-          ) : success ? (
-            <CardContent className="pt-6 text-center space-y-3">
-              <CheckCircle2 className="w-10 h-10 text-emerald-600 mx-auto" />
-              <CardTitle className="text-lg">Password set</CardTitle>
-              <CardDescription>Signing you in…</CardDescription>
-            </CardContent>
-          ) : (
-            <>
-              <CardHeader className="pb-4">
-                <CardTitle className="text-xl">Set your password</CardTitle>
-                <CardDescription>
+            {linkError ? (
+              <div className="space-y-3 text-center">
+                <AlertCircle className="mx-auto h-10 w-10 text-destructive" />
+                <h1 className="text-2xl font-bold tracking-tight text-foreground">Link invalid or expired</h1>
+                <p className="text-sm text-muted-foreground">
+                  This password-setup link is no longer valid. Ask your Bunker Manager
+                  to resend it, or use &ldquo;Forgot password&rdquo; on the sign-in page.
+                </p>
+                <Button className="mt-2 h-11 w-full rounded-lg text-[0.9375rem] font-semibold" onClick={() => router.push("/login")}>
+                  Back to sign in
+                </Button>
+              </div>
+            ) : success ? (
+              <div className="space-y-3 text-center">
+                <CheckCircle2 className="mx-auto h-10 w-10 text-emerald-600" />
+                <h1 className="text-2xl font-bold tracking-tight text-foreground">Password set</h1>
+                <p className="text-sm text-muted-foreground">Signing you in…</p>
+              </div>
+            ) : (
+              <>
+                <h1 className="text-3xl font-bold tracking-tight text-foreground">
+                  Set your password
+                </h1>
+                <p className="mt-2 text-sm text-muted-foreground">
                   Choose a password for your Reliant Anchor account.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+                </p>
+
+                <form onSubmit={handleSubmit(onSubmit)} className="mt-10 space-y-6">
                   {submitError && (
-                    <div className="flex items-start gap-2.5 rounded-md border border-destructive/40 bg-destructive/10 px-3.5 py-3 text-sm text-destructive">
+                    <div className="flex items-start gap-2.5 rounded-lg border border-destructive/40 bg-destructive/10 px-3.5 py-3 text-sm text-destructive">
                       <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
                       <span>{submitError}</span>
                     </div>
                   )}
 
-                  <div className="space-y-1.5">
-                    <Label htmlFor="password">New password</Label>
+                  <div className="space-y-2">
+                    <Label htmlFor="password" className="text-[0.9375rem] font-semibold">
+                      New password
+                    </Label>
                     <div className="relative">
                       <Input
                         id="password"
@@ -157,15 +161,16 @@ export default function SetPasswordPage() {
                         autoFocus
                         disabled={!tokens}
                         {...register("password")}
-                        className={errors.password ? "border-destructive pr-10" : "pr-10"}
+                        className={`${fieldClass} pr-11 ${errors.password ? "border-destructive" : ""}`}
                       />
                       <button
                         type="button"
                         onClick={() => setShowPassword((v) => !v)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                        className="absolute right-3.5 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
                         tabIndex={-1}
+                        aria-label={showPassword ? "Hide password" : "Show password"}
                       >
-                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </button>
                     </div>
                     {errors.password && (
@@ -173,8 +178,10 @@ export default function SetPasswordPage() {
                     )}
                   </div>
 
-                  <div className="space-y-1.5">
-                    <Label htmlFor="confirm">Confirm password</Label>
+                  <div className="space-y-2">
+                    <Label htmlFor="confirm" className="text-[0.9375rem] font-semibold">
+                      Confirm password
+                    </Label>
                     <Input
                       id="confirm"
                       type={showPassword ? "text" : "password"}
@@ -182,7 +189,7 @@ export default function SetPasswordPage() {
                       autoComplete="new-password"
                       disabled={!tokens}
                       {...register("confirm")}
-                      className={errors.confirm ? "border-destructive" : ""}
+                      className={`${fieldClass} ${errors.confirm ? "border-destructive" : ""}`}
                     />
                     {errors.confirm && (
                       <p className="text-xs text-destructive">{errors.confirm.message}</p>
@@ -191,12 +198,12 @@ export default function SetPasswordPage() {
 
                   <Button
                     type="submit"
-                    className="w-full font-semibold"
+                    className="h-11 w-full rounded-lg text-[0.9375rem] font-semibold"
                     disabled={isSubmitting || !tokens}
                   >
                     {isSubmitting ? (
                       <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                         Setting password…
                       </>
                     ) : (
@@ -204,16 +211,34 @@ export default function SetPasswordPage() {
                     )}
                   </Button>
                 </form>
-              </CardContent>
-            </>
-          )}
-        </Card>
+              </>
+            )}
+          </div>
+        </div>
 
-        <div className="text-center mt-6">
-          <p className="text-xs text-white/30">
+        {/* Footer */}
+        <div className="mx-auto w-full max-w-[400px] pt-10">
+          <p className="text-xs text-muted-foreground">
             © {new Date().getFullYear()} Reliant Anchor Ltd. All rights reserved.
           </p>
+          <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground/70">
+            <a href="/cookies" className="transition-colors hover:text-foreground">
+              Cookies
+            </a>
+          </div>
         </div>
+      </div>
+
+      {/* ── Illustration column ─────────────────────────────────────── */}
+      <div className="relative hidden lg:block">
+        <Image
+          src="/auth-panel.png"
+          alt=""
+          fill
+          priority
+          sizes="50vw"
+          className="object-cover object-[60%_75%]"
+        />
       </div>
     </div>
   );

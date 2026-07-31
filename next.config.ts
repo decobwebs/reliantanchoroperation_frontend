@@ -1,5 +1,18 @@
 import type { NextConfig } from "next";
 
+const isDev = process.env.NODE_ENV !== "production";
+
+// Origins the browser may call with XHR/fetch/WebSocket. Production is locked to
+// Supabase and the deployed API; local development additionally needs the API
+// running on :8000 (and the HMR websocket), which would otherwise be blocked.
+const connectSrc = [
+  "'self'",
+  "https://*.supabase.co",
+  "https://api.reliantbunkerops.com",
+  "https://reliantanchoroperation-backend.onrender.com",
+  ...(isDev ? ["http://localhost:8000", "ws://localhost:3000"] : []),
+].join(" ");
+
 // Security headers applied to every response. The backend sets its own headers,
 // but those do NOT cover the HTML/asset responses Vercel serves — this closes
 // that gap for the custom domain (HTTPS enforcement, clickjacking, MIME sniff, XSS).
@@ -28,7 +41,7 @@ const securityHeaders = [
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob: https:",
       "font-src 'self' data:",
-      "connect-src 'self' https://*.supabase.co https://api.reliantbunkerops.com https://reliantanchoroperation-backend.onrender.com",
+      `connect-src ${connectSrc}`,
       "frame-ancestors 'none'",
       "base-uri 'self'",
       "form-action 'self'",

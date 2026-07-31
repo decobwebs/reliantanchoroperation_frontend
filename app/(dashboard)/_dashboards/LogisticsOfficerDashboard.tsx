@@ -3,34 +3,31 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import {
+  AlertCircle,
+  CheckCircle2,
   CheckSquare,
-  Truck,
+  ChevronRight,
   ClipboardCheck,
   Play,
-  CheckCircle2,
-  Loader2,
-  AlertCircle,
-  ChevronRight,
+  Truck,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api, getErrorMessage } from "@/lib/api";
-import { Header } from "@/components/layout/Header";
-import { StatCard } from "@/components/shared/StatCard";
+import { DashboardShell } from "@/components/dashboard/DashboardShell";
+import { AlertPanel, AlertRow } from "@/components/dashboard/AlertPanel";
+import { KpiCard } from "@/components/dashboard/KpiCard";
+import { PanelCard } from "@/components/dashboard/PanelCard";
+import { QuickActionTile } from "@/components/dashboard/QuickActionTile";
+import { TaskRow } from "@/components/dashboard/TaskRow";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { formatDate, formatDateTime, OP_TYPE_LABELS } from "@/lib/utils";
-import type { ApiResponse, PaginatedData, Task, Operation, OperationStatus } from "@/types";
-
-const PRIORITY_COLOR: Record<string, string> = {
-  low:    "bg-gray-100 text-gray-600",
-  normal: "bg-blue-100 text-blue-700",
-  high:   "bg-amber-100 text-amber-700",
-  urgent: "bg-red-100 text-red-700",
-};
+import { Skeleton } from "@/components/ui/skeleton";
+import { useAuth } from "@/hooks/useAuth";
+import { formatDate, OP_TYPE_LABELS } from "@/lib/utils";
+import type { ApiResponse, PaginatedData, Task, Operation } from "@/types";
 
 export function LogisticsOfficerDashboard() {
   const qc = useQueryClient();
+  const { user } = useAuth();
 
   const { data: tasks, isLoading: tasksLoading } = useQuery({
     queryKey: ["my-tasks"],
@@ -65,182 +62,260 @@ export function LogisticsOfficerDashboard() {
   const pendingTasks = tasks?.filter((t) => t.status === "pending") ?? [];
   const activeTasks = tasks?.filter((t) => t.status === "in_progress") ?? [];
   const completedCount = tasks?.filter((t) => t.status === "completed").length ?? 0;
-  const truckTasks = tasks?.filter((t) => t.task_type === "truck_logistics") ?? [];
+  const totalTasks = tasks?.length ?? 0;
+
+  const share = (n: number) =>
+    totalTasks > 0 ? `${Math.round((n / totalTasks) * 100)}% of your tasks` : "Nothing assigned";
 
   return (
-    <div>
-      <Header title="Logistics Dashboard" subtitle="Truck logistics — Logistics Officer" />
+    <DashboardShell
+      eyebrow={
+        <>
+          Welcome back, {user?.full_name?.split(" ")[0] ?? "there"}{" "}
+          <span aria-hidden="true">👋</span>
+        </>
+      }
+      title="Logistics Dashboard"
+      subtitle="Truck logistics — your task queue at a glance"
+      actions={
+        <Button
+          asChild
+          className="h-10.5 rounded-xl px-4 text-[13px] font-semibold shadow-[0_12px_26px_-14px_rgba(23,52,99,0.9)]"
+        >
+          <Link href="/tasks">
+            <CheckSquare className="h-4 w-4" strokeWidth={2.5} />
+            My Tasks
+          </Link>
+        </Button>
+      }
+    >
+      <section
+        className="animate-rise grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4"
+        aria-label="Task metrics"
+      >
+        <KpiCard
+          tone="navy"
+          icon={CheckSquare}
+          title="Total Tasks"
+          value={totalTasks}
+          caption="Assigned to you"
+          note={`${activeTasks.length + pendingTasks.length} still open`}
+          noteTrend="flat"
+        />
+        <KpiCard
+          tone="emerald"
+          icon={Play}
+          title="Active"
+          value={activeTasks.length}
+          caption="In progress"
+          note={share(activeTasks.length)}
+          noteTrend="flat"
+        />
+        <KpiCard
+          tone="amber"
+          icon={AlertCircle}
+          title="Pending"
+          value={pendingTasks.length}
+          caption="Not started"
+          note={share(pendingTasks.length)}
+          noteTrend="flat"
+        />
+        <KpiCard
+          tone="violet"
+          icon={CheckCircle2}
+          title="Completed"
+          value={completedCount}
+          caption="All time"
+          note={
+            totalTasks > 0
+              ? `${Math.round((completedCount / totalTasks) * 100)}% completion rate`
+              : "Nothing assigned"
+          }
+          noteTrend="flat"
+        />
+      </section>
 
-      <div className="p-4 md:p-6 space-y-6">
-        {/* KPIs */}
-        <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-          <StatCard title="Total Tasks" value={tasks?.length ?? 0} icon={CheckSquare} color="blue" />
-          <StatCard title="Active" value={activeTasks.length} subtitle="In progress" icon={Play} color="amber" />
-          <StatCard title="Pending" value={pendingTasks.length} subtitle="Not started" icon={AlertCircle} color="purple" />
-          <StatCard title="Completed" value={completedCount} icon={CheckCircle2} color="emerald" />
-        </div>
+      {(awaitingFeedbackOps?.length ?? 0) > 0 && (
+        <AlertPanel
+          icon={ClipboardCheck}
+          tone="blue"
+          title={`Operations Awaiting Your Feedback (${awaitingFeedbackOps!.length})`}
+        >
+          {awaitingFeedbackOps!.map((op) => (
+            <AlertRow
+              key={op.id}
+              mono
+              primary={op.operation_number}
+              secondary={`${OP_TYPE_LABELS[op.type]} · ${formatDate(op.created_at)}`}
+              trailing={
+                <Button
+                  asChild
+                  size="sm"
+                  variant="outline"
+                  className="h-8 rounded-lg border-blue-300 bg-white/70 text-xs text-blue-700 hover:bg-blue-100 hover:text-blue-800"
+                >
+                  <Link href="/tasks">
+                    Submit Readiness
+                    <ChevronRight className="h-3.5 w-3.5" />
+                  </Link>
+                </Button>
+              }
+            />
+          ))}
+        </AlertPanel>
+      )}
 
-        {/* Operations needing my feedback */}
-        {(awaitingFeedbackOps?.length ?? 0) > 0 && (
-          <Card className="border-blue-200 bg-blue-50/40 border shadow-sm">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-semibold flex items-center gap-2 text-blue-700">
-                <ClipboardCheck className="w-4 h-4" />
-                Operations Awaiting Your Feedback ({awaitingFeedbackOps!.length})
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-0 pb-2">
-              <div className="divide-y divide-blue-100">
-                {awaitingFeedbackOps!.map((op) => (
-                  <div key={op.id} className="flex items-center justify-between px-5 py-3">
-                    <div>
-                      <p className="text-sm font-semibold font-mono">{op.operation_number}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {OP_TYPE_LABELS[op.type]} · {formatDate(op.created_at)}
-                      </p>
-                    </div>
-                    <Link href="/tasks">
-                      <Button size="sm" variant="outline" className="border-blue-300 text-blue-700 hover:bg-blue-100">
-                        Submit Readiness
-                        <ChevronRight className="w-3.5 h-3.5 ml-1" />
-                      </Button>
-                    </Link>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Active & Pending Tasks */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {/* Active tasks */}
-          <Card className="border-0 shadow-sm">
-            <CardHeader className="pb-2 flex flex-row items-center justify-between">
-              <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                <Play className="w-4 h-4 text-blue-600" />
-                In Progress ({activeTasks.length})
-              </CardTitle>
-              <Link href="/tasks" className="text-xs text-primary hover:underline">View all</Link>
-            </CardHeader>
-            <CardContent className="p-0">
-              {tasksLoading ? (
-                <div className="flex justify-center py-6">
-                  <Loader2 className="w-5 h-5 animate-spin text-primary" />
-                </div>
-              ) : activeTasks.length ? (
-                <div className="divide-y">
-                  {activeTasks.map((task) => (
-                    <div key={task.id} className="px-4 py-3">
-                      <div className="flex items-start justify-between gap-2 mb-2">
-                        <div>
-                          <p className="text-xs font-semibold capitalize">{task.task_type.replace(/_/g, " ")}</p>
-                          {task.operation && (
-                            <p className="text-[10px] text-muted-foreground font-mono">{task.operation.operation_number}</p>
-                          )}
-                        </div>
-                        <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded shrink-0 ${PRIORITY_COLOR[task.priority] ?? ""}`}>
-                          {task.priority}
-                        </span>
-                      </div>
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-7 text-xs"
-                          disabled={updateTaskMutation.isPending}
-                          onClick={() => updateTaskMutation.mutate({ taskId: task.id as string, status: "completed" })}
-                        >
-                          <CheckCircle2 className="w-3 h-3 mr-1" />
-                          Complete
-                        </Button>
-                        {task.task_type === "truck_logistics" && task.operation?.id && (
-                          <Link href="/tasks">
-                            <Button size="sm" className="h-7 text-xs">
-                              <Truck className="w-3 h-3 mr-1" />
-                              Submit Report
-                            </Button>
-                          </Link>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="flex flex-col items-center py-8 text-muted-foreground">
-                  <CheckCircle2 className="w-8 h-8 mb-2 opacity-30" />
-                  <p className="text-xs">No active tasks</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Pending tasks */}
-          <Card className="border-0 shadow-sm">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 text-amber-600" />
-                Pending ({pendingTasks.length})
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              {pendingTasks.length ? (
-                <div className="divide-y">
-                  {pendingTasks.map((task) => (
-                    <div key={task.id} className="px-4 py-3">
-                      <div className="flex items-start justify-between gap-2 mb-2">
-                        <div>
-                          <p className="text-xs font-semibold capitalize">{task.task_type.replace(/_/g, " ")}</p>
-                          {task.operation && (
-                            <p className="text-[10px] text-muted-foreground font-mono">{task.operation.operation_number}</p>
-                          )}
-                          {task.due_date && (
-                            <p className="text-[10px] text-muted-foreground">Due: {formatDate(task.due_date)}</p>
-                          )}
-                        </div>
-                        <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded shrink-0 ${PRIORITY_COLOR[task.priority] ?? ""}`}>
-                          {task.priority}
-                        </span>
-                      </div>
+      <div className="animate-rise grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <PanelCard
+          icon={Play}
+          tone="blue"
+          title={`In Progress (${activeTasks.length})`}
+          subtitle="Tasks you have already started"
+          action={
+            <Button
+              asChild
+              variant="outline"
+              size="sm"
+              className="h-8 rounded-lg text-xs font-semibold"
+            >
+              <Link href="/tasks">
+                View all
+                <ChevronRight className="h-3.5 w-3.5" />
+              </Link>
+            </Button>
+          }
+        >
+          {tasksLoading ? (
+            <div className="space-y-2">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton key={i} className="h-20 w-full rounded-xl" />
+              ))}
+            </div>
+          ) : activeTasks.length ? (
+            <div className="space-y-2">
+              {activeTasks.map((task) => (
+                <TaskRow
+                  key={task.id}
+                  task={task}
+                  actions={
+                    <>
                       <Button
                         size="sm"
                         variant="outline"
-                        className="h-7 text-xs"
+                        className="h-7 rounded-lg text-xs"
                         disabled={updateTaskMutation.isPending}
-                        onClick={() => updateTaskMutation.mutate({ taskId: task.id as string, status: "in_progress" })}
+                        onClick={() =>
+                          updateTaskMutation.mutate({
+                            taskId: task.id as string,
+                            status: "completed",
+                          })
+                        }
                       >
-                        <Play className="w-3 h-3 mr-1" />
-                        Start Task
+                        <CheckCircle2 className="h-3 w-3" />
+                        Complete
                       </Button>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="flex flex-col items-center py-8 text-muted-foreground">
-                  <CheckSquare className="w-8 h-8 mb-2 opacity-30" />
-                  <p className="text-xs">No pending tasks</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+                      {task.task_type === "truck_logistics" && task.operation?.id && (
+                        <Button asChild size="sm" className="h-7 rounded-lg text-xs">
+                          <Link href="/tasks">
+                            <Truck className="h-3 w-3" />
+                            Submit Report
+                          </Link>
+                        </Button>
+                      )}
+                    </>
+                  }
+                />
+              ))}
+            </div>
+          ) : (
+            <EmptyState icon={CheckCircle2} label="No active tasks" />
+          )}
+        </PanelCard>
 
-        {/* Truck fleet link */}
-        <Link href="/fleet">
-          <Card className="border-0 shadow-sm hover:shadow-md transition-shadow cursor-pointer">
-            <CardContent className="p-4 flex items-center gap-4">
-              <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                <Truck className="w-5 h-5 text-primary" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold">Truck Fleet Registry</p>
-                <p className="text-xs text-muted-foreground">View truck availability and manage logistics</p>
-              </div>
-              <ChevronRight className="w-4 h-4 text-muted-foreground ml-auto" />
-            </CardContent>
-          </Card>
-        </Link>
+        <PanelCard
+          icon={AlertCircle}
+          tone="amber"
+          title={`Pending (${pendingTasks.length})`}
+          subtitle="Waiting for you to start"
+        >
+          {tasksLoading ? (
+            <div className="space-y-2">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton key={i} className="h-20 w-full rounded-xl" />
+              ))}
+            </div>
+          ) : pendingTasks.length ? (
+            <div className="space-y-2">
+              {pendingTasks.map((task) => (
+                <TaskRow
+                  key={task.id}
+                  task={task}
+                  showDueDate
+                  actions={
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 rounded-lg text-xs"
+                      disabled={updateTaskMutation.isPending}
+                      onClick={() =>
+                        updateTaskMutation.mutate({
+                          taskId: task.id as string,
+                          status: "in_progress",
+                        })
+                      }
+                    >
+                      <Play className="h-3 w-3" />
+                      Start Task
+                    </Button>
+                  }
+                />
+              ))}
+            </div>
+          ) : (
+            <EmptyState icon={CheckSquare} label="No pending tasks" />
+          )}
+        </PanelCard>
       </div>
+
+      <PanelCard
+        icon={Truck}
+        tone="sky"
+        title="Fleet Shortcuts"
+        subtitle="Jump straight to the truck registry"
+        className="animate-rise"
+      >
+        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+          <QuickActionTile
+            href="/fleet"
+            icon={Truck}
+            tone="sky"
+            label="Truck Fleet Registry"
+            description="View availability and manage logistics"
+          />
+          <QuickActionTile
+            href="/fleet/waivers"
+            icon={ClipboardCheck}
+            tone="emerald"
+            label="Waivers"
+            description="Track truck waiver status"
+          />
+        </div>
+      </PanelCard>
+    </DashboardShell>
+  );
+}
+
+function EmptyState({
+  icon: Icon,
+  label,
+}: {
+  icon: typeof CheckSquare;
+  label: string;
+}) {
+  return (
+    <div className="flex flex-col items-center gap-2 py-10 text-muted-foreground">
+      <Icon className="h-8 w-8 opacity-25" />
+      <p className="text-xs">{label}</p>
     </div>
   );
 }

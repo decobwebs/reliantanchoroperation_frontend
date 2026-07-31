@@ -1,5 +1,4 @@
-import { cn } from "@/lib/utils";
-import { Card, CardContent } from "@/components/ui/card";
+import { KpiCard, type KpiTone } from "@/components/dashboard/KpiCard";
 import type { LucideIcon } from "lucide-react";
 
 interface StatCardProps {
@@ -12,72 +11,43 @@ interface StatCardProps {
   className?: string;
 }
 
-const COLOR_MAP = {
-  blue: {
-    icon: "bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400",
-    trend: "text-blue-600",
-  },
-  amber: {
-    icon: "bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400",
-    trend: "text-amber-600",
-  },
-  emerald: {
-    icon: "bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400",
-    trend: "text-emerald-600",
-  },
-  red: {
-    icon: "bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400",
-    trend: "text-red-600",
-  },
-  purple: {
-    icon: "bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400",
-    trend: "text-purple-600",
-  },
+const COLOR_TO_TONE: Record<NonNullable<StatCardProps["color"]>, KpiTone> = {
+  blue: "blue",
+  amber: "amber",
+  emerald: "emerald",
+  red: "rose",
+  purple: "violet",
 };
 
+/**
+ * Legacy stat tile kept for the inner pages that still call it. It now renders
+ * the Command Center `KpiCard` so every surface shares one visual language —
+ * the prop signature is unchanged, so no call site needs touching.
+ */
 export function StatCard({
   title,
   value,
   subtitle,
-  icon: Icon,
+  icon,
   trend,
   color = "blue",
   className,
 }: StatCardProps) {
-  const colors = COLOR_MAP[color];
-
   return (
-    <Card className={cn("border-0 shadow-sm", className)}>
-      <CardContent className="p-4 md:p-6">
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex-1 min-w-0">
-            <p className="text-xs md:text-sm font-medium text-muted-foreground truncate">
-              {title}
-            </p>
-            {/* Long values (currency) must shrink + wrap on narrow cards, not overflow. */}
-            <p className="text-lg md:text-3xl font-bold mt-1 text-foreground leading-tight break-words tabular-nums">
-              {value}
-            </p>
-            {subtitle && (
-              <p className="text-[11px] md:text-xs text-muted-foreground mt-1 break-words">{subtitle}</p>
-            )}
-            {trend && (
-              <p className={cn("text-[11px] md:text-xs font-medium mt-2", colors.trend)}>
-                {trend.value > 0 ? "+" : ""}
-                {trend.value}% {trend.label}
-              </p>
-            )}
-          </div>
-          <div
-            className={cn(
-              "flex-shrink-0 w-9 h-9 md:w-11 md:h-11 rounded-xl flex items-center justify-center",
-              colors.icon
-            )}
-          >
-            <Icon className="w-4 h-4 md:w-5 md:h-5" />
-          </div>
-        </div>
-      </CardContent>
-    </Card>
+    <KpiCard
+      variant="plain"
+      tone={COLOR_TO_TONE[color]}
+      icon={icon}
+      title={title}
+      value={value}
+      caption={subtitle}
+      note={
+        trend
+          ? `${trend.value > 0 ? "+" : ""}${trend.value}% ${trend.label}`
+          : undefined
+      }
+      noteTrend={trend && trend.value > 0 ? "up" : "flat"}
+      className={className}
+    />
   );
 }

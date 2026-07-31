@@ -21,11 +21,12 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { api, getErrorMessage } from "@/lib/api";
-import { Header } from "@/components/layout/Header";
+import { DashboardShell } from "@/components/dashboard/DashboardShell";
+import { PanelCard } from "@/components/dashboard/PanelCard";
 import { StatCard } from "@/components/shared/StatCard";
 import { StatusBadge } from "@/components/shared/StatusBadge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
   TableBody,
@@ -39,7 +40,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { formatCurrency, formatDate } from "@/lib/utils";
+import { cn, formatCurrency, formatDate } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { canManageFinance } from "@/lib/auth";
 import { QueryError } from "@/components/shared/QueryError";
@@ -115,7 +116,10 @@ function CreateClientDialog() {
       </DialogTrigger>
       <DialogContent className="sm:max-w-md" aria-describedby={undefined}>
         <DialogHeader>
-          <DialogTitle>Create Client Profile</DialogTitle>
+          <DialogTitle className="flex items-center gap-2 text-[15px] font-bold tracking-tight">
+            <UserPlus className="h-4 w-4 text-brand-600" strokeWidth={2.2} />
+            Create Client Profile
+          </DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit((d) => mutation.mutate(d))} className="space-y-4 mt-2">
           <div className="space-y-1.5">
@@ -246,12 +250,9 @@ export default function FinancePage() {
 
   if (user && !canSee) {
     return (
-      <div>
-        <Header title="Finance" subtitle="Restricted" />
-        <div className="p-6">
-          <QueryError error={{ isAxiosError: true, response: { status: 403 } }} />
-        </div>
-      </div>
+      <DashboardShell icon={DollarSign} iconTone="blue" showRole={false} title="Finance" subtitle="Restricted">
+        <QueryError error={{ isAxiosError: true, response: { status: 403 } }} />
+      </DashboardShell>
     );
   }
 
@@ -262,261 +263,232 @@ export default function FinancePage() {
   );
 
   return (
-    <div>
-      <Header
-        title="Finance"
-        subtitle="Revenue, PFIs and payment tracking"
-        actions={
-          isFM ? (
-            <div className="flex gap-2">
-              <CreateClientDialog />
-              <Button size="sm" variant="outline" onClick={() => setShowVoucher(true)}>
-                <Receipt className="w-4 h-4 sm:mr-1.5" />
-                <span className="hidden sm:inline">New Voucher</span>
-              </Button>
-              <Button size="sm" onClick={() => setShowInvoice(true)}>
-                <PlusCircle className="w-4 h-4 sm:mr-1.5" />
-                <span className="hidden sm:inline">New Invoice</span>
-              </Button>
-            </div>
-          ) : undefined
-        }
-      />
-
+    <DashboardShell
+      icon={DollarSign}
+      iconTone="blue"
+      showRole={false}
+      title="Finance"
+      subtitle="Revenue, PFIs and payment tracking"
+      actions={
+        isFM ? (
+          <div className="flex gap-2">
+            <CreateClientDialog />
+            <Button variant="outline" className="h-10.5 gap-2 rounded-xl text-[13px] font-semibold" onClick={() => setShowVoucher(true)}>
+              <Receipt className="h-4 w-4" strokeWidth={2.5} />
+              <span className="hidden sm:inline">New Voucher</span>
+            </Button>
+            <Button className="h-10.5 gap-2 rounded-xl text-[13px] font-semibold" onClick={() => setShowInvoice(true)}>
+              <PlusCircle className="h-4 w-4" strokeWidth={2.5} />
+              <span className="hidden sm:inline">New Invoice</span>
+            </Button>
+          </div>
+        ) : undefined
+      }
+    >
       <StandaloneInvoiceDialog open={showInvoice} onOpenChange={setShowInvoice} />
       <StandaloneVoucherDialog open={showVoucher} onOpenChange={setShowVoucher} />
 
-      <div className="p-4 md:p-6 space-y-6">
-        {/* Revenue stat cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {revenue.map((r) => (
-            <StatCard
-              key={r.currency}
-              title={`Revenue (${r.currency})`}
-              value={formatCurrency(parseFloat(r.total_amount), r.currency)}
-              subtitle={`${r.payment_count} payment${r.payment_count !== 1 ? "s" : ""}`}
-              icon={DollarSign}
-              color="emerald"
-            />
-          ))}
-          {revenue.length === 0 && (
-            <StatCard
-              title="Total Revenue"
-              value="—"
-              subtitle="No payments recorded"
-              icon={DollarSign}
-              color="emerald"
-            />
-          )}
+      {/* Revenue stat cards */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {revenue.map((r) => (
           <StatCard
-            title="PFIs Linked"
-            value={String(analytics?.operations.total_pfis ?? "—")}
-            subtitle="Pro-forma invoices"
-            icon={FileText}
-            color="blue"
+            key={r.currency}
+            title={`Revenue (${r.currency})`}
+            value={formatCurrency(parseFloat(r.total_amount), r.currency)}
+            subtitle={`${r.payment_count} payment${r.payment_count !== 1 ? "s" : ""}`}
+            icon={DollarSign}
+            color="emerald"
           />
+        ))}
+        {revenue.length === 0 && (
           <StatCard
-            title="BDNs Approved"
-            value={String(analytics?.operations.total_bdns_approved ?? "—")}
-            subtitle="Bunker delivery notes"
-            icon={CheckCircle2}
-            color="amber"
+            title="Total Revenue"
+            value="—"
+            subtitle="No payments recorded"
+            icon={DollarSign}
+            color="emerald"
           />
-          <StatCard
-            title="Payments Confirmed"
-            value={String(totalPayments || "—")}
-            subtitle="Across all currencies"
-            icon={TrendingUp}
-            color="purple"
-          />
-        </div>
-
-        {/* Finance-stage operations table */}
-        <Card className="border-0 shadow-sm">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-semibold flex items-center gap-2">
-              <Clock className="w-4 h-4 text-primary" />
-              Operations in Finance Pipeline
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
-            {isError ? (
-              <div className="p-5"><QueryError error={error} onRetry={() => refetch()} /></div>
-            ) : opsLoading ? (
-              <div className="divide-y">
-                {[...Array(5)].map((_, i) => (
-                  <div key={i} className="h-14 bg-muted/30 animate-pulse mx-5 my-2 rounded" />
-                ))}
-              </div>
-            ) : opsData?.length === 0 ? (
-              <div className="flex flex-col items-center py-12 text-muted-foreground">
-                <FileText className="w-10 h-10 mb-3 opacity-30" />
-                <p className="text-sm">No operations currently in finance stage</p>
-              </div>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-muted/30 hover:bg-muted/30">
-                    <TableHead className="text-xs">Operation</TableHead>
-                    <TableHead className="text-xs">Type</TableHead>
-                    <TableHead className="text-xs">Status</TableHead>
-                    <TableHead className="text-xs">Currency</TableHead>
-                    <TableHead className="text-xs">Created</TableHead>
-                    <TableHead className="w-10" />
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {opsData?.map((op) => (
-                    <TableRow key={op.id} className="hover:bg-muted/20">
-                      <TableCell className="font-mono text-xs font-semibold text-primary">
-                        {op.operation_number}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className="text-xs capitalize">
-                          {op.type.replace(/_/g, " ")}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <StatusBadge status={op.status as OperationStatus} />
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        {op.currency}
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        {formatDate(op.created_at)}
-                      </TableCell>
-                      <TableCell>
-                        <Link
-                          href={`/operations/${op.id}`}
-                          className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
-                        >
-                          <ExternalLink className="w-3 h-3" />
-                        </Link>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* ── Invoices (incl. standalone) ─────────────────────────────────── */}
-        <Card className="border-0 shadow-sm">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-semibold flex items-center gap-2">
-              <FileText className="w-4 h-4 text-primary" />
-              Invoices
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
-            {invoicesQuery.isError ? (
-              <div className="p-5">
-                <QueryError error={invoicesQuery.error} onRetry={() => invoicesQuery.refetch()} />
-              </div>
-            ) : invoicesQuery.isLoading ? (
-              <div className="flex items-center justify-center py-10">
-                <Loader2 className="w-6 h-6 animate-spin text-primary" />
-              </div>
-            ) : !invoicesQuery.data?.length ? (
-              <div className="flex flex-col items-center py-10 text-muted-foreground">
-                <FileText className="w-9 h-9 mb-2 opacity-30" />
-                <p className="text-sm">No invoices yet</p>
-              </div>
-            ) : (
-              <div className="divide-y">
-                {invoicesQuery.data.map((inv) => (
-                  <div key={inv.id} className="flex items-center justify-between gap-3 px-4 md:px-5 py-3">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-mono text-xs font-semibold text-primary">
-                          {inv.invoice_number}
-                        </span>
-                        <Badge className={`text-[10px] ${INVOICE_STATUS_CLASS[inv.status] ?? ""}`} variant="secondary">
-                          {inv.status}
-                        </Badge>
-                        {!inv.operation_id && (
-                          <Badge variant="outline" className="text-[10px]">Standalone</Badge>
-                        )}
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                        {inv.client_name ? `${inv.client_name} · ` : ""}
-                        {inv.description || "Operation invoice"} · {formatDate(inv.created_at)}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-3 shrink-0">
-                      <span className="text-sm font-semibold tabular-nums">
-                        {formatCurrency(inv.total_amount, inv.currency)}
-                      </span>
-                      {inv.operation_id && (
-                        <Link
-                          href={`/operations/${inv.operation_id}`}
-                          className="text-primary hover:underline"
-                        >
-                          <ExternalLink className="w-3.5 h-3.5" />
-                        </Link>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* ── Vouchers (incl. standalone) ─────────────────────────────────── */}
-        <Card className="border-0 shadow-sm">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-semibold flex items-center gap-2">
-              <Receipt className="w-4 h-4 text-primary" />
-              Expense Vouchers
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
-            {vouchersQuery.isError ? (
-              <div className="p-5">
-                <QueryError error={vouchersQuery.error} onRetry={() => vouchersQuery.refetch()} />
-              </div>
-            ) : vouchersQuery.isLoading ? (
-              <div className="flex items-center justify-center py-10">
-                <Loader2 className="w-6 h-6 animate-spin text-primary" />
-              </div>
-            ) : !vouchersQuery.data?.length ? (
-              <div className="flex flex-col items-center py-10 text-muted-foreground">
-                <Receipt className="w-9 h-9 mb-2 opacity-30" />
-                <p className="text-sm">No vouchers yet</p>
-              </div>
-            ) : (
-              <div className="divide-y">
-                {vouchersQuery.data.map((v) => (
-                  <div key={v.id} className="flex items-center justify-between gap-3 px-4 md:px-5 py-3">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-mono text-xs font-semibold text-primary">
-                          {v.voucher_number}
-                        </span>
-                        <Badge className={`text-[10px] ${VOUCHER_STATUS_CLASS[v.status] ?? ""}`} variant="secondary">
-                          {v.status}
-                        </Badge>
-                        {!v.operation_id && (
-                          <Badge variant="outline" className="text-[10px]">Standalone</Badge>
-                        )}
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                        {VOUCHER_CATEGORY_LABELS[v.category] ?? v.category}
-                        {v.supplier_name ? ` · ${v.supplier_name}` : ""} · {formatDate(v.created_at)}
-                      </p>
-                    </div>
-                    <span className="text-sm font-semibold tabular-nums shrink-0">
-                      {formatCurrency(v.amount, v.currency)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        )}
+        <StatCard
+          title="PFIs Linked"
+          value={String(analytics?.operations.total_pfis ?? "—")}
+          subtitle="Pro-forma invoices"
+          icon={FileText}
+          color="blue"
+        />
+        <StatCard
+          title="BDNs Approved"
+          value={String(analytics?.operations.total_bdns_approved ?? "—")}
+          subtitle="Bunker delivery notes"
+          icon={CheckCircle2}
+          color="amber"
+        />
+        <StatCard
+          title="Payments Confirmed"
+          value={String(totalPayments || "—")}
+          subtitle="Across all currencies"
+          icon={TrendingUp}
+          color="purple"
+        />
       </div>
-    </div>
+
+      {/* Finance-stage operations table */}
+      <PanelCard icon={Clock} tone="blue" title="Operations in Finance Pipeline" flush className="animate-rise">
+        {isError ? (
+          <div className="p-4 lg:p-5"><QueryError error={error} onRetry={() => refetch()} /></div>
+        ) : opsLoading ? (
+          <div className="space-y-2 p-4 lg:p-5">
+            {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-14 rounded-lg" />)}
+          </div>
+        ) : opsData?.length === 0 ? (
+          <div className="flex flex-col items-center py-12 text-center">
+            <FileText className="h-9 w-9 text-muted-foreground/25" strokeWidth={1.5} />
+            <p className="mt-3 text-sm font-medium text-foreground">No operations currently in finance stage</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-muted/50 hover:bg-muted/50">
+                  <TableHead className="text-[11px] font-semibold uppercase tracking-wide">Operation</TableHead>
+                  <TableHead className="text-[11px] font-semibold uppercase tracking-wide">Type</TableHead>
+                  <TableHead className="text-[11px] font-semibold uppercase tracking-wide">Status</TableHead>
+                  <TableHead className="text-[11px] font-semibold uppercase tracking-wide">Currency</TableHead>
+                  <TableHead className="text-[11px] font-semibold uppercase tracking-wide">Created</TableHead>
+                  <TableHead className="w-10" />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {opsData?.map((op) => (
+                  <TableRow key={op.id} className="hover:bg-muted/40">
+                    <TableCell className="font-mono text-[12.5px] font-semibold text-brand-600">
+                      {op.operation_number}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="rounded-md text-[11px] capitalize">
+                        {op.type.replace(/_/g, " ")}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <StatusBadge status={op.status as OperationStatus} />
+                    </TableCell>
+                    <TableCell className="text-[12px] text-muted-foreground">
+                      {op.currency}
+                    </TableCell>
+                    <TableCell className="text-[12px] tabular-nums text-muted-foreground">
+                      {formatDate(op.created_at)}
+                    </TableCell>
+                    <TableCell>
+                      <Link
+                        href={`/operations/${op.id}`}
+                        className="inline-flex items-center gap-1 rounded text-[12px] font-semibold text-brand-600 hover:underline"
+                      >
+                        <ExternalLink className="h-3 w-3" />
+                      </Link>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </PanelCard>
+
+      {/* ── Invoices (incl. standalone) ─────────────────────────────────── */}
+      <PanelCard icon={FileText} tone="blue" title="Invoices" flush className="animate-rise">
+        {invoicesQuery.isError ? (
+          <div className="p-4 lg:p-5">
+            <QueryError error={invoicesQuery.error} onRetry={() => invoicesQuery.refetch()} />
+          </div>
+        ) : invoicesQuery.isLoading ? (
+          <Skeleton className="m-4 h-40 rounded-lg lg:m-5" />
+        ) : !invoicesQuery.data?.length ? (
+          <div className="flex flex-col items-center py-10 text-center">
+            <FileText className="h-8 w-8 text-muted-foreground/25" strokeWidth={1.5} />
+            <p className="mt-2.5 text-sm font-medium text-foreground">No invoices yet</p>
+          </div>
+        ) : (
+          <div className="divide-y divide-border/70">
+            {invoicesQuery.data.map((inv) => (
+              <div key={inv.id} className="flex items-center justify-between gap-3 px-4 py-3 lg:px-5">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-mono text-[12.5px] font-semibold text-brand-600">
+                      {inv.invoice_number}
+                    </span>
+                    <Badge className={cn("rounded-md text-[10px]", INVOICE_STATUS_CLASS[inv.status] ?? "")} variant="secondary">
+                      {inv.status}
+                    </Badge>
+                    {!inv.operation_id && (
+                      <Badge variant="outline" className="rounded-md text-[10px]">Standalone</Badge>
+                    )}
+                  </div>
+                  <p className="mt-0.5 truncate text-[12px] text-muted-foreground">
+                    {inv.client_name ? `${inv.client_name} · ` : ""}
+                    {inv.description || "Operation invoice"} · {formatDate(inv.created_at)}
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-3">
+                  <span className="text-[13px] font-semibold tabular-nums text-foreground">
+                    {formatCurrency(inv.total_amount, inv.currency)}
+                  </span>
+                  {inv.operation_id && (
+                    <Link
+                      href={`/operations/${inv.operation_id}`}
+                      className="text-brand-600 hover:text-brand-700"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </Link>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </PanelCard>
+
+      {/* ── Vouchers (incl. standalone) ─────────────────────────────────── */}
+      <PanelCard icon={Receipt} tone="blue" title="Expense Vouchers" flush className="animate-rise">
+        {vouchersQuery.isError ? (
+          <div className="p-4 lg:p-5">
+            <QueryError error={vouchersQuery.error} onRetry={() => vouchersQuery.refetch()} />
+          </div>
+        ) : vouchersQuery.isLoading ? (
+          <Skeleton className="m-4 h-40 rounded-lg lg:m-5" />
+        ) : !vouchersQuery.data?.length ? (
+          <div className="flex flex-col items-center py-10 text-center">
+            <Receipt className="h-8 w-8 text-muted-foreground/25" strokeWidth={1.5} />
+            <p className="mt-2.5 text-sm font-medium text-foreground">No vouchers yet</p>
+          </div>
+        ) : (
+          <div className="divide-y divide-border/70">
+            {vouchersQuery.data.map((v) => (
+              <div key={v.id} className="flex items-center justify-between gap-3 px-4 py-3 lg:px-5">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-mono text-[12.5px] font-semibold text-brand-600">
+                      {v.voucher_number}
+                    </span>
+                    <Badge className={cn("rounded-md text-[10px]", VOUCHER_STATUS_CLASS[v.status] ?? "")} variant="secondary">
+                      {v.status}
+                    </Badge>
+                    {!v.operation_id && (
+                      <Badge variant="outline" className="rounded-md text-[10px]">Standalone</Badge>
+                    )}
+                  </div>
+                  <p className="mt-0.5 truncate text-[12px] text-muted-foreground">
+                    {VOUCHER_CATEGORY_LABELS[v.category] ?? v.category}
+                    {v.supplier_name ? ` · ${v.supplier_name}` : ""} · {formatDate(v.created_at)}
+                  </p>
+                </div>
+                <span className="shrink-0 text-[13px] font-semibold tabular-nums text-foreground">
+                  {formatCurrency(v.amount, v.currency)}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </PanelCard>
+    </DashboardShell>
   );
 }

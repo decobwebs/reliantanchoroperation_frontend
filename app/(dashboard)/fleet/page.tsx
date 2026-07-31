@@ -10,28 +10,30 @@ import { z } from "zod";
 import { toast } from "sonner";
 import { api, getErrorMessage } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
-import { Header } from "@/components/layout/Header";
-import { Card, CardContent } from "@/components/ui/card";
+import { DashboardShell } from "@/components/dashboard/DashboardShell";
+import { PanelCard } from "@/components/dashboard/PanelCard";
 import { StatCard } from "@/components/shared/StatCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { cn } from "@/lib/utils";
 import type { ApiResponse, Truck as TruckType } from "@/types";
 
 const STATUS_COLOR: Record<string, string> = {
-  available:      "bg-emerald-100 text-emerald-700",
-  assigned:       "bg-blue-100 text-blue-700",
-  in_transit:     "bg-amber-100 text-amber-700",
-  discharging:    "bg-purple-100 text-purple-700",
-  maintenance:    "bg-orange-100 text-orange-700",
-  out_of_service: "bg-red-100 text-red-700",
+  available:      "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300",
+  assigned:       "bg-brand-100 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300",
+  in_transit:     "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300",
+  discharging:    "bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300",
+  maintenance:    "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300",
+  out_of_service: "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300",
 };
 
 const truckSchema = z.object({
@@ -136,7 +138,10 @@ function CreateTruckDialog({
     <Dialog open={open} onOpenChange={(v) => { if (!v) handleClose(); }}>
       <DialogContent className="sm:max-w-md" aria-describedby={undefined}>
         <DialogHeader>
-          <DialogTitle>Register New Truck</DialogTitle>
+          <DialogTitle className="flex items-center gap-2 text-[15px] font-bold tracking-tight">
+            <Truck className="h-4 w-4 text-brand-600" strokeWidth={2.2} />
+            Register New Truck
+          </DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit((d) => mutation.mutate(d))} className="space-y-4 mt-2">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -249,7 +254,7 @@ function CreateTruckDialog({
 }
 
 export default function FleetPage() {
-  const { user, effectiveRole } = useAuth();
+  const { effectiveRole } = useAuth();
   const qc = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
   const isBM = effectiveRole === "bunker_manager";
@@ -267,75 +272,76 @@ export default function FleetPage() {
   const assigned  = trucks?.filter((t) => t.status === "assigned").length ?? 0;
 
   return (
-    <div>
-      <Header
-        title="Fleet — Trucks"
-        subtitle="Manage truck fleet"
-        actions={
-          isBM ? (
-            <Button size="sm" onClick={() => setShowCreate(true)}>
-              <PlusCircle className="w-4 h-4 mr-1.5" />
-              Add Truck
-            </Button>
-          ) : undefined
-        }
-      />
-
-      <div className="p-4 md:p-6 space-y-6">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          <StatCard title="Total Trucks" value={trucks?.length ?? 0} icon={Truck} color="blue" />
-          <StatCard title="Available" value={available} icon={Truck} color="emerald" />
-          <StatCard title="Assigned" value={assigned} icon={Truck} color="amber" />
-        </div>
-
-        <Card className="border-0 shadow-sm">
-          <CardContent className="p-0">
-            {isLoading ? (
-              <div className="flex items-center justify-center py-12">
-                <Loader2 className="w-7 h-7 animate-spin text-primary" />
-              </div>
-            ) : trucks?.length ? (
-              <div className="divide-y">
-                {trucks.map((truck) => (
-                  <Link
-                    key={truck.id}
-                    href={`/fleet/${truck.id}`}
-                    className="flex items-center justify-between px-5 py-4 hover:bg-muted/30 transition-colors group"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-bold font-mono tracking-tight">{truck.truck_number}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                        {parseFloat(truck.capacity_mt).toLocaleString()} L
-                        {truck.driver_name ? ` · ${truck.driver_name}` : ""}
-                        {truck.current_location ? ` · ${truck.current_location}` : ""}
-                      </p>
-                      <span
-                        className={`inline-block mt-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full capitalize ${
-                          STATUS_COLOR[truck.status] ?? "bg-gray-100 text-gray-700"
-                        }`}
-                      >
-                        {truck.status.replace(/_/g, " ")}
-                      </span>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-3" />
-                  </Link>
-                ))}
-              </div>
-            ) : (
-              <div className="flex flex-col items-center py-16 text-muted-foreground">
-                <Truck className="w-10 h-10 mb-3 opacity-30" />
-                <p className="text-sm">No trucks registered</p>
-                {isBM && (
-                  <Button size="sm" variant="outline" className="mt-3" onClick={() => setShowCreate(true)}>
-                    <PlusCircle className="w-4 h-4 mr-1.5" />
-                    Add First Truck
-                  </Button>
-                )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+    <DashboardShell
+      icon={Truck}
+      iconTone="blue"
+      showRole={false}
+      title="Fleet — Trucks"
+      subtitle="Manage truck fleet"
+      actions={
+        isBM ? (
+          <Button
+            className="h-10.5 gap-2 rounded-xl px-4 text-[13px] font-semibold"
+            onClick={() => setShowCreate(true)}
+          >
+            <PlusCircle className="h-4 w-4" strokeWidth={2.5} />
+            Add Truck
+          </Button>
+        ) : undefined
+      }
+    >
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <StatCard title="Total Trucks" value={trucks?.length ?? 0} icon={Truck} color="blue" />
+        <StatCard title="Available" value={available} icon={Truck} color="emerald" />
+        <StatCard title="Assigned" value={assigned} icon={Truck} color="amber" />
       </div>
+
+      {isLoading ? (
+        <Skeleton className="h-96 w-full rounded-2xl" />
+      ) : (
+        <PanelCard icon={Truck} tone="blue" title="Registry" flush className="animate-rise">
+          {trucks?.length ? (
+            <div className="divide-y divide-border/70">
+              {trucks.map((truck) => (
+                <Link
+                  key={truck.id}
+                  href={`/fleet/${truck.id}`}
+                  className="group flex items-center justify-between px-4 py-4 transition-colors hover:bg-muted/40 lg:px-5"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="font-mono text-[14px] font-bold tracking-tight text-foreground">{truck.truck_number}</p>
+                    <p className="mt-0.5 truncate text-[12.5px] text-muted-foreground">
+                      <span className="tabular-nums">{parseFloat(truck.capacity_mt).toLocaleString()} L</span>
+                      {truck.driver_name ? ` · ${truck.driver_name}` : ""}
+                      {truck.current_location ? ` · ${truck.current_location}` : ""}
+                    </p>
+                    <span
+                      className={cn(
+                        "mt-1.5 inline-block rounded-full px-2 py-0.5 text-[10.5px] font-semibold capitalize",
+                        STATUS_COLOR[truck.status] ?? "bg-muted text-muted-foreground"
+                      )}
+                    >
+                      {truck.status.replace(/_/g, " ")}
+                    </span>
+                  </div>
+                  <ChevronRight className="ml-3 h-4 w-4 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center py-16 text-center">
+              <Truck className="h-9 w-9 text-muted-foreground/25" strokeWidth={1.5} />
+              <p className="mt-3 text-sm font-medium text-foreground">No trucks registered</p>
+              {isBM && (
+                <Button size="sm" variant="outline" className="mt-3 rounded-lg" onClick={() => setShowCreate(true)}>
+                  <PlusCircle className="h-4 w-4" strokeWidth={2.5} />
+                  Add First Truck
+                </Button>
+              )}
+            </div>
+          )}
+        </PanelCard>
+      )}
 
       {isBM && (
         <CreateTruckDialog
@@ -347,6 +353,6 @@ export default function FleetPage() {
           }}
         />
       )}
-    </div>
+    </DashboardShell>
   );
 }

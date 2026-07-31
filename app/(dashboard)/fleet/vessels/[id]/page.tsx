@@ -12,13 +12,11 @@ import {
   CheckCircle2,
   XCircle,
   Clock,
-  Loader2,
   AlertTriangle,
   FileText,
   Droplets,
   Anchor,
   ChevronRight,
-  ChevronDown,
   Activity,
   TrendingDown,
   TrendingUp,
@@ -34,26 +32,32 @@ import {
   Tooltip,
 } from "recharts";
 import { api } from "@/lib/api";
-import { Header } from "@/components/layout/Header";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { DashboardShell } from "@/components/dashboard/DashboardShell";
+import { PanelCard } from "@/components/dashboard/PanelCard";
+import { StatCard } from "@/components/shared/StatCard";
+import { MetaChip } from "@/components/operations/DetailHeader";
+import { AccordionRow } from "@/components/shared/AccordionRow";
+import { TONE_TILE_CLASSES, type AccentTone } from "@/components/dashboard/tones";
 import { Badge } from "@/components/ui/badge";
-import { formatNumber } from "@/lib/utils";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Skeleton } from "@/components/ui/skeleton";
+import { cn, formatDate, formatDateTime, formatNumber } from "@/lib/utils";
 import type { ApiResponse, Vessel, VesselBDNs } from "@/types";
 
 // ── Config maps ────────────────────────────────────────────────────────────────
 
 const VESSEL_STATUS_CONFIG: Record<string, { label: string; color: string }> = {
-  available:      { label: "Available",      color: "bg-emerald-100 text-emerald-700 border-emerald-200" },
-  in_operation:   { label: "In Operation",   color: "bg-blue-100 text-blue-700 border-blue-200" },
-  maintenance:    { label: "Maintenance",    color: "bg-amber-100 text-amber-700 border-amber-200" },
-  out_of_service: { label: "Out of Service", color: "bg-red-100 text-red-700 border-red-200" },
+  available:      { label: "Available",      color: "bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/30" },
+  in_operation:   { label: "In Operation",   color: "bg-brand-100 text-brand-700 border-brand-200 dark:bg-brand-500/15 dark:text-brand-300 dark:border-brand-500/30" },
+  maintenance:    { label: "Maintenance",    color: "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/30" },
+  out_of_service: { label: "Out of Service", color: "bg-rose-100 text-rose-700 border-rose-200 dark:bg-rose-500/15 dark:text-rose-300 dark:border-rose-500/30" },
 };
 
 const BDN_STATUS_CONFIG: Record<string, { label: string; color: string }> = {
-  draft:    { label: "Draft",    color: "bg-gray-100 text-gray-600" },
-  pending:  { label: "Pending",  color: "bg-amber-100 text-amber-700" },
-  approved: { label: "Approved", color: "bg-emerald-100 text-emerald-700" },
-  rejected: { label: "Rejected", color: "bg-red-100 text-red-700" },
+  draft:    { label: "Draft",    color: "bg-slate-100 text-slate-600 dark:bg-slate-500/15 dark:text-slate-300" },
+  pending:  { label: "Pending",  color: "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300" },
+  approved: { label: "Approved", color: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300" },
+  rejected: { label: "Rejected", color: "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300" },
 };
 
 const ROLE_LABEL: Record<string, string> = {
@@ -62,31 +66,36 @@ const ROLE_LABEL: Record<string, string> = {
   marine_manager:  "Marine Manager",
 };
 
-const ENTRY_TYPE_CONFIG: Record<string, { label: string; icon: React.ReactNode; color: string }> = {
-  discharge:      { label: "Discharge",      icon: <TrendingDown className="w-3.5 h-3.5" />, color: "text-red-500 bg-red-50 border-red-100" },
-  replenishment:  { label: "Replenishment",  icon: <TrendingUp   className="w-3.5 h-3.5" />, color: "text-emerald-600 bg-emerald-50 border-emerald-100" },
-  initial:        { label: "Initial Load",   icon: <Package       className="w-3.5 h-3.5" />, color: "text-blue-600 bg-blue-50 border-blue-100" },
-  adjustment:     { label: "Adjustment",     icon: <RotateCcw     className="w-3.5 h-3.5" />, color: "text-amber-600 bg-amber-50 border-amber-100" },
-  correction:     { label: "Correction",     icon: <RotateCcw     className="w-3.5 h-3.5" />, color: "text-purple-600 bg-purple-50 border-purple-100" },
+// The ledger's five entry types map onto the five shared AccentTones exactly
+// — unlike Activity Log/Documents' badge maps (too many categories), this one
+// genuinely converges: replenishment=healthy, discharge=neutral outflow (not
+// an error — rose stays reserved for that), initial=informational,
+// adjustment=needs attention, correction=secondary/audit category.
+const ENTRY_TYPE_CONFIG: Record<string, { label: string; icon: React.ReactNode; tone: AccentTone }> = {
+  discharge:      { label: "Discharge",     icon: <TrendingDown className="h-3.5 w-3.5" strokeWidth={2} />, tone: "slate" },
+  replenishment:  { label: "Replenishment", icon: <TrendingUp className="h-3.5 w-3.5" strokeWidth={2} />,   tone: "emerald" },
+  initial:        { label: "Initial Load",  icon: <Package className="h-3.5 w-3.5" strokeWidth={2} />,      tone: "blue" },
+  adjustment:     { label: "Adjustment",    icon: <RotateCcw className="h-3.5 w-3.5" strokeWidth={2} />,    tone: "amber" },
+  correction:     { label: "Correction",    icon: <RotateCcw className="h-3.5 w-3.5" strokeWidth={2} />,    tone: "violet" },
 };
 
 const OP_STATUS_COLOR: Record<string, string> = {
-  draft:              "bg-gray-100 text-gray-600",
-  tasks_assigned:     "bg-blue-50 text-blue-700",
-  awaiting_feedback:  "bg-amber-50 text-amber-700",
-  feedback_submitted: "bg-amber-50 text-amber-700",
-  feedback_approved:  "bg-emerald-50 text-emerald-700",
-  feedback_rejected:  "bg-red-50 text-red-700",
-  pfi_linked:         "bg-blue-50 text-blue-700",
-  payment_processing: "bg-amber-50 text-amber-700",
-  payment_confirmed:  "bg-emerald-50 text-emerald-700",
-  vessel_operations:  "bg-blue-50 text-blue-700",
-  bdn_pending:        "bg-amber-50 text-amber-700",
-  bdn_approved:       "bg-emerald-50 text-emerald-700",
-  invoiced:           "bg-purple-50 text-purple-700",
-  completed:          "bg-emerald-100 text-emerald-700",
-  cancelled:          "bg-red-100 text-red-600",
-  archived:           "bg-gray-100 text-gray-500",
+  draft:              "bg-slate-100 text-slate-600 dark:bg-slate-500/15 dark:text-slate-300",
+  tasks_assigned:      "bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300",
+  awaiting_feedback:   "bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300",
+  feedback_submitted:  "bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300",
+  feedback_approved:   "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300",
+  feedback_rejected:   "bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300",
+  pfi_linked:          "bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300",
+  payment_processing:  "bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300",
+  payment_confirmed:   "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300",
+  vessel_operations:   "bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300",
+  bdn_pending:         "bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300",
+  bdn_approved:        "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300",
+  invoiced:            "bg-violet-50 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300",
+  completed:           "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300",
+  cancelled:           "bg-rose-100 text-rose-600 dark:bg-rose-500/20 dark:text-rose-300",
+  archived:            "bg-slate-100 text-slate-500 dark:bg-slate-500/15 dark:text-slate-400",
 };
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -156,32 +165,6 @@ interface CargoLedger {
 
 // ── Sub-components ─────────────────────────────────────────────────────────────
 
-function StatPill({
-  label,
-  value,
-  sub,
-  color = "blue",
-}: {
-  label: string;
-  value: string | number;
-  sub?: string;
-  color?: "blue" | "emerald" | "red" | "amber";
-}) {
-  const colors = {
-    blue:    "bg-blue-50 border-blue-100 text-blue-700",
-    emerald: "bg-emerald-50 border-emerald-100 text-emerald-700",
-    red:     "bg-red-50 border-red-100 text-red-700",
-    amber:   "bg-amber-50 border-amber-100 text-amber-700",
-  };
-  return (
-    <div className={`rounded-xl border p-4 ${colors[color]}`}>
-      <p className="text-xs font-medium opacity-70 mb-1">{label}</p>
-      <p className="text-2xl font-bold tabular-nums">{value}</p>
-      {sub && <p className="text-[11px] opacity-60 mt-0.5">{sub}</p>}
-    </div>
-  );
-}
-
 function RobGauge({
   currentRob,
   capacity,
@@ -194,17 +177,19 @@ function RobGauge({
   const pct = capacity > 0 ? Math.min(100, (currentRob / capacity) * 100) : 0;
   const belowThreshold = currentRob <= threshold && threshold > 0;
 
+  // Same emerald/amber/rose values already used for meaning elsewhere (see
+  // KpiCard's spark colours) — reused here rather than introducing new hex.
   const fillColor = belowThreshold
-    ? "#ef4444"
+    ? "rgb(244 63 94)"
     : pct > 50
-    ? "#10b981"
-    : "#f59e0b";
+    ? "rgb(16 185 129)"
+    : "rgb(245 158 11)";
 
   const chartData = [{ name: "ROB", value: pct, fill: fillColor }];
 
   return (
     <div className="flex flex-col items-center">
-      <div className="relative w-40 h-20 overflow-hidden">
+      <div className="relative h-20 w-40 overflow-hidden">
         <ResponsiveContainer width="100%" height={160}>
           <RadialBarChart
             cx="50%"
@@ -216,7 +201,7 @@ function RobGauge({
             data={chartData}
           >
             <RadialBar
-              background={{ fill: "#f1f5f9" }}
+              background={{ fill: "var(--muted)" }}
               dataKey="value"
               cornerRadius={6}
             />
@@ -225,21 +210,21 @@ function RobGauge({
             />
           </RadialBarChart>
         </ResponsiveContainer>
-        <div className="absolute inset-0 flex flex-col items-center justify-end pb-1 pointer-events-none">
-          <span className={`text-xl font-bold tabular-nums ${belowThreshold ? "text-red-500" : "text-foreground"}`}>
+        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-end pb-1">
+          <span className={cn("text-xl font-bold tabular-nums", belowThreshold ? "text-rose-500" : "text-foreground")}>
             {pct.toFixed(0)}%
           </span>
         </div>
       </div>
-      <div className="text-center mt-1">
-        <p className={`text-sm font-semibold tabular-nums ${belowThreshold ? "text-red-500" : "text-foreground"}`}>
+      <div className="mt-1 text-center">
+        <p className={cn("text-[13px] font-semibold tabular-nums", belowThreshold ? "text-rose-500" : "text-foreground")}>
           {formatNumber(currentRob)} L
         </p>
         <p className="text-[11px] text-muted-foreground">
           of {formatNumber(capacity)} L capacity
         </p>
         {belowThreshold && (
-          <Badge variant="destructive" className="mt-1 text-[10px]">
+          <Badge variant="destructive" className="mt-1 rounded-md text-[10px]">
             Below Threshold ({formatNumber(threshold)} L)
           </Badge>
         )}
@@ -252,126 +237,107 @@ function CargoEntryRow({ entry }: { entry: CargoEntry }) {
   const [expanded, setExpanded] = useState(false);
   const typeCfg = ENTRY_TYPE_CONFIG[entry.entry_type] ?? {
     label: entry.entry_type,
-    icon: <Activity className="w-3.5 h-3.5" />,
-    color: "text-gray-600 bg-gray-50 border-gray-100",
+    icon: <Activity className="h-3.5 w-3.5" strokeWidth={2} />,
+    tone: "slate" as AccentTone,
   };
   const qty = parseFloat(entry.quantity_mt);
   const isNeg = qty < 0;
 
   return (
-    <div className="border-b last:border-0">
-      {/* Main row — click to expand */}
-      <button
-        onClick={() => setExpanded((v) => !v)}
-        className="w-full text-left px-5 py-4 hover:bg-muted/30 transition-colors"
-      >
-        <div className="flex items-start gap-3">
-          {/* Entry type badge */}
-          <span className={`inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded border shrink-0 mt-0.5 ${typeCfg.color}`}>
+    <AccordionRow
+      open={expanded}
+      onToggle={() => setExpanded((v) => !v)}
+      summary={
+        <>
+          <span className={cn("inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium", TONE_TILE_CLASSES[typeCfg.tone])}>
             {typeCfg.icon}
             {typeCfg.label}
           </span>
 
-          <div className="flex-1 min-w-0">
-            {/* Quantity + ROB flow */}
-            <div className="flex items-baseline gap-2 flex-wrap">
-              <span className={`text-sm font-bold tabular-nums ${isNeg ? "text-red-500" : "text-emerald-600"}`}>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-baseline gap-2">
+              <span className={cn("text-[13px] font-bold tabular-nums", isNeg ? "text-rose-500" : "text-emerald-600")}>
                 {isNeg ? "" : "+"}{formatNumber(Math.abs(qty))} L
               </span>
-              <span className="text-xs text-muted-foreground">
+              <span className="text-[11.5px] text-muted-foreground">
                 ROB: {formatNumber(parseFloat(entry.rob_before_mt))} → {formatNumber(parseFloat(entry.rob_after_mt))} L
               </span>
               {entry.operation && (
-                <span className="text-xs font-mono text-primary">
+                <span className="font-mono text-[11.5px] text-brand-600">
                   {entry.operation.operation_number}
                 </span>
               )}
             </div>
-            {/* Meta row */}
-            <div className="flex flex-wrap items-center gap-3 mt-1 text-[11px] text-muted-foreground">
+            <div className="mt-1 flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground">
               <span className="flex items-center gap-1">
-                <Clock className="w-3 h-3" />
-                {new Date(entry.created_at).toLocaleString("en-GB", {
-                  day: "2-digit", month: "short", year: "numeric",
-                  hour: "2-digit", minute: "2-digit",
-                })}
+                <Clock className="h-3 w-3" />
+                {formatDateTime(entry.created_at)}
               </span>
               <span>
                 By <span className="font-medium text-foreground">{entry.recorded_by_name}</span>
                 {" "}({ROLE_LABEL[entry.recorded_by_role] ?? entry.recorded_by_role})
               </span>
               {entry.source_description && (
-                <span className="truncate max-w-[200px]">{entry.source_description}</span>
+                <span className="max-w-[200px] truncate">{entry.source_description}</span>
               )}
             </div>
           </div>
-
-          {entry.operation && (
-            <ChevronDown className={`w-4 h-4 text-muted-foreground shrink-0 transition-transform mt-1 ${expanded ? "rotate-180" : ""}`} />
-          )}
-        </div>
-      </button>
-
-      {/* Expanded operation context */}
-      {expanded && entry.operation && (
-        <div className="px-5 pb-4 bg-muted/20 border-t border-border/50">
-          <OperationContext op={entry.operation} />
-        </div>
-      )}
-    </div>
+        </>
+      }
+    >
+      {entry.operation && <OperationContext op={entry.operation} />}
+    </AccordionRow>
   );
 }
 
 function OperationContext({ op }: { op: OperationContext }) {
-  const statusColor = OP_STATUS_COLOR[op.status] ?? "bg-gray-100 text-gray-600";
+  const statusColor = OP_STATUS_COLOR[op.status] ?? "bg-muted text-muted-foreground";
 
   return (
-    <div className="pt-3 space-y-4">
-      {/* Operation header */}
-      <div className="flex items-center justify-between flex-wrap gap-2">
+    <div className="space-y-4 pt-1">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold text-muted-foreground">Operation</span>
+          <span className="text-[11.5px] font-semibold text-muted-foreground">Operation</span>
           <Link
             href={`/operations/${op.id}`}
-            className="text-sm font-mono font-semibold text-primary hover:underline flex items-center gap-1"
+            className="flex items-center gap-1 font-mono text-[13px] font-semibold text-brand-600 hover:underline"
             onClick={(e) => e.stopPropagation()}
           >
             {op.operation_number}
-            <ChevronRight className="w-3.5 h-3.5" />
+            <ChevronRight className="h-3.5 w-3.5" />
           </Link>
           <span className="text-[11px] capitalize text-muted-foreground">
             {op.type.replace(/_/g, " ")}
           </span>
         </div>
-        <span className={`text-[11px] font-medium px-2 py-0.5 rounded capitalize ${statusColor}`}>
+        <span className={cn("rounded-md px-2 py-0.5 text-[11px] font-semibold capitalize", statusColor)}>
           {op.status.replace(/_/g, " ")}
         </span>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        {/* Trucks */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <div className="space-y-1.5">
-          <p className="text-[11px] font-semibold text-muted-foreground flex items-center gap-1">
-            <Truck className="w-3 h-3" /> Trucks ({op.trucks.length})
+          <p className="flex items-center gap-1 text-[11px] font-semibold text-muted-foreground">
+            <Truck className="h-3 w-3" /> Trucks ({op.trucks.length})
           </p>
           {op.trucks.length === 0 ? (
             <p className="text-[11px] text-muted-foreground/60">No trucks assigned</p>
           ) : (
             <div className="space-y-1">
               {op.trucks.map((t, i) => (
-                <div key={i} className="text-[11px] rounded bg-background border border-border/60 px-2 py-1.5">
-                  <p className="font-semibold font-mono">{t.truck_number}</p>
-                  <p className="text-muted-foreground capitalize">{t.status.replace(/_/g, " ")}</p>
+                <div key={i} className="rounded-lg border border-navy-100 bg-card px-2 py-1.5 text-[11px] dark:border-border">
+                  <p className="font-mono font-semibold text-foreground">{t.truck_number}</p>
+                  <p className="capitalize text-muted-foreground">{t.status.replace(/_/g, " ")}</p>
                   {t.quantity_loaded_mt && (
                     <p className="text-muted-foreground">
-                      Loaded: <span className="text-foreground font-medium">{formatNumber(parseFloat(t.quantity_loaded_mt))} L</span>
+                      Loaded: <span className="font-medium text-foreground">{formatNumber(parseFloat(t.quantity_loaded_mt))} L</span>
                       {t.quantity_discharged_mt && (
-                        <> · Discharged: <span className="text-foreground font-medium">{formatNumber(parseFloat(t.quantity_discharged_mt))} L</span></>
+                        <> · Discharged: <span className="font-medium text-foreground">{formatNumber(parseFloat(t.quantity_discharged_mt))} L</span></>
                       )}
                     </p>
                   )}
                   {t.loading_location && (
-                    <p className="text-muted-foreground truncate">{t.loading_location} → {t.discharge_location ?? "—"}</p>
+                    <p className="truncate text-muted-foreground">{t.loading_location} → {t.discharge_location ?? "—"}</p>
                   )}
                 </div>
               ))}
@@ -379,26 +345,21 @@ function OperationContext({ op }: { op: OperationContext }) {
           )}
         </div>
 
-        {/* BDN */}
         <div className="space-y-1.5">
-          <p className="text-[11px] font-semibold text-muted-foreground flex items-center gap-1">
-            <FileText className="w-3 h-3" /> BDN
+          <p className="flex items-center gap-1 text-[11px] font-semibold text-muted-foreground">
+            <FileText className="h-3 w-3" /> BDN
           </p>
           {op.bdn ? (
-            <div className="text-[11px] rounded bg-background border border-border/60 px-2 py-1.5">
-              <p className="font-semibold font-mono">{op.bdn.bdn_number}</p>
-              <p className={`capitalize font-medium ${BDN_STATUS_CONFIG[op.bdn.status]?.color ?? ""}`}>
+            <div className="rounded-lg border border-navy-100 bg-card px-2 py-1.5 text-[11px] dark:border-border">
+              <p className="font-mono font-semibold text-foreground">{op.bdn.bdn_number}</p>
+              <p className={cn("font-medium capitalize", BDN_STATUS_CONFIG[op.bdn.status]?.color ?? "")}>
                 {BDN_STATUS_CONFIG[op.bdn.status]?.label ?? op.bdn.status}
               </p>
               <p className="text-muted-foreground">
-                <span className="text-foreground font-medium">{formatNumber(parseFloat(op.bdn.quantity_delivered_mt))} L</span> delivered
+                <span className="font-medium text-foreground">{formatNumber(parseFloat(op.bdn.quantity_delivered_mt))} L</span> delivered
               </p>
               {op.bdn.delivery_date && (
-                <p className="text-muted-foreground">
-                  {new Date(op.bdn.delivery_date).toLocaleDateString("en-GB", {
-                    day: "2-digit", month: "short", year: "numeric",
-                  })}
-                </p>
+                <p className="text-muted-foreground">{formatDate(op.bdn.delivery_date)}</p>
               )}
             </div>
           ) : (
@@ -406,16 +367,15 @@ function OperationContext({ op }: { op: OperationContext }) {
           )}
         </div>
 
-        {/* Finance + Docs */}
         <div className="space-y-1.5">
-          <p className="text-[11px] font-semibold text-muted-foreground flex items-center gap-1">
-            <Banknote className="w-3 h-3" /> Finance
+          <p className="flex items-center gap-1 text-[11px] font-semibold text-muted-foreground">
+            <Banknote className="h-3 w-3" /> Finance
           </p>
-          <div className="text-[11px] rounded bg-background border border-border/60 px-2 py-1.5 space-y-0.5">
+          <div className="space-y-0.5 rounded-lg border border-navy-100 bg-card px-2 py-1.5 text-[11px] dark:border-border">
             {op.finance.pfi_status ? (
               <>
                 <p className="text-muted-foreground">
-                  PFI: <span className="font-medium text-foreground capitalize">{op.finance.pfi_status.replace(/_/g, " ")}</span>
+                  PFI: <span className="font-medium capitalize text-foreground">{op.finance.pfi_status.replace(/_/g, " ")}</span>
                 </p>
                 {op.finance.pfi_amount && (
                   <p className="text-muted-foreground">
@@ -428,21 +388,21 @@ function OperationContext({ op }: { op: OperationContext }) {
             )}
             {op.finance.invoice_status ? (
               <p className="text-muted-foreground">
-                Invoice: <span className="font-medium text-foreground capitalize">{op.finance.invoice_status.replace(/_/g, " ")}</span>
+                Invoice: <span className="font-medium capitalize text-foreground">{op.finance.invoice_status.replace(/_/g, " ")}</span>
               </p>
             ) : (
               <p className="text-muted-foreground/60">No invoice yet</p>
             )}
           </div>
 
-          <p className="text-[11px] font-semibold text-muted-foreground flex items-center gap-1 mt-2">
-            <FolderOpen className="w-3 h-3" /> Documents
+          <p className="mt-2 flex items-center gap-1 text-[11px] font-semibold text-muted-foreground">
+            <FolderOpen className="h-3 w-3" /> Documents
           </p>
-          <div className="text-[11px] rounded bg-background border border-border/60 px-2 py-1.5">
+          <div className="rounded-lg border border-navy-100 bg-card px-2 py-1.5 text-[11px] dark:border-border">
             {op.document_count > 0 ? (
               <Link
                 href={`/operations/${op.id}`}
-                className="text-primary hover:underline"
+                className="text-brand-600 hover:underline"
                 onClick={(e) => e.stopPropagation()}
               >
                 {op.document_count} document{op.document_count !== 1 ? "s" : ""} — view in operation
@@ -455,7 +415,7 @@ function OperationContext({ op }: { op: OperationContext }) {
       </div>
 
       {op.notes && (
-        <p className="text-[11px] text-muted-foreground italic border-t border-border/50 pt-2">{op.notes}</p>
+        <p className="border-t border-border/60 pt-2 text-[11px] italic text-muted-foreground">{op.notes}</p>
       )}
     </div>
   );
@@ -502,25 +462,34 @@ export default function VesselProfilePage({
 
   if (vesselLoading) {
     return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
-      </div>
+      <DashboardShell bare>
+        <div className="space-y-4">
+          <Skeleton className="h-4 w-32" />
+          <Skeleton className="h-9 w-64" />
+          <Skeleton className="h-40 w-full rounded-2xl" />
+          <Skeleton className="h-64 w-full rounded-2xl" />
+        </div>
+      </DashboardShell>
     );
   }
 
   if (!vessel) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] text-muted-foreground gap-3">
-        <AlertTriangle className="w-10 h-10 opacity-30" />
-        <p className="text-sm">Vessel not found or failed to load.</p>
-        <Link href="/fleet/vessels" className="text-xs text-primary underline">Back to Vessels</Link>
-      </div>
+      <DashboardShell bare>
+        <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3 text-center">
+          <AlertTriangle className="h-10 w-10 text-muted-foreground/30" strokeWidth={1.5} />
+          <p className="text-sm text-muted-foreground">Vessel not found or failed to load.</p>
+          <Link href="/fleet/vessels" className="rounded text-[13px] font-semibold text-brand-600 underline underline-offset-2 hover:text-brand-700">
+            Back to Vessels
+          </Link>
+        </div>
+      </DashboardShell>
     );
   }
 
   const statusCfg = VESSEL_STATUS_CONFIG[vessel.status] ?? {
     label: vessel.status,
-    color: "bg-gray-100 text-gray-700 border-gray-200",
+    color: "bg-muted text-muted-foreground border-border",
   };
 
   const currentRob = parseFloat(vessel.current_rob_mt);
@@ -538,293 +507,212 @@ export default function VesselProfilePage({
   const totalPages    = Math.ceil(ledgerTotal / 20);
 
   return (
-    <div>
-      <Header
-        title={vessel.vessel_name}
-        subtitle="Vessel Profile"
-        actions={
-          <Link href="/fleet/vessels">
-            <button className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
-              <ArrowLeft className="w-4 h-4" />
-              Back to Vessels
-            </button>
-          </Link>
-        }
-      />
+    <DashboardShell bare>
+      <header className="animate-rise">
+        <Link
+          href="/fleet/vessels"
+          className="inline-flex items-center gap-1.5 rounded text-[13px] font-medium text-brand-600 transition-colors hover:text-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" strokeWidth={2.5} />
+          Back to Vessels
+        </Link>
 
-      <div className="p-4 md:p-6 space-y-6 max-w-6xl">
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand-50 dark:bg-brand-500/15">
+            <Ship className="h-5 w-5 text-brand-600 dark:text-brand-300" strokeWidth={2} />
+          </span>
+          <h1 className="text-[26px] font-extrabold leading-none tracking-tight text-foreground lg:text-[30px]">
+            {vessel.vessel_name}
+          </h1>
+          <span className={cn("inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[12px] font-semibold", statusCfg.color)}>
+            {statusCfg.label}
+          </span>
+          {!vessel.is_active && (
+            <Badge variant="destructive" className="rounded-lg">Inactive</Badge>
+          )}
+        </div>
 
-        {/* ── Hero card ── */}
-        <Card className="border-0 shadow-sm overflow-hidden">
-          <div className="bg-linear-to-br from-primary/8 via-primary/4 to-transparent p-6">
-            <div className="flex flex-col md:flex-row gap-6">
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2.5 mb-1">
-                  <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
-                    <Ship className="w-5 h-5 text-primary" />
-                  </div>
-                  <div>
-                    <h2 className="text-xl font-bold">{vessel.vessel_name}</h2>
-                    {vessel.imo_number && (
-                      <p className="text-xs text-muted-foreground font-mono">IMO {vessel.imo_number}</p>
-                    )}
-                  </div>
-                  <span className={`ml-2 inline-flex items-center text-xs font-medium px-2.5 py-1 rounded-full border ${statusCfg.color}`}>
-                    {statusCfg.label}
-                  </span>
-                  {!vessel.is_active && (
-                    <Badge variant="destructive" className="text-[10px]">Inactive</Badge>
-                  )}
-                </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {vessel.imo_number && <MetaChip>IMO {vessel.imo_number}</MetaChip>}
+          {vessel.vessel_type && <MetaChip icon={Anchor}>{vessel.vessel_type}</MetaChip>}
+          {vessel.flag_state && <MetaChip>{vessel.flag_state}</MetaChip>}
+          {vessel.current_location && <MetaChip icon={MapPin}>{vessel.current_location}</MetaChip>}
+          {vessel.capacity_mt && <MetaChip icon={Package}>{formatNumber(parseFloat(vessel.capacity_mt))} L capacity</MetaChip>}
+          {vessel.rob_threshold_mt && (
+            <MetaChip icon={Gauge} className={belowThreshold ? "border-rose-200 text-rose-700 dark:border-rose-500/30 dark:text-rose-300" : undefined}>
+              Alert threshold {formatNumber(parseFloat(vessel.rob_threshold_mt))} L
+            </MetaChip>
+          )}
+        </div>
+      </header>
 
-                <div className="grid grid-cols-2 gap-x-6 gap-y-2 mt-4">
-                  {vessel.vessel_type && (
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Anchor className="w-3.5 h-3.5 shrink-0" />
-                      <span>{vessel.vessel_type}</span>
-                    </div>
-                  )}
-                  {vessel.flag_state && (
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <span className="w-3 h-3 rounded-full bg-muted-foreground/30 shrink-0" />
-                      <span>{vessel.flag_state}</span>
-                    </div>
-                  )}
-                  {vessel.current_location && (
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <MapPin className="w-3.5 h-3.5 shrink-0" />
-                      <span>{vessel.current_location}</span>
-                    </div>
-                  )}
-                  {vessel.capacity_mt && (
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Package className="w-3.5 h-3.5 shrink-0" />
-                      <span>Capacity: <span className="font-semibold text-foreground">{formatNumber(parseFloat(vessel.capacity_mt))} L</span></span>
-                    </div>
-                  )}
-                  {vessel.rob_threshold_mt && (
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Gauge className="w-3.5 h-3.5 shrink-0" />
-                      <span>Alert threshold: <span className={`font-semibold ${belowThreshold ? "text-red-500" : "text-foreground"}`}>{formatNumber(parseFloat(vessel.rob_threshold_mt))} L</span></span>
-                    </div>
-                  )}
-                </div>
+      <div className="flex flex-col gap-4 lg:flex-row">
+        {capacity > 0 && (
+          <PanelCard icon={Gauge} tone="blue" title="Remaining on Board" className="animate-rise lg:w-64 lg:shrink-0" bodyClassName="flex items-center justify-center py-2">
+            <RobGauge currentRob={currentRob} capacity={capacity} threshold={threshold} />
+          </PanelCard>
+        )}
+
+        <div className="grid flex-1 grid-cols-2 gap-4 sm:grid-cols-3">
+          <StatCard title="Total Deliveries" value={totalCount} icon={FileText} color="blue" />
+          <StatCard title="Total Delivered" value={`${formatNumber(parseFloat(totalDelivered))} L`} icon={Droplets} color="emerald" />
+          <StatCard
+            title="Current ROB"
+            value={`${formatNumber(currentRob)} L`}
+            subtitle={belowThreshold ? "Below alert threshold" : undefined}
+            icon={Gauge}
+            color={belowThreshold ? "red" : "blue"}
+          />
+        </div>
+      </div>
+
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)} className="animate-rise">
+        <TabsList variant="underline">
+          <TabsTrigger value="deliveries">BDN Deliveries</TabsTrigger>
+          <TabsTrigger value="cargo-ledger">Cargo Ledger</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="deliveries" className="mt-4">
+          <PanelCard
+            icon={FileText}
+            tone="blue"
+            title="Delivery History (BDNs)"
+            subtitle={bdnLoading ? "Loading…" : undefined}
+            action={<span className="text-[11px] text-muted-foreground">{totalCount} records</span>}
+            flush
+          >
+            {bdns.length === 0 ? (
+              <div className="flex flex-col items-center py-12 text-center">
+                <Ship className="h-8 w-8 text-muted-foreground/25" strokeWidth={1.5} />
+                <p className="mt-2.5 text-sm font-medium text-foreground">No deliveries recorded yet</p>
               </div>
+            ) : (
+              <div className="divide-y divide-border/70">
+                {bdns.map((bdn) => {
+                  const sc = BDN_STATUS_CONFIG[bdn.status] ?? { label: bdn.status, color: "bg-muted text-muted-foreground" };
+                  return (
+                    <div key={bdn.id} className="px-4 py-4 transition-colors hover:bg-muted/30 lg:px-5">
+                      <div className="mb-2 flex items-start justify-between gap-3">
+                        <div className="flex min-w-0 items-center gap-2.5">
+                          <span className="shrink-0 font-mono text-[13px] font-semibold text-brand-600">{bdn.bdn_number}</span>
+                          <Link href={`/operations/${bdn.operation_id}`} className="flex items-center gap-0.5 truncate text-[11.5px] text-muted-foreground hover:text-brand-600 hover:underline">
+                            {bdn.operation_number}<ChevronRight className="h-3 w-3" />
+                          </Link>
+                        </div>
+                        <span className={cn("shrink-0 rounded-md px-2 py-0.5 text-[11px] font-semibold capitalize", sc.color)}>{sc.label}</span>
+                      </div>
+                      <div className="mb-2 flex flex-wrap gap-4 text-[12px]">
+                        <div className="flex items-center gap-1.5 text-muted-foreground">
+                          <Droplets className="h-3.5 w-3.5 text-brand-400" />
+                          <span>Delivered: <span className="font-semibold text-foreground">{formatNumber(parseFloat(bdn.quantity_delivered_mt))} L</span></span>
+                        </div>
+                        {bdn.product_type && <span className="text-muted-foreground">Product: <span className="font-medium text-foreground">{bdn.product_type}</span></span>}
+                        {bdn.fuel_type && <span className="text-muted-foreground">Fuel: <span className="font-medium text-foreground">{bdn.fuel_type}</span></span>}
+                        {bdn.density && <span className="text-muted-foreground">Density: <span className="font-medium text-foreground">{bdn.density}</span></span>}
+                        {bdn.temperature && <span className="text-muted-foreground">Temp: <span className="font-medium text-foreground">{bdn.temperature}°C</span></span>}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground">
+                        {bdn.delivery_date && (
+                          <span className="flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            {formatDate(bdn.delivery_date)}
+                          </span>
+                        )}
+                        <span className="flex items-center gap-1">
+                          <Activity className="h-3 w-3" />
+                          Generated by: <span className="ml-0.5 font-medium text-foreground">{bdn.generated_by_name}</span>
+                          <span className="opacity-60">({ROLE_LABEL[bdn.generated_by_role] ?? bdn.generated_by_role})</span>
+                        </span>
+                        {bdn.reviewed_by_name && (
+                          <span className="ml-auto flex items-center gap-1">
+                            {bdn.status === "approved" ? <CheckCircle2 className="h-3 w-3 text-emerald-500" /> : bdn.status === "rejected" ? <XCircle className="h-3 w-3 text-rose-500" /> : null}
+                            Reviewed by: <span className="ml-0.5 font-medium text-foreground">{bdn.reviewed_by_name}</span>
+                          </span>
+                        )}
+                      </div>
+                      {bdn.rejection_reason && (
+                        <p className="mt-2 rounded bg-rose-50 px-2.5 py-1.5 text-[11px] text-rose-600 dark:bg-rose-500/10 dark:text-rose-400">Rejection reason: {bdn.rejection_reason}</p>
+                      )}
+                      {bdn.notes && <p className="mt-1.5 text-[11px] italic text-muted-foreground">{bdn.notes}</p>}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </PanelCard>
+        </TabsContent>
 
-              {capacity > 0 && (
-                <div className="flex flex-col items-center justify-center shrink-0">
-                  <p className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1">
-                    <Gauge className="w-3.5 h-3.5" />
-                    Remaining on Board
-                  </p>
-                  <RobGauge currentRob={currentRob} capacity={capacity} threshold={threshold} />
+        <TabsContent value="cargo-ledger" className="mt-4 space-y-4">
+          {ledgerSummary && (
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-3 dark:border-emerald-500/30 dark:bg-emerald-500/10">
+                <p className="text-[11px] font-medium text-emerald-700/70 dark:text-emerald-300/80">Total Replenished</p>
+                <p className="text-lg font-bold tabular-nums text-emerald-700 dark:text-emerald-300">+{formatNumber(parseFloat(ledgerSummary.total_replenishments_mt))} L</p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-500/30 dark:bg-slate-500/10">
+                <p className="text-[11px] font-medium text-slate-600/70 dark:text-slate-300/80">Total Discharged</p>
+                <p className="text-lg font-bold tabular-nums text-slate-700 dark:text-slate-300">−{formatNumber(parseFloat(ledgerSummary.total_discharges_mt))} L</p>
+              </div>
+              <div className="rounded-xl border border-brand-100 bg-brand-50 p-3 dark:border-brand-500/30 dark:bg-brand-500/10">
+                <p className="text-[11px] font-medium text-brand-700/70 dark:text-brand-300/80">Current ROB</p>
+                <p className="text-lg font-bold tabular-nums text-brand-700 dark:text-brand-300">{formatNumber(parseFloat(ledgerSummary.current_rob_mt))} L</p>
+              </div>
+              {ledgerSummary.capacity_mt && (
+                <div className="rounded-xl border border-navy-100 bg-muted/40 p-3 dark:border-border">
+                  <p className="text-[11px] font-medium text-muted-foreground">Capacity</p>
+                  <p className="text-lg font-bold tabular-nums text-foreground">{formatNumber(parseFloat(ledgerSummary.capacity_mt))} L</p>
                 </div>
               )}
             </div>
-          </div>
-        </Card>
+          )}
 
-        {/* ── Stats strip ── */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-          <StatPill label="Total Deliveries" value={totalCount} color="blue" />
-          <StatPill
-            label="Total Delivered"
-            value={`${formatNumber(parseFloat(totalDelivered))} L`}
-            color="emerald"
-          />
-          <StatPill
-            label="Current ROB"
-            value={`${formatNumber(currentRob)} L`}
-            color={belowThreshold ? "red" : "blue"}
-            sub={belowThreshold ? "Below alert threshold" : undefined}
-          />
-        </div>
-
-        {/* ── Tabs ── */}
-        <div className="flex gap-1 border-b border-border">
-          <button
-            onClick={() => setActiveTab("deliveries")}
-            className={`px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px ${
-              activeTab === "deliveries"
-                ? "border-primary text-primary"
-                : "border-transparent text-muted-foreground hover:text-foreground"
-            }`}
+          <PanelCard
+            icon={Droplets}
+            tone="blue"
+            title="Cargo Movement Ledger"
+            subtitle={ledgerLoading ? "Loading…" : undefined}
+            action={<span className="text-[11px] text-muted-foreground">{ledgerTotal} entries · click any row to expand</span>}
+            flush
           >
-            <span className="flex items-center gap-1.5">
-              <FileText className="w-3.5 h-3.5" />
-              BDN Deliveries
-            </span>
-          </button>
-          <button
-            onClick={() => setActiveTab("cargo-ledger")}
-            className={`px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px ${
-              activeTab === "cargo-ledger"
-                ? "border-primary text-primary"
-                : "border-transparent text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            <span className="flex items-center gap-1.5">
-              <Droplets className="w-3.5 h-3.5" />
-              Cargo Ledger
-            </span>
-          </button>
-        </div>
-
-        {/* ── BDN Deliveries tab ── */}
-        {activeTab === "deliveries" && (
-          <Card className="border-0 shadow-sm">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <FileText className="w-4 h-4 text-muted-foreground" />
-                Delivery History (BDNs)
-                {bdnLoading && <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />}
-                <span className="ml-auto text-xs font-normal text-muted-foreground">{totalCount} records</span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              {bdns.length === 0 ? (
-                <div className="flex flex-col items-center py-12 text-muted-foreground">
-                  <Ship className="w-8 h-8 opacity-25 mb-2" />
-                  <p className="text-sm">No deliveries recorded yet</p>
-                </div>
-              ) : (
-                <div className="divide-y">
-                  {bdns.map((bdn) => {
-                    const sc = BDN_STATUS_CONFIG[bdn.status] ?? { label: bdn.status, color: "bg-gray-100 text-gray-600" };
-                    return (
-                      <div key={bdn.id} className="px-5 py-4 hover:bg-muted/30 transition-colors">
-                        <div className="flex items-start justify-between gap-3 mb-2">
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            <span className="text-sm font-semibold font-mono text-primary shrink-0">{bdn.bdn_number}</span>
-                            <Link href={`/operations/${bdn.operation_id}`} className="text-xs text-muted-foreground hover:text-primary hover:underline truncate">
-                              {bdn.operation_number}<ChevronRight className="w-3 h-3 inline" />
-                            </Link>
-                          </div>
-                          <span className={`text-[11px] font-medium px-2 py-0.5 rounded capitalize shrink-0 ${sc.color}`}>{sc.label}</span>
-                        </div>
-                        <div className="flex flex-wrap gap-4 text-xs mb-2">
-                          <div className="flex items-center gap-1.5 text-muted-foreground">
-                            <Droplets className="w-3.5 h-3.5 text-blue-400" />
-                            <span>Delivered: <span className="font-semibold text-foreground">{formatNumber(parseFloat(bdn.quantity_delivered_mt))} L</span></span>
-                          </div>
-                          {bdn.product_type && <span className="text-muted-foreground">Product: <span className="font-medium text-foreground">{bdn.product_type}</span></span>}
-                          {bdn.fuel_type && <span className="text-muted-foreground">Fuel: <span className="font-medium text-foreground">{bdn.fuel_type}</span></span>}
-                          {bdn.density && <span className="text-muted-foreground">Density: <span className="font-medium text-foreground">{bdn.density}</span></span>}
-                          {bdn.temperature && <span className="text-muted-foreground">Temp: <span className="font-medium text-foreground">{bdn.temperature}°C</span></span>}
-                        </div>
-                        <div className="flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground">
-                          {bdn.delivery_date && (
-                            <span className="flex items-center gap-1">
-                              <Clock className="w-3 h-3" />
-                              {new Date(bdn.delivery_date).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
-                            </span>
-                          )}
-                          <span className="flex items-center gap-1">
-                            <Activity className="w-3 h-3" />
-                            Generated by: <span className="font-medium text-foreground ml-0.5">{bdn.generated_by_name}</span>
-                            <span className="opacity-60">({ROLE_LABEL[bdn.generated_by_role] ?? bdn.generated_by_role})</span>
-                          </span>
-                          {bdn.reviewed_by_name && (
-                            <span className="flex items-center gap-1 ml-auto">
-                              {bdn.status === "approved" ? <CheckCircle2 className="w-3 h-3 text-emerald-500" /> : bdn.status === "rejected" ? <XCircle className="w-3 h-3 text-red-500" /> : null}
-                              Reviewed by: <span className="font-medium text-foreground ml-0.5">{bdn.reviewed_by_name}</span>
-                            </span>
-                          )}
-                        </div>
-                        {bdn.rejection_reason && (
-                          <p className="mt-2 text-[11px] text-red-500 bg-red-50 rounded px-2.5 py-1.5">Rejection reason: {bdn.rejection_reason}</p>
-                        )}
-                        {bdn.notes && <p className="mt-1.5 text-[11px] text-muted-foreground italic">{bdn.notes}</p>}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        )}
-
-        {/* ── Cargo Ledger tab ── */}
-        {activeTab === "cargo-ledger" && (
-          <div className="space-y-4">
-            {/* Summary strip */}
-            {ledgerSummary && (
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div className="rounded-xl border bg-emerald-50 border-emerald-100 p-3">
-                  <p className="text-[11px] font-medium text-emerald-700/70">Total Replenished</p>
-                  <p className="text-lg font-bold tabular-nums text-emerald-700">+{formatNumber(parseFloat(ledgerSummary.total_replenishments_mt))} L</p>
-                </div>
-                <div className="rounded-xl border bg-red-50 border-red-100 p-3">
-                  <p className="text-[11px] font-medium text-red-700/70">Total Discharged</p>
-                  <p className="text-lg font-bold tabular-nums text-red-700">−{formatNumber(parseFloat(ledgerSummary.total_discharges_mt))} L</p>
-                </div>
-                <div className="rounded-xl border bg-blue-50 border-blue-100 p-3">
-                  <p className="text-[11px] font-medium text-blue-700/70">Current ROB</p>
-                  <p className="text-lg font-bold tabular-nums text-blue-700">{formatNumber(parseFloat(ledgerSummary.current_rob_mt))} L</p>
-                </div>
-                {ledgerSummary.capacity_mt && (
-                  <div className="rounded-xl border bg-gray-50 border-gray-100 p-3">
-                    <p className="text-[11px] font-medium text-gray-600/70">Capacity</p>
-                    <p className="text-lg font-bold tabular-nums text-gray-700">{formatNumber(parseFloat(ledgerSummary.capacity_mt))} L</p>
-                  </div>
-                )}
+            {ledgerLoading ? (
+              <Skeleton className="m-4 h-48 rounded-lg lg:m-5" />
+            ) : ledgerEntries.length === 0 ? (
+              <div className="flex flex-col items-center py-12 text-center">
+                <Droplets className="h-8 w-8 text-muted-foreground/25" strokeWidth={1.5} />
+                <p className="mt-2.5 text-sm font-medium text-foreground">No cargo movements recorded yet</p>
+              </div>
+            ) : (
+              <div className="divide-y divide-border/70">
+                {ledgerEntries.map((entry) => (
+                  <CargoEntryRow key={entry.id} entry={entry} />
+                ))}
               </div>
             )}
+          </PanelCard>
 
-            <Card className="border-0 shadow-sm">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <Droplets className="w-4 h-4 text-muted-foreground" />
-                  Cargo Movement Ledger
-                  {ledgerLoading && <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />}
-                  <span className="ml-auto text-xs font-normal text-muted-foreground">{ledgerTotal} entries · click any row to expand</span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                {ledgerLoading ? (
-                  <div className="flex items-center justify-center py-12">
-                    <Loader2 className="w-7 h-7 animate-spin text-primary" />
-                  </div>
-                ) : ledgerEntries.length === 0 ? (
-                  <div className="flex flex-col items-center py-12 text-muted-foreground">
-                    <Droplets className="w-8 h-8 opacity-25 mb-2" />
-                    <p className="text-sm">No cargo movements recorded yet</p>
-                  </div>
-                ) : (
-                  <div>
-                    {ledgerEntries.map((entry) => (
-                      <CargoEntryRow key={entry.id} entry={entry} />
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Pagination */}
-            {totalPages > 1 && (
-              <div className="flex items-center justify-center gap-2">
-                <button
-                  disabled={ledgerPage <= 1}
-                  onClick={() => setLedgerPage((p) => p - 1)}
-                  className="px-3 py-1.5 text-xs border rounded-lg disabled:opacity-40 hover:bg-muted transition-colors"
-                >
-                  Previous
-                </button>
-                <span className="text-xs text-muted-foreground">
-                  Page {ledgerPage} of {totalPages}
-                </span>
-                <button
-                  disabled={ledgerPage >= totalPages}
-                  onClick={() => setLedgerPage((p) => p + 1)}
-                  className="px-3 py-1.5 text-xs border rounded-lg disabled:opacity-40 hover:bg-muted transition-colors"
-                >
-                  Next
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
+          {totalPages > 1 && (
+            <div className="flex items-center justify-center gap-2">
+              <button
+                disabled={ledgerPage <= 1}
+                onClick={() => setLedgerPage((p) => p - 1)}
+                className="rounded-lg border border-navy-100 px-3 py-1.5 text-xs font-medium transition-colors hover:bg-muted disabled:opacity-40 dark:border-border"
+              >
+                Previous
+              </button>
+              <span className="text-xs text-muted-foreground">
+                Page {ledgerPage} of {totalPages}
+              </span>
+              <button
+                disabled={ledgerPage >= totalPages}
+                onClick={() => setLedgerPage((p) => p + 1)}
+                className="rounded-lg border border-navy-100 px-3 py-1.5 text-xs font-medium transition-colors hover:bg-muted disabled:opacity-40 dark:border-border"
+              >
+                Next
+              </button>
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
+    </DashboardShell>
   );
 }

@@ -10,26 +10,27 @@ import { z } from "zod";
 import { toast } from "sonner";
 import { api, getErrorMessage } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
-import { Header } from "@/components/layout/Header";
+import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { formatNumber } from "@/lib/utils";
+import { cn, formatNumber } from "@/lib/utils";
 import type { ApiResponse, Vessel } from "@/types";
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; Icon: React.ElementType }> = {
-  available:      { label: "Available",     color: "text-emerald-600 bg-emerald-50 border-emerald-200", Icon: CheckCircle2 },
-  in_operation:   { label: "In Operation",  color: "text-blue-600   bg-blue-50   border-blue-200",    Icon: Anchor },
-  maintenance:    { label: "Maintenance",   color: "text-amber-600  bg-amber-50  border-amber-200",   Icon: AlertTriangle },
-  out_of_service: { label: "Out of Service",color: "text-red-600    bg-red-50    border-red-200",     Icon: AlertTriangle },
+  available:      { label: "Available",      color: "text-emerald-700 bg-emerald-50 border-emerald-200 dark:text-emerald-300 dark:bg-emerald-500/15 dark:border-emerald-500/30", Icon: CheckCircle2 },
+  in_operation:   { label: "In Operation",    color: "text-brand-700   bg-brand-50   border-brand-200   dark:text-brand-300   dark:bg-brand-500/15   dark:border-brand-500/30",   Icon: Anchor },
+  maintenance:    { label: "Maintenance",     color: "text-amber-700   bg-amber-50   border-amber-200   dark:text-amber-300   dark:bg-amber-500/15   dark:border-amber-500/30",   Icon: AlertTriangle },
+  out_of_service: { label: "Out of Service",  color: "text-rose-700    bg-rose-50    border-rose-200    dark:text-rose-300    dark:bg-rose-500/15    dark:border-rose-500/30",    Icon: AlertTriangle },
 };
 
 const vesselSchema = z.object({
@@ -86,7 +87,10 @@ function CreateVesselDialog({
     <Dialog open={open} onOpenChange={(v) => { if (!v) { reset(); onClose(); } }}>
       <DialogContent className="sm:max-w-lg" aria-describedby={undefined}>
         <DialogHeader>
-          <DialogTitle>Register New Vessel</DialogTitle>
+          <DialogTitle className="flex items-center gap-2 text-[15px] font-bold tracking-tight">
+            <Ship className="h-4 w-4 text-brand-600" strokeWidth={2.2} />
+            Register New Vessel
+          </DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit((d) => mutation.mutate(d))} className="space-y-4 mt-2">
           <div className="grid grid-cols-2 gap-4">
@@ -137,7 +141,7 @@ function CreateVesselDialog({
 }
 
 export default function VesselsPage() {
-  const { user, effectiveRole } = useAuth();
+  const { effectiveRole } = useAuth();
   const qc = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
   const isBM = effectiveRole === "bunker_manager";
@@ -151,134 +155,139 @@ export default function VesselsPage() {
   });
 
   return (
-    <div>
-      <Header
-        title="Vessels"
-        subtitle="Fleet vessel registry and status"
-        actions={
-          isBM ? (
-            <Button size="sm" onClick={() => setShowCreate(true)}>
-              <PlusCircle className="w-4 h-4 mr-1.5" />
-              Add Vessel
-            </Button>
-          ) : undefined
-        }
-      />
-
-      <div className="p-6">
-        {isLoading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-            {[...Array(3)].map((_, i) => (
-              <div key={i} className="h-52 rounded-xl bg-muted animate-pulse" />
-            ))}
-          </div>
-        ) : vessels?.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
-            <Ship className="w-12 h-12 mb-3 opacity-30" />
-            <p className="text-sm">No vessels in the fleet registry</p>
+    <DashboardShell
+      icon={Ship}
+      iconTone="blue"
+      showRole={false}
+      title="Vessels"
+      subtitle="Fleet vessel registry and status"
+      actions={
+        isBM ? (
+          <Button
+            className="h-10.5 gap-2 rounded-xl px-4 text-[13px] font-semibold"
+            onClick={() => setShowCreate(true)}
+          >
+            <PlusCircle className="h-4 w-4" strokeWidth={2.5} />
+            Add Vessel
+          </Button>
+        ) : undefined
+      }
+    >
+      {isLoading ? (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {[...Array(3)].map((_, i) => (
+            <Skeleton key={i} className="h-52 rounded-2xl" />
+          ))}
+        </div>
+      ) : vessels?.length === 0 ? (
+        <Card className="animate-rise rounded-2xl border border-navy-100 shadow-[0_1px_2px_rgb(16_36_71/0.04)] dark:border-border">
+          <CardContent className="flex flex-col items-center py-20 text-center">
+            <Ship className="h-10 w-10 text-muted-foreground/25" strokeWidth={1.5} />
+            <p className="mt-3 text-sm font-medium text-foreground">No vessels in the fleet registry</p>
             {isBM && (
-              <Button size="sm" variant="outline" className="mt-3" onClick={() => setShowCreate(true)}>
-                <PlusCircle className="w-4 h-4 mr-1.5" />
+              <Button size="sm" variant="outline" className="mt-3 rounded-lg" onClick={() => setShowCreate(true)}>
+                <PlusCircle className="h-4 w-4" strokeWidth={2.5} />
                 Add First Vessel
               </Button>
             )}
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-            {vessels?.map((vessel) => {
-              const cfg = STATUS_CONFIG[vessel.status] ?? {
-                label: vessel.status,
-                color: "text-muted-foreground bg-muted border-border",
-                Icon: Ship,
-              };
-              const StatusIcon = cfg.Icon;
-              const robPct = vessel.capacity_mt
-                ? Math.min(
-                    100,
-                    Math.round(
-                      (parseFloat(vessel.current_rob_mt) / parseFloat(vessel.capacity_mt)) * 100
-                    )
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {vessels?.map((vessel) => {
+            const cfg = STATUS_CONFIG[vessel.status] ?? {
+              label: vessel.status,
+              color: "text-muted-foreground bg-muted border-border",
+              Icon: Ship,
+            };
+            const StatusIcon = cfg.Icon;
+            const robPct = vessel.capacity_mt
+              ? Math.min(
+                  100,
+                  Math.round(
+                    (parseFloat(vessel.current_rob_mt) / parseFloat(vessel.capacity_mt)) * 100
                   )
-                : 0;
-              const lowRob =
-                vessel.rob_threshold_mt &&
-                parseFloat(vessel.current_rob_mt) <= parseFloat(vessel.rob_threshold_mt);
+                )
+              : 0;
+            const lowRob =
+              vessel.rob_threshold_mt &&
+              parseFloat(vessel.current_rob_mt) <= parseFloat(vessel.rob_threshold_mt);
 
-              return (
-                <Link key={vessel.id} href={`/fleet/vessels/${vessel.id}`} className="block group">
-                  <Card className="border-0 shadow-sm hover:shadow-md transition-shadow group-hover:border-primary/20">
-                  <CardHeader className="pb-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                          <Ship className="w-4.5 h-4.5 text-primary" />
-                        </div>
-                        <div>
-                          <CardTitle className="text-sm font-semibold">{vessel.vessel_name}</CardTitle>
-                          <p className="text-[11px] text-muted-foreground font-mono">{vessel.imo_number}</p>
-                        </div>
+            return (
+              <Link key={vessel.id} href={`/fleet/vessels/${vessel.id}`} className="group block animate-rise">
+                <Card className="rounded-2xl border border-navy-100 shadow-[0_1px_2px_rgb(16_36_71/0.04)] transition-shadow hover:shadow-[0_16px_34px_-20px_rgba(16,24,40,0.45)] dark:border-border">
+                <CardHeader className="pb-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2.5">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand-50 dark:bg-brand-500/15">
+                        <Ship className="h-4.5 w-4.5 text-brand-600 dark:text-brand-300" strokeWidth={2} />
                       </div>
-                      <span className={`inline-flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-full border ${cfg.color}`}>
-                        <StatusIcon className="w-3 h-3" />
-                        {cfg.label}
+                      <div>
+                        <CardTitle className="text-[14px] font-bold tracking-tight">{vessel.vessel_name}</CardTitle>
+                        <p className="font-mono text-[11px] text-muted-foreground">{vessel.imo_number}</p>
+                      </div>
+                    </div>
+                    <span className={cn("inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10.5px] font-semibold", cfg.color)}>
+                      <StatusIcon className="h-3 w-3" />
+                      {cfg.label}
+                    </span>
+                  </div>
+                </CardHeader>
+
+                <CardContent className="space-y-3">
+                  {vessel.current_location && (
+                    <div className="flex items-center gap-2 text-[13px]">
+                      <MapPin className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                      <span className="truncate text-muted-foreground">{vessel.current_location}</span>
+                    </div>
+                  )}
+
+                  <div>
+                    <div className="mb-1.5 flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
+                        <Gauge className="h-3.5 w-3.5" />
+                        <span>ROB</span>
+                        {lowRob && (
+                          <Badge variant="destructive" className="h-4 rounded-md px-1.5 py-0 text-[10px]">Low</Badge>
+                        )}
+                      </div>
+                      <span className="text-[12.5px] font-semibold tabular-nums text-foreground">
+                        {formatNumber(parseFloat(vessel.current_rob_mt))} L
                       </span>
                     </div>
-                  </CardHeader>
+                    <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                      <div
+                        className={cn(
+                          "h-full rounded-full transition-all",
+                          lowRob ? "bg-rose-500" : robPct > 50 ? "bg-emerald-500" : "bg-amber-500"
+                        )}
+                        style={{ width: `${robPct}%` }}
+                      />
+                    </div>
+                    <div className="mt-1 flex justify-between">
+                      <span className="text-[10.5px] tabular-nums text-muted-foreground">0</span>
+                      <span className="text-[10.5px] tabular-nums text-muted-foreground">
+                        Cap: {vessel.capacity_mt ? formatNumber(parseFloat(vessel.capacity_mt)) : "—"} L
+                      </span>
+                    </div>
+                  </div>
 
-                  <CardContent className="space-y-3">
-                    {vessel.current_location && (
-                      <div className="flex items-center gap-2 text-sm">
-                        <MapPin className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                        <span className="text-muted-foreground truncate">{vessel.current_location}</span>
-                      </div>
+                  <div className="flex items-center justify-between border-t border-border/70 pt-2.5 text-[12px] text-muted-foreground">
+                    <span>{vessel.vessel_type ?? "—"}</span>
+                    {vessel.flag_state && (
+                      <span className="flex items-center gap-1.5">
+                        <span className="h-2 w-2 rounded-full bg-muted-foreground/30" />
+                        {vessel.flag_state}
+                      </span>
                     )}
-
-                    <div>
-                      <div className="flex justify-between items-center mb-1.5">
-                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                          <Gauge className="w-3.5 h-3.5" />
-                          <span>ROB</span>
-                          {lowRob && (
-                            <Badge variant="destructive" className="text-[10px] px-1.5 py-0 h-4">Low</Badge>
-                          )}
-                        </div>
-                        <span className="text-xs font-semibold tabular-nums">
-                          {formatNumber(parseFloat(vessel.current_rob_mt))} L
-                        </span>
-                      </div>
-                      <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-                        <div
-                          className={`h-full rounded-full transition-all ${
-                            lowRob ? "bg-red-500" : robPct > 50 ? "bg-emerald-500" : "bg-amber-500"
-                          }`}
-                          style={{ width: `${robPct}%` }}
-                        />
-                      </div>
-                      <div className="flex justify-between mt-1">
-                        <span className="text-[10px] text-muted-foreground">0</span>
-                        <span className="text-[10px] text-muted-foreground">
-                          Cap: {vessel.capacity_mt ? formatNumber(parseFloat(vessel.capacity_mt)) : "—"} L
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between pt-1 border-t text-xs text-muted-foreground">
-                      <span>{vessel.vessel_type ?? "—"}</span>
-                      {vessel.flag_state && (
-                        <span className="flex items-center gap-1">
-                          <span className="w-2 h-2 rounded-full bg-muted-foreground/30" />
-                          {vessel.flag_state}
-                        </span>
-                      )}
-                    </div>
-                  </CardContent>
-                  </Card>
-                </Link>
-              );
-            })}
-          </div>
-        )}
-      </div>
+                  </div>
+                </CardContent>
+                </Card>
+              </Link>
+            );
+          })}
+        </div>
+      )}
 
       {isBM && (
         <CreateVesselDialog
@@ -290,6 +299,6 @@ export default function VesselsPage() {
           }}
         />
       )}
-    </div>
+    </DashboardShell>
   );
 }

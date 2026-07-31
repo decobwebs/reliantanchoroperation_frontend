@@ -42,6 +42,11 @@ import {
   PlayCircle,
   Pencil,
   Gauge,
+  CalendarDays,
+  MoreHorizontal,
+  Palette,
+  Droplets,
+  Users,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useForm } from "react-hook-form";
@@ -49,15 +54,30 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { api, getErrorMessage, extractData } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
-import { Header } from "@/components/layout/Header";
 import { StatusBadge } from "@/components/shared/StatusBadge";
+import { DashboardShell } from "@/components/dashboard/DashboardShell";
+import { PanelCard } from "@/components/dashboard/PanelCard";
+import { DetailHeader, MetaChip } from "@/components/operations/DetailHeader";
+import { JourneyStepper, type JourneyStep } from "@/components/operations/JourneyStepper";
+import { OperationSummaryCard } from "@/components/operations/OperationSummaryCard";
+import { StatusTimeline } from "@/components/operations/StatusTimeline";
+import { StatTile, StatTileRow } from "@/components/operations/StatTile";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
   DialogContent,
@@ -73,9 +93,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  cn,
   formatDate,
   formatDateTime,
-  formatRelative,
+  formatDayTime,
   OP_TYPE_LABELS,
   OPERATION_COLOR_SWATCHES,
   VESSEL_SOURCE_TYPE_LABELS,
@@ -116,46 +137,11 @@ import type {
   RoleStageDurations,
 } from "@/types";
 import { PRODUCT_TYPE_LABELS, LEG_STAGES } from "@/types";
+import { STATUS_PIPELINE, PIPELINE_LABELS } from "@/lib/operations";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
-
-// Status pipeline — ordered happy-path stages per operation type. Finance
-// (PFI/payment/invoice) is a standalone concern now, not part of this pipeline.
-const STATUS_PIPELINE: Record<string, string[]> = {
-  truck_only: [
-    "draft","tasks_assigned","awaiting_feedback","feedback_submitted",
-    "active",
-    "pending_completion","bdn_pending","bdn_approved","completed",
-  ],
-  vessel_only: [
-    "draft","tasks_assigned","active",
-    "vessel_operations","bdn_pending","bdn_approved",
-    "completed",
-  ],
-  full_operation: [
-    "draft","tasks_assigned","awaiting_feedback","feedback_submitted",
-    "active",
-    "vessel_operations","bdn_pending","bdn_approved",
-    "completed",
-  ],
-};
-
-const PIPELINE_LABELS: Record<string, string> = {
-  draft:               "Draft",
-  tasks_assigned:      "Tasks",
-  awaiting_feedback:   "Await FB",
-  feedback_submitted:  "FB Submitted",
-  active:              "Active",
-  pending_completion:  "Pending Completion",
-  vessel_operations:   "Vessel Ops",
-  bdn_pending:         "BDN Pending",
-  bdn_approved:        "BDN Approved",
-  pfi_linked:          "PFI Linked",
-  payment_processing:  "Payment",
-  payment_confirmed:   "Paid",
-  invoiced:            "Invoiced",
-  completed:           "Completed",
-};
+// STATUS_PIPELINE / PIPELINE_LABELS live in lib/operations so the dashboard can
+// derive per-operation progress from the same source of truth.
 
 const ROLE_LABELS: Record<string, string> = {
   ops_supervisor:    "Ops Supervisor",
@@ -176,6 +162,30 @@ const ELIGIBLE_ROLES: Record<string, string[]> = {
   vessel_only:    ["ops_supervisor", "marine_manager"],
   full_operation: ["ops_supervisor", "logistics_officer", "marine_manager"],
 };
+
+// The small underlined text actions that sit inside marine panels — Edit,
+// Correct a timing, Restore, Cancel. Declared once so the whole tab reads as
+// one family rather than a dozen slightly different links.
+const INLINE_LINK =
+  "rounded text-[11px] font-semibold text-brand-600 underline underline-offset-2 transition-colors hover:text-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+const INLINE_LINK_DANGER =
+  "rounded text-[11px] font-semibold text-destructive underline underline-offset-2 transition-colors hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+
+// Operation document categories — the upload picker and the Overview card's
+// document list read from the same list so their labels can't drift apart.
+const DOC_TYPES: { value: string; label: string }[] = [
+  { value: "bdn",             label: "BDN" },
+  { value: "invoice",         label: "Invoice" },
+  { value: "payment_voucher", label: "Payment Voucher" },
+  { value: "pfi",             label: "PFI" },
+  { value: "report",          label: "Report" },
+  { value: "clearance",       label: "Port / Customs Clearance" },
+  { value: "other",           label: "Other" },
+];
+
+const DOC_TYPE_LABELS: Record<string, string> = Object.fromEntries(
+  DOC_TYPES.map((d) => [d.value, d.label])
+);
 
 const ELIGIBLE_TASK_TYPES: Record<string, { value: string; label: string }[]> = {
   truck_only:     [{ value: "truck_logistics",  label: "Truck Logistics" }],
@@ -431,6 +441,84 @@ function AssignTaskDialog({
 // always shown together, side by side, and neither overwrites the other.
 
 /** One stage in the journey: a numbered node, its label, and its two times. */
+/**
+ * The count pill beside a tab label. Renders nothing at zero so empty tabs
+ * stay quiet; `accent` marks a tab that wants attention (pending feedback, a
+ * live vessel activity).
+ */
+function TabCount({ value, accent }: { value?: number; accent?: boolean }) {
+  if (!value) return null;
+  return (
+    <span
+      className={cn(
+        "inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5",
+        "text-[10px] font-semibold tabular-nums",
+        accent ? "bg-brand-500 text-white" : "bg-muted text-muted-foreground"
+      )}
+    >
+      {value}
+    </span>
+  );
+}
+
+/** Title / subtitle / action row that opens each block inside the Marine tab. */
+function SectionHead({
+  title,
+  subtitle,
+  action,
+}: {
+  title: string;
+  subtitle?: React.ReactNode;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div className="mb-2 flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
+      <div className="min-w-0">
+        <p className="text-[13px] font-bold tracking-tight text-foreground">{title}</p>
+        {subtitle && (
+          <p className="mt-0.5 text-[11px] text-muted-foreground">{subtitle}</p>
+        )}
+      </div>
+      {action && <div className="flex shrink-0 items-center gap-2">{action}</div>}
+    </div>
+  );
+}
+
+/**
+ * The recorded-quantity readout used by both Loading Received Quantity and a
+ * receiving vessel's Discharge Quantity: a bordered strip of mono figures with
+ * an optional description line beneath.
+ */
+function QuantityReadout({
+  columns,
+  note,
+}: {
+  columns: [string, string][];
+  note?: string;
+}) {
+  return (
+    <div className="overflow-hidden rounded-xl border border-navy-100 bg-card dark:border-border">
+      <div className="grid grid-cols-1 divide-y divide-border/70 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+        {columns.map(([label, value]) => (
+          <div key={label} className="px-3.5 py-2.5">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              {label}
+            </p>
+            <p className="mt-0.5 font-mono text-[13px] font-semibold tabular-nums text-foreground">
+              {value}
+            </p>
+          </div>
+        ))}
+      </div>
+      {note && (
+        <p className="border-t border-border/70 px-3.5 py-2 text-[11px] italic text-muted-foreground">
+          {note}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function JourneyStage({
   number,
   label,
@@ -449,39 +537,55 @@ function JourneyStage({
   last?: boolean;
 }) {
   return (
-    <div className="flex gap-3">
-      {/* Rail: numbered node + connector down to the next stage */}
-      <div className="flex flex-col items-center shrink-0">
-        <div
-          className={`w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold ring-4 ${
-            done
-              ? "bg-emerald-500 text-white ring-emerald-50"
-              : current
-              ? "bg-primary text-white ring-primary/10"
-              : "bg-muted text-muted-foreground ring-transparent"
-          }`}
-        >
-          {done ? "✓" : number}
-        </div>
-        {!last && <div className={`w-px flex-1 min-h-[26px] ${done ? "bg-emerald-300" : "bg-border"}`} />}
-      </div>
+    <div
+      className={cn(
+        "flex items-start gap-3 py-2.5",
+        !last && "border-b border-border/70"
+      )}
+    >
+      <span
+        aria-hidden="true"
+        className={cn(
+          "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold",
+          done
+            ? "bg-emerald-500 text-white"
+            : current
+              ? "bg-brand-500 text-white"
+              : "bg-muted text-muted-foreground"
+        )}
+      >
+        {done ? <CheckCircle2 className="h-3.5 w-3.5" strokeWidth={3} /> : number}
+      </span>
 
-      {/* Body: label + the two timestamps */}
-      <div className={`flex-1 pb-4 ${last ? "pb-0" : ""}`}>
-        <p className={`text-xs leading-7 ${done ? "font-medium" : current ? "font-semibold text-primary" : "text-muted-foreground"}`}>
-          {label}
-          {current && <span className="ml-2 text-[10px] font-normal text-primary/70">← next</span>}
-        </p>
+      <div className="flex min-w-0 flex-1 flex-wrap items-start justify-between gap-x-4 gap-y-1">
+        <div className="min-w-0">
+          <p
+            className={cn(
+              "text-[13px] font-semibold leading-tight",
+              done || current ? "text-foreground" : "text-muted-foreground"
+            )}
+          >
+            {label}
+            {current && (
+              <span className="ml-2 text-[10px] font-medium text-brand-600">← next</span>
+            )}
+          </p>
+          {done && (
+            <p className="mt-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+              System recorded
+              <span className="ml-1.5 font-mono normal-case tracking-normal tabular-nums">
+                {formatDateTime(systemAt)}
+              </span>
+            </p>
+          )}
+        </div>
+
         {done && (
-          <div className="grid grid-cols-2 gap-px rounded-md border overflow-hidden mt-0.5">
-            <div className="bg-muted/20 px-2.5 py-1.5">
-              <p className="text-[9px] uppercase tracking-wide text-muted-foreground">System recorded</p>
-              <p className="font-mono text-[11px] font-semibold">{formatDateTime(systemAt)}</p>
-            </div>
-            <div className="bg-muted/20 px-2.5 py-1.5">
-              <p className="text-[9px] uppercase tracking-wide text-muted-foreground">You entered</p>
-              <p className="font-mono text-[11px] font-semibold">{userAt ? formatDateTime(userAt) : "—"}</p>
-            </div>
+          <div className="shrink-0 text-right">
+            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">You entered</p>
+            <p className="font-mono text-[12px] font-semibold tabular-nums text-foreground">
+              {userAt ? formatDateTime(userAt) : "—"}
+            </p>
           </div>
         )}
       </div>
@@ -579,6 +683,9 @@ export default function OperationDetailPage({
   const [editingRobActivityId, setEditingRobActivityId] = useState<string | null>(null);
   const [editRobValue,         setEditRobValue]         = useState("");
 
+  // Controlled so cross-tab links (Overview → Docs) can switch tabs.
+  const [activeTab, setActiveTab] = useState("overview");
+
   // ── Queries
   const { data: op, isLoading } = useQuery({
     queryKey: ["operation", id],
@@ -588,7 +695,7 @@ export default function OperationDetailPage({
     },
   });
 
-  const { data: timeline } = useQuery({
+  const { data: timeline, isLoading: timelineLoading } = useQuery({
     queryKey: ["operation-timeline", id],
     queryFn: async () => {
       const res = await api.get<ApiResponse<StatusHistory[]>>(`/operations/${id}/timeline`);
@@ -2519,15 +2626,15 @@ export default function OperationDetailPage({
     return (
       <div key={phase}>
         <div className={`flex items-center gap-2 px-5 py-2.5 border-b ${
-          auditPassed ? "bg-emerald-50/50" : audit ? "bg-red-50/40" : "bg-amber-50/50"
+          auditPassed ? "bg-emerald-50/50" : audit ? "bg-rose-50/40" : "bg-amber-50/50"
         }`}>
           {auditPassed
             ? <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
             : audit
-            ? <ShieldAlert className="w-3.5 h-3.5 text-red-600 shrink-0" />
+            ? <ShieldAlert className="w-3.5 h-3.5 text-rose-600 shrink-0" />
             : <Shield className="w-3.5 h-3.5 text-amber-600 shrink-0" />}
           <p className={`text-xs font-medium flex-1 ${
-            auditPassed ? "text-emerald-700" : audit ? "text-red-700" : "text-amber-700"
+            auditPassed ? "text-emerald-700" : audit ? "text-rose-700" : "text-amber-700"
           }`}>
             <span className="font-semibold">{label}:</span>{" "}
             {auditPassed
@@ -2562,7 +2669,7 @@ export default function OperationDetailPage({
                   <div key={c.item} className={`flex items-start gap-2 text-xs rounded-md px-2.5 py-1.5 ${
                     c.passed ? "bg-emerald-50 text-emerald-700"
                     : waiver ? "bg-amber-50 text-amber-800"
-                    : "bg-red-50 text-red-700"
+                    : "bg-rose-50 text-rose-700"
                   }`}>
                     <span className="shrink-0 mt-0.5 font-bold">
                       {c.passed ? "✓" : waiver ? "⚠" : "✗"}
@@ -2573,7 +2680,7 @@ export default function OperationDetailPage({
                       {!c.passed && !waiver && (
                         <button
                           type="button"
-                          className="ml-2 text-[10px] font-semibold underline text-red-600 hover:text-red-800"
+                          className="ml-2 text-[10px] font-semibold underline text-rose-600 hover:text-rose-800"
                           onClick={() => { setWaiverDialog({ truckOpId: to.id, phase, item: c.item }); setWaiverNotes(""); }}
                         >
                           Waive
@@ -2597,12 +2704,12 @@ export default function OperationDetailPage({
         )}
 
         {!isBM && audit && failedItems.length > 0 && (
-          <div className="px-5 py-2 border-b bg-red-50/30">
-            <p className="text-[10px] font-semibold text-red-600 mb-1">Failed items:</p>
+          <div className="px-5 py-2 border-b bg-rose-50/30">
+            <p className="text-[10px] font-semibold text-rose-600 mb-1">Failed items:</p>
             <div className="flex flex-wrap gap-1.5">
               {failedItems.map((c) => (
                 <span key={c.item} className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
-                  waivedSet.has(c.item) ? "bg-amber-100 text-amber-700" : "bg-red-100 text-red-700"
+                  waivedSet.has(c.item) ? "bg-amber-100 text-amber-700" : "bg-rose-100 text-rose-700"
                 }`}>
                   {waivedSet.has(c.item) ? "⚠ " : "✗ "}{c.item}
                 </span>
@@ -2660,15 +2767,15 @@ export default function OperationDetailPage({
 
   const ACTION_COLOR: Record<string, string> = {
     WAIVE_AUDIT_ITEM:           "text-amber-600",
-    SUBMIT_SAFETY_AUDIT:        "text-blue-600",
+    SUBMIT_SAFETY_AUDIT:        "text-brand-600",
     SUBMIT_FEEDBACK:            "text-violet-600",
     APPROVE_FEEDBACK:           "text-emerald-600",
-    REJECT_FEEDBACK:            "text-red-600",
+    REJECT_FEEDBACK:            "text-rose-600",
     TRANSITION_STATUS:          "text-primary",
-    UPLOAD_DOCUMENT:            "text-sky-600",
-    UPDATE_TRUCK_OPERATION:     "text-indigo-600",
+    UPLOAD_DOCUMENT:            "text-brand-500",
+    UPDATE_TRUCK_OPERATION:     "text-violet-600",
     APPROVE_DISCHARGE:          "text-emerald-700",
-    BM_EDITED_DISCHARGE_RECORD: "text-orange-600",
+    BM_EDITED_DISCHARGE_RECORD: "text-amber-600",
     ACT_AS_ROLE_SWITCH:         "text-slate-600",
     ACT_AS_ROLE_CLEAR:          "text-slate-600",
   };
@@ -2903,9 +3010,24 @@ export default function OperationDetailPage({
   // ── Render guards
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
-      </div>
+      <DashboardShell bare>
+        <div className="space-y-4">
+          <Skeleton className="h-4 w-32" />
+          <Skeleton className="h-9 w-64" />
+          <Skeleton className="h-8 w-96" />
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_336px]">
+            <div className="min-w-0 space-y-4">
+              <Skeleton className="h-28 w-full rounded-2xl" />
+              <Skeleton className="h-9 w-full" />
+              <Skeleton className="h-80 w-full rounded-2xl" />
+            </div>
+            <div className="space-y-4">
+              <Skeleton className="h-56 w-full rounded-2xl" />
+              <Skeleton className="h-72 w-full rounded-2xl" />
+            </div>
+          </div>
+        </div>
+      </DashboardShell>
     );
   }
   if (!op) return null;
@@ -2914,123 +3036,143 @@ export default function OperationDetailPage({
   const isReopenable         = isBM && REOPENABLE_STATUSES.includes(op.status);
   // Completion is now triggered from the Truck Reports tab when all stages are done
 
+  // The barge this operation runs on. The operation itself only carries a
+  // vessel_id, so fall back through the sources the page already fetches.
+  const opVessel   = allVessels?.find((v) => v.id === op.vessel_id);
+  const vesselName = opVessel?.vessel_name ?? vesselActivities?.[0]?.vessel_name;
+
+  // Header overflow: everything the old badge row could do that the design's
+  // three buttons don't cover. Every item in it is BM-only, so the menu is too.
+  const hasMoreActions = isBM;
+
   // ── Page
   return (
-    <div>
-      <Header
+    <DashboardShell bare>
+      <DetailHeader
+        backHref="/operations"
         title={op.operation_number}
-        subtitle={OP_TYPE_LABELS[op.type]}
+        status={op.status as OperationStatus}
+        meta={
+          <>
+            <MetaChip icon={Ship}>{OP_TYPE_LABELS[op.type]}</MetaChip>
+            {op.type === "vessel_only" && op.source_type && (
+              <MetaChip>{VESSEL_SOURCE_TYPE_LABELS[op.source_type]}</MetaChip>
+            )}
+            {op.product_type && (
+              <MetaChip icon={Tag}>
+                {PRODUCT_TYPE_LABELS[op.product_type as keyof typeof PRODUCT_TYPE_LABELS] ?? op.product_type}
+              </MetaChip>
+            )}
+            {vesselName && <MetaChip icon={Anchor}>{vesselName}</MetaChip>}
+            <MetaChip>{op.currency}</MetaChip>
+            {op.version > 1 && (
+              <MetaChip icon={GitBranch}>v{op.version}</MetaChip>
+            )}
+            {op.expected_volume_mt && (
+              <MetaChip icon={Droplets}>
+                <span className="tabular-nums">
+                  {parseFloat(op.expected_volume_mt).toLocaleString()} L expected
+                </span>
+              </MetaChip>
+            )}
+            {op.type !== "truck_only" && op.naval_clearance && (
+              <MetaChip icon={ShieldCheck}>
+                {op.naval_clearance.clearance_number}
+                {!op.naval_clearance.is_valid && (
+                  <span className="ml-1 text-amber-600">(expired)</span>
+                )}
+              </MetaChip>
+            )}
+            {op.color && (
+              <MetaChip>
+                <span
+                  aria-hidden="true"
+                  className={cn("h-2.5 w-2.5 rounded-full border", OPERATION_COLOR_SWATCHES[op.color])}
+                />
+                Tagged
+              </MetaChip>
+            )}
+            <MetaChip icon={CalendarDays}>Created {formatDateTime(op.created_at)}</MetaChip>
+          </>
+        }
         actions={
-          <Button variant="outline" size="sm" onClick={() => router.back()}>
-            <ArrowLeft className="w-4 h-4 mr-1.5" />
-            Back
-          </Button>
+          <>
+            {isBM && (
+              <Button
+                variant="outline"
+                className="h-10.5 gap-2 text-[13px] font-semibold"
+                onClick={exportActivityCsv}
+                disabled={!activityLog?.length}
+              >
+                <Download className="h-4 w-4" strokeWidth={2.2} />
+                Export Activity
+              </Button>
+            )}
+
+            {hasMoreActions && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="h-10.5 gap-2 text-[13px] font-semibold">
+                    <MoreHorizontal className="h-4 w-4" strokeWidth={2.2} />
+                    More Actions
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuLabel className="text-[11px] text-muted-foreground">
+                    Operation actions
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+
+                  {op.type !== "truck_only" && (
+                    op.naval_clearance ? (
+                      <>
+                        <DropdownMenuItem className="text-[13px]" onSelect={() => setShowNotifyDialog(true)}>
+                          <Bell className="mr-2 h-3.5 w-3.5" />
+                          Notify Clients
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          className="text-[13px] text-destructive focus:text-destructive"
+                          onSelect={() => setShowUnlinkNc(true)}
+                        >
+                          <XCircle className="mr-2 h-3.5 w-3.5" />
+                          Unlink Naval Clearance
+                        </DropdownMenuItem>
+                      </>
+                    ) : (
+                      <DropdownMenuItem className="text-[13px]" onSelect={() => setShowLinkNc(true)}>
+                        <Anchor className="mr-2 h-3.5 w-3.5" />
+                        Link Naval Clearance
+                      </DropdownMenuItem>
+                    )
+                  )}
+
+                  <DropdownMenuItem className="text-[13px]" onSelect={() => setShowColorPicker(true)}>
+                    <Palette className="mr-2 h-3.5 w-3.5" />
+                    Set operation colour
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+
+            {isReopenable && (
+              <Button
+                className="brand-grad-active h-10.5 gap-2 text-[13px] font-semibold text-white shadow-sm"
+                onClick={() => setShowReopenDialog(true)}
+              >
+                <RefreshCw className="h-4 w-4" strokeWidth={2.2} />
+                Reopen as Revision
+                <ChevronRight className="h-4 w-4" strokeWidth={2.5} />
+              </Button>
+            )}
+          </>
         }
       />
 
-      <div className="p-4 md:p-6 space-y-6">
-
-        {/* ── Top summary bar */}
-        <div className="flex flex-wrap items-center gap-3">
-          <StatusBadge status={op.status as OperationStatus} className="text-sm px-3 py-1" />
-          <Badge variant="outline">{OP_TYPE_LABELS[op.type]}</Badge>
-          {op.type === "vessel_only" && op.source_type && (
-            <Badge variant="outline">{VESSEL_SOURCE_TYPE_LABELS[op.source_type]}</Badge>
-          )}
-          {op.product_type && (
-            <Badge variant="secondary" className="flex items-center gap-1">
-              <Tag className="w-3 h-3" />
-              {PRODUCT_TYPE_LABELS[op.product_type as keyof typeof PRODUCT_TYPE_LABELS] ?? op.product_type}
-            </Badge>
-          )}
-          <Badge variant="outline">{op.currency}</Badge>
-          {op.version > 1 && (
-            <Badge variant="outline" className="flex items-center gap-1 text-blue-700 border-blue-300">
-              <GitBranch className="w-3 h-3" />
-              v{op.version}
-            </Badge>
-          )}
-          {op.expected_volume_mt && (
-            <span className="text-sm text-muted-foreground">
-              {parseFloat(op.expected_volume_mt).toLocaleString()} L expected
-            </span>
-          )}
-
-          {op.type !== "truck_only" && (
-            op.naval_clearance ? (
-              <>
-                <Badge variant="outline" className="flex items-center gap-1.5">
-                  <Anchor className="w-3 h-3" />
-                  {op.naval_clearance.clearance_number}
-                  {!op.naval_clearance.is_valid && <span className="text-amber-600">(expired)</span>}
-                  {isBM && (
-                    <button
-                      className="ml-1 text-muted-foreground hover:text-destructive"
-                      onClick={() => setShowUnlinkNc(true)}
-                      title="Unlink Naval Clearance"
-                    >
-                      <XCircle className="w-3 h-3" />
-                    </button>
-                  )}
-                </Badge>
-                {isBM && (
-                  <Button size="sm" variant="outline" className="h-6 text-xs gap-1" onClick={() => setShowNotifyDialog(true)}>
-                    <Bell className="w-3 h-3" />Notify Clients
-                  </Button>
-                )}
-              </>
-            ) : isBM && (
-              <Button size="sm" variant="outline" className="h-6 text-xs gap-1" onClick={() => setShowLinkNc(true)}>
-                <Anchor className="w-3 h-3" />Link Naval Clearance
-              </Button>
-            )
-          )}
-
-          {isBM && (
-            <button
-              className={`w-4 h-4 rounded-full border ${op.color ? OPERATION_COLOR_SWATCHES[op.color] : "bg-transparent border-dashed"}`}
-              title="Set operation color"
-              onClick={() => setShowColorPicker(true)}
-            />
-          )}
-
-          <span className="text-sm text-muted-foreground ml-auto">
-            Created {formatRelative(op.created_at)}
-          </span>
-        </div>
-
-        {/* ── Status Pipeline ── shows where this operation sits in its flow */}
-        {op.status !== "cancelled" && op.status !== "archived" && (() => {
-          const pipeline = STATUS_PIPELINE[op.type] ?? [];
-          const currentIdx = pipeline.indexOf(op.status);
-          return (
-            <div className="overflow-x-auto pb-1">
-              <div className="flex items-center min-w-max gap-0">
-                {pipeline.map((st, i) => {
-                  const isPast    = i < currentIdx;
-                  const isCurrent = i === currentIdx;
-                  return (
-                    <div key={st} className="flex items-center">
-                      {i > 0 && (
-                        <div className={`w-5 h-px mx-0.5 ${isPast || isCurrent ? "bg-primary/40" : "bg-muted-foreground/20"}`} />
-                      )}
-                      <div className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-medium transition-all ${
-                        isCurrent
-                          ? "bg-primary text-primary-foreground shadow-sm scale-105"
-                          : isPast
-                          ? "bg-emerald-100 text-emerald-700"
-                          : "bg-muted/50 text-muted-foreground/50"
-                      }`}>
-                        {isPast && <span className="text-emerald-600">✓</span>}
-                        {PIPELINE_LABELS[st] ?? st.replace(/_/g, " ")}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          );
-        })()}
+      {/* ── Two columns: the working area, and a rail that stays put across
+           every tab so the operation's identity is never more than a glance
+           away. Stacks under 1280px. */}
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_336px]">
+        <div className="min-w-0 space-y-4">
 
         {/* ── Vessel journey progress ── the spec's six numbered stages, at a
              glance, on every tab. Loading (1-2) happens once on the barge run;
@@ -3049,75 +3191,101 @@ export default function OperationDetailPage({
               return idx >= order;
             }).length;
           };
-          const steps = [
-            { n: 1, label: "Loading Commenced", done: acts.every((a) => !!a.commence_system_at), count: null as string | null },
-            { n: 2, label: "Loading Completed", done: acts.every((a) => !!a.complete_system_at), count: null as string | null },
-            ...LEG_STAGES.map((s, i) => {
+          // Loading is a single event across the barge run, so its detail line
+          // is the last recorded time; delivery repeats, so those carry the
+          // fleet count instead.
+          const lastOf = (pick: (a: VesselActivity) => string | undefined) => {
+            const times = acts.map(pick).filter(Boolean) as string[];
+            return times.length === acts.length && times.length > 0
+              ? formatDayTime(times.sort().at(-1))
+              : undefined;
+          };
+          const steps: JourneyStep[] = [
+            {
+              label: "Loading Commenced",
+              done: acts.every((a) => !!a.commence_system_at),
+              detail: lastOf((a) => a.commence_system_at),
+            },
+            {
+              label: "Loading Completed",
+              done: acts.every((a) => !!a.complete_system_at),
+              detail: lastOf((a) => a.complete_system_at),
+            },
+            ...LEG_STAGES.map((s) => {
               const reached = legsAtLeast(s.value);
               return {
-                n: i + 3,
                 label: s.label,
                 done: legs.length > 0 && reached === legs.length,
-                count: legs.length > 0 ? `${reached}/${legs.length}` : null,
+                detail: legs.length > 0 ? `${reached}/${legs.length}` : undefined,
               };
             }),
           ];
-          const nextIdx = steps.findIndex((s) => !s.done);
+          return <JourneyStepper steps={steps} />;
+        })()}
+
+        {/* ── Status pipeline ── the fallback for operation types that have no
+             six-stage vessel journey. Shows where this operation sits in its
+             own flow. */}
+        {op.type !== "vessel_only" && op.status !== "cancelled" && op.status !== "archived" && (() => {
+          const pipeline = STATUS_PIPELINE[op.type] ?? [];
+          const currentIdx = pipeline.indexOf(op.status);
           return (
-            <Card className="border-0 shadow-sm">
-              <CardContent className="px-5 py-3.5">
-                <div className="flex items-center justify-between mb-2.5">
-                  <p className="text-[11px] font-bold uppercase tracking-wider">Vessel Journey</p>
-                  <p className="text-[10px] text-muted-foreground">
-                    {legs.length === 0
-                      ? "No receiving vessels added yet"
-                      : `${legs.length} receiving vessel${legs.length === 1 ? "" : "s"}`}
-                  </p>
-                </div>
-                <div className="overflow-x-auto pb-1">
-                  <div className="flex items-start min-w-max">
-                    {steps.map((s, i) => {
-                      const isNext = i === nextIdx;
-                      return (
-                        <div key={s.n} className="flex items-start">
-                          {i > 0 && <div className={`w-8 h-px mt-3.5 ${s.done || steps[i - 1].done ? "bg-emerald-300" : "bg-border"}`} />}
-                          <div className="flex flex-col items-center gap-1 w-[112px] text-center">
-                            <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold ring-4 ${
-                              s.done
-                                ? "bg-emerald-500 text-white ring-emerald-50"
-                                : isNext
-                                ? "bg-primary text-white ring-primary/10"
-                                : "bg-muted text-muted-foreground ring-transparent"
-                            }`}>
-                              {s.done ? "✓" : s.n}
-                            </div>
-                            <p className={`text-[10px] leading-tight ${s.done ? "text-muted-foreground" : isNext ? "font-semibold text-primary" : "text-muted-foreground/60"}`}>
-                              {s.label}
-                            </p>
-                            {s.count && (
-                              <p className={`text-[9px] font-mono ${s.done ? "text-emerald-600" : "text-muted-foreground/60"}`}>{s.count}</p>
+            <section
+              className="animate-rise overflow-hidden rounded-2xl border border-navy-100 bg-card px-4 py-4 shadow-[0_1px_2px_rgb(16_36_71/0.04)] dark:border-border lg:px-5"
+              aria-label="Operation pipeline"
+            >
+              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
+                Pipeline
+              </p>
+              <div className="scrollbar-slim mt-3 overflow-x-auto pb-1">
+                <div className="flex min-w-max items-center">
+                  {pipeline.map((st, i) => {
+                    const isPast    = i < currentIdx;
+                    const isCurrent = i === currentIdx;
+                    return (
+                      <div key={st} className="flex items-center">
+                        {i > 0 && (
+                          <span
+                            aria-hidden="true"
+                            className={cn(
+                              "mx-1 h-0.5 w-5 rounded-full",
+                              isPast || isCurrent ? "bg-emerald-500" : "bg-border"
                             )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                          />
+                        )}
+                        <span
+                          aria-current={isCurrent ? "step" : undefined}
+                          className={cn(
+                            "inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] font-semibold",
+                            isCurrent
+                              ? "brand-grad-active text-white shadow-sm"
+                              : isPast
+                                ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300"
+                                : "bg-muted text-muted-foreground/60"
+                          )}
+                        >
+                          {isPast && <CheckCircle2 className="h-3 w-3" strokeWidth={2.5} />}
+                          {PIPELINE_LABELS[st] ?? st.replace(/_/g, " ")}
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </section>
           );
         })()}
 
         {/* ── BM: Pending Completion review card */}
         {isBM && op.status === "pending_completion" && (
-          <Card className="border-orange-200 bg-orange-50/40 shadow-sm">
+          <Card className="rounded-2xl border border-amber-200 bg-amber-50/50 shadow-[0_1px_2px_rgb(16_36_71/0.04)] dark:border-amber-500/30 dark:bg-amber-500/10">
             <CardContent className="p-4 space-y-3">
               <div className="flex items-start gap-3">
-                <ClipboardCheck className="w-5 h-5 text-orange-600 mt-0.5 shrink-0" />
+                <ClipboardCheck className="w-5 h-5 text-amber-600 mt-0.5 shrink-0" />
                 <div className="flex-1">
-                  <p className="text-sm font-semibold text-orange-800">Completion Report Submitted</p>
+                  <p className="text-sm font-semibold text-amber-800">Completion Report Submitted</p>
                   {op.completion_notes ? (
-                    <p className="text-sm text-orange-700 mt-1">{op.completion_notes}</p>
+                    <p className="text-sm text-amber-700 mt-1">{op.completion_notes}</p>
                   ) : (
                     <p className="text-xs text-muted-foreground mt-0.5">
                       No completion notes provided. Review the timeline for details.
@@ -3125,7 +3293,7 @@ export default function OperationDetailPage({
                   )}
                   {/* Which BDN gates completion depends on the operation type —
                        a Vessel Only operation never involves a Truck BDN. */}
-                  <p className="text-xs text-orange-700/80 mt-1.5">
+                  <p className="text-xs text-amber-700/80 mt-1.5">
                     {op.type === "vessel_only" ? (
                       <>
                         Awaiting the Ops Supervisor / Marine Manager to submit a Vessel BDN for each
@@ -3173,7 +3341,7 @@ export default function OperationDetailPage({
             const latestPfi = pfis?.[0];
 
             return hasPfi ? (
-              <Card className="border-emerald-200 bg-emerald-50/40 border-0 shadow-sm">
+              <Card className="rounded-2xl border border-emerald-200 bg-emerald-50/50 shadow-[0_1px_2px_rgb(16_36_71/0.04)] dark:border-emerald-500/30 dark:bg-emerald-500/10">
                 <CardContent className="p-4 flex items-center gap-3">
                   <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0" />
                   <div className="flex-1 min-w-0">
@@ -3187,7 +3355,7 @@ export default function OperationDetailPage({
                 </CardContent>
               </Card>
             ) : (
-              <Card className="border-amber-200 bg-amber-50/40 border-0 shadow-sm">
+              <Card className="rounded-2xl border border-amber-200 bg-amber-50/50 shadow-[0_1px_2px_rgb(16_36_71/0.04)] dark:border-amber-500/30 dark:bg-amber-500/10">
                 <CardContent className="p-4 space-y-3">
                   <div className="flex items-start gap-3">
                     <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
@@ -3243,7 +3411,7 @@ export default function OperationDetailPage({
 
         {/* ── BM: Standard transition card */}
         {isBM && availableTransitions.length > 0 && op.status !== "pending_completion" && (
-          <Card className="border-primary/20 bg-primary/5 border-0 shadow-sm">
+          <Card className="rounded-2xl border border-brand-200 bg-brand-50/50 shadow-[0_1px_2px_rgb(16_36_71/0.04)] dark:border-brand-500/30 dark:bg-brand-500/10">
             <CardContent className="p-4 flex items-center justify-between gap-4">
               <div>
                 <p className="text-sm font-semibold">Stage Transition</p>
@@ -3281,7 +3449,7 @@ export default function OperationDetailPage({
           const hint = getNextStepHint(op);
           if (!hint) return null;
           return (
-            <Card className="border-0 shadow-sm bg-accent/10">
+            <Card className="rounded-2xl border border-navy-100 shadow-[0_1px_2px_rgb(16_36_71/0.04)] dark:border-border bg-accent/10">
               <CardContent className="p-4 flex items-start gap-3">
                 <Clock className="w-4 h-4 text-accent-foreground/70 mt-0.5 shrink-0" />
                 <div>
@@ -3297,7 +3465,7 @@ export default function OperationDetailPage({
 
         {/* ── Full operation: load the vessel via trucks before starting vessel ops */}
         {isBM && op.type === "full_operation" && op.status === "active" && (
-          <Card className="border-amber-200 bg-amber-50/40 shadow-sm">
+          <Card className="rounded-2xl border border-amber-200 bg-amber-50/50 shadow-[0_1px_2px_rgb(16_36_71/0.04)] dark:border-amber-500/30 dark:bg-amber-500/10">
             <CardContent className="p-4 flex items-start gap-3">
               <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
               <div>
@@ -3313,158 +3481,90 @@ export default function OperationDetailPage({
           </Card>
         )}
 
-        {/* ── Reopen button (BM only, completed/archived/cancelled) */}
-        {isReopenable && (
-          <Card className="border-blue-200 bg-blue-50/30 shadow-sm">
-            <CardContent className="p-4 flex items-center justify-between gap-4">
-              <div>
-                <p className="text-sm font-semibold text-blue-800">Reopen this Operation</p>
-                <p className="text-xs text-muted-foreground">
-                  Creates a new revision (v{(op.version ?? 1) + 1}) linked to this operation.
-                </p>
-              </div>
-              <Button
-                size="sm"
-                variant="outline"
-                className="border-blue-300 text-blue-700 hover:bg-blue-50"
-                onClick={() => setShowReopenDialog(true)}
-              >
-                <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
-                Reopen as Revision
-              </Button>
-            </CardContent>
-          </Card>
-        )}
-
         {/* Completion report is now handled via the Truck Reports tab progress tracker */}
 
-        {/* ── Main grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 space-y-4">
-            <Tabs defaultValue="overview">
-              <TabsList className="h-auto justify-start md:justify-center flex-nowrap overflow-x-auto max-w-full md:flex-wrap md:overflow-visible md:max-w-none">
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="animate-rise">
+              <TabsList variant="underline">
                 <TabsTrigger value="overview">Overview</TabsTrigger>
 
                 {canSeeTasks && (
                   <TabsTrigger value="tasks">
                     Tasks
-                    {tasks?.length ? (
-                      <Badge variant="secondary" className="ml-1.5 h-4 px-1.5 text-[10px]">
-                        {tasks.length}
-                      </Badge>
-                    ) : null}
+                    <TabCount value={tasks?.length} />
                   </TabsTrigger>
                 )}
 
                 {canSeeFeedback && op.type !== "vessel_only" && (
                   <TabsTrigger value="feedback">
                     Feedback
-                    {feedbacks?.length ? (
-                      <Badge
-                        variant={feedbacks.some((f) => f.status === "pending") ? "default" : "secondary"}
-                        className="ml-1.5 h-4 px-1.5 text-[10px]"
-                      >
-                        {feedbacks.length}
-                      </Badge>
-                    ) : null}
+                    <TabCount
+                      value={feedbacks?.length}
+                      accent={feedbacks?.some((f) => f.status === "pending")}
+                    />
                   </TabsTrigger>
                 )}
 
                 {canSeeBDN && (
                   <TabsTrigger value="bdns">
                     BDNs
-                    {bdns?.length ? (
-                      <Badge variant="secondary" className="ml-1.5 h-4 px-1.5 text-[10px]">
-                        {bdns.length}
-                      </Badge>
-                    ) : null}
+                    <TabCount value={bdns?.length} />
                   </TabsTrigger>
                 )}
 
                 {canSeeTruckBdn && op.type === "truck_only" && (
                   <TabsTrigger value="truck-bdns">
                     Truck BDN
-                    {truckBdns?.length ? (
-                      <Badge variant="secondary" className="ml-1.5 h-4 px-1.5 text-[10px]">
-                        {truckBdns.length}
-                      </Badge>
-                    ) : null}
+                    <TabCount value={truckBdns?.length} />
                   </TabsTrigger>
                 )}
 
                 {canSeeVesselBdn && op.type !== "truck_only" && (
                   <TabsTrigger value="vessel-bdns">
                     Vessel BDN
-                    {vesselBdns?.length ? (
-                      <Badge variant="secondary" className="ml-1.5 h-4 px-1.5 text-[10px]">
-                        {vesselBdns.length}
-                      </Badge>
-                    ) : null}
+                    <TabCount value={vesselBdns?.length} />
                   </TabsTrigger>
                 )}
 
                 {canSeeMarine && (
                   <TabsTrigger value="marine">
-                    <Anchor className="w-3.5 h-3.5 mr-1" />
                     Marine
-                    {vesselActivities?.length ? (
-                      <Badge
-                        variant={vesselActivities.some((a) => a.status === "active") ? "default" : "secondary"}
-                        className="ml-1.5 h-4 px-1.5 text-[10px]"
-                      >
-                        {vesselActivities.length}
-                      </Badge>
-                    ) : null}
+                    <TabCount
+                      value={vesselActivities?.length}
+                      accent={vesselActivities?.some((a) => a.status === "active")}
+                    />
                   </TabsTrigger>
                 )}
 
                 {isBM && op.type !== "truck_only" && (
-                  <TabsTrigger value="kpi">
-                    <Gauge className="w-3.5 h-3.5 mr-1" />
-                    KPI
-                  </TabsTrigger>
+                  <TabsTrigger value="kpi">KPI</TabsTrigger>
                 )}
 
                 {(isLO || isBM || isOS) && op.type !== "vessel_only" && (
                   <TabsTrigger value="truck-reports">
-                    <ClipboardList className="w-3.5 h-3.5 mr-1" />
                     Truck Reports
-                    {truckOps?.length ? (
-                      <Badge variant="secondary" className="ml-1.5 h-4 px-1.5 text-[10px]">
-                        {truckOps.length}
-                      </Badge>
-                    ) : null}
+                    <TabCount value={truckOps?.length} />
                   </TabsTrigger>
                 )}
 
                 <TabsTrigger value="documents">
-                  <FileText className="w-3 h-3 mr-1 opacity-60" />
                   Docs
-                  {docs?.length ? (
-                    <Badge variant="secondary" className="ml-1.5 h-4 px-1.5 text-[10px]">
-                      {docs.length}
-                    </Badge>
-                  ) : null}
+                  <TabCount value={docs?.length} />
                 </TabsTrigger>
 
                 {isBM && (
                   <TabsTrigger value="activity">
-                    <Activity className="w-3.5 h-3.5 mr-1" />
                     Activity
-                    {activityLog?.length ? (
-                      <Badge variant="secondary" className="ml-1.5 h-4 px-1.5 text-[10px]">
-                        {activityLog.length}
-                      </Badge>
-                    ) : null}
+                    <TabCount value={activityLog?.length} />
                   </TabsTrigger>
                 )}
 
               </TabsList>
 
               {/* ── Overview tab */}
-              <TabsContent value="overview" className="mt-4">
-                <Card className="border-0 shadow-sm">
-                  <CardContent className="p-5 grid grid-cols-2 gap-4">
+              <TabsContent value="overview" className="mt-4 space-y-4">
+                {/* Definition grid — the operation's own record, two columns */}
+                <section className="overflow-hidden rounded-2xl border border-navy-100 bg-card p-4 shadow-[0_1px_2px_rgb(16_36_71/0.04)] dark:border-border lg:p-5">
+                  <dl className="grid grid-cols-1 gap-x-8 gap-y-5 sm:grid-cols-2">
                     <InfoItem label="Operation Number" value={op.operation_number} mono />
                     <InfoItem label="Type" value={OP_TYPE_LABELS[op.type]} />
                     {op.product_type && (
@@ -3481,70 +3581,159 @@ export default function OperationDetailPage({
                       <InfoItem label="Discharge Location" value={op.discharge_location} />
                     )}
                     <InfoItem
-                      label="Expected Volume"
-                      value={op.expected_volume_mt ? `${parseFloat(op.expected_volume_mt).toLocaleString()} L` : "—"}
+                      label="Expected Volume (L)"
+                      value={op.expected_volume_mt ? parseFloat(op.expected_volume_mt).toLocaleString() : "—"}
+                      numeric
                     />
                     <InfoItem
-                      label="Actual Volume"
-                      value={op.actual_volume_mt ? `${parseFloat(op.actual_volume_mt).toLocaleString()} L` : "—"}
+                      label="Actual Volume (L)"
+                      value={op.actual_volume_mt ? parseFloat(op.actual_volume_mt).toLocaleString() : "—"}
+                      numeric
                     />
-                    <InfoItem label="Version" value={`v${op.version ?? 1}`} />
-                    <InfoItem label="Created" value={formatDate(op.created_at)} />
-                    <InfoItem label="Last Updated" value={formatDateTime(op.updated_at)} />
-                    <InfoItem label="Completed" value={op.completed_at ? formatDate(op.completed_at) : "—"} />
+                    <InfoItem label="Version" value={`v${op.version ?? 1}`} numeric />
+                    <InfoItem label="Created" value={formatDateTime(op.created_at)} numeric />
+                    <InfoItem label="Last Updated" value={formatDateTime(op.updated_at)} numeric />
+                    <InfoItem
+                      label="Completed"
+                      value={op.completed_at ? formatDateTime(op.completed_at) : "—"}
+                      numeric
+                    />
                     {op.version_notes && (
-                      <div className="col-span-2">
-                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Revision Notes</p>
-                        <p className="text-sm italic text-muted-foreground">{op.version_notes}</p>
-                      </div>
+                      <InfoItem label="Revision Notes" value={op.version_notes} wide muted />
                     )}
                     {op.completion_notes && (
-                      <div className="col-span-2">
-                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Completion Notes</p>
-                        <p className="text-sm">{op.completion_notes}</p>
-                      </div>
+                      <InfoItem label="Completion Notes" value={op.completion_notes} wide />
                     )}
-                    {op.notes && (
-                      <div className="col-span-2">
-                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Notes</p>
-                        <p className="text-sm">{op.notes}</p>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
+                    {op.notes && <InfoItem label="Notes" value={op.notes} wide />}
+                  </dl>
+                </section>
+
+                {/* Supporting detail — vessel, parties, documents */}
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                  {opVessel && (
+                    <PanelCard icon={Ship} title="Vessel Details" className="relative isolate overflow-hidden">
+                      {/* Decorative — ornament, never data. */}
+                      <Ship
+                        aria-hidden="true"
+                        className="pointer-events-none absolute -bottom-5 -right-4 -z-10 h-28 w-28 text-brand-500/8"
+                        strokeWidth={1}
+                      />
+                      <dl className="space-y-3.5">
+                        <InfoItem label="Vessel Name" value={opVessel.vessel_name} />
+                        <InfoItem label="Vessel Type" value={opVessel.vessel_type} />
+                        <InfoItem label="IMO Number" value={`IMO ${opVessel.imo_number}`} numeric />
+                        {opVessel.flag_state && (
+                          <InfoItem label="Flag State" value={opVessel.flag_state} />
+                        )}
+                      </dl>
+                    </PanelCard>
+                  )}
+
+                  {/* The model carries a client and a creator — there are no
+                      charterer / supplier / trader fields to show. */}
+                  {(op.client || op.creator) && (
+                    <PanelCard icon={Users} tone="violet" title="Parties">
+                      <dl className="space-y-3.5">
+                        {op.client && (
+                          <InfoItem label="Client" value={op.client.full_name} hint={op.client.email} />
+                        )}
+                        {op.creator && (
+                          <InfoItem
+                            label="Created By"
+                            value={op.creator.full_name}
+                            hint={ROLE_LABELS[op.creator.role] ?? op.creator.role}
+                          />
+                        )}
+                      </dl>
+                    </PanelCard>
+                  )}
+
+                  {docs && docs.length > 0 && (
+                    <PanelCard
+                      icon={FileText}
+                      tone="sky"
+                      title={`Documents (${docs.length})`}
+                      action={
+                        <button
+                          type="button"
+                          className="rounded text-[12px] font-semibold text-brand-600 transition-colors hover:text-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          onClick={() => setActiveTab("documents")}
+                        >
+                          View all
+                        </button>
+                      }
+                    >
+                      <ul className="space-y-2.5">
+                        {docs.slice(0, 4).map((doc) => (
+                          <li key={doc.id} className="flex items-center justify-between gap-3">
+                            <span className="flex min-w-0 items-center gap-2">
+                              <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" strokeWidth={2} />
+                              <span className="truncate text-[13px] font-medium text-foreground">
+                                {doc.file_name}
+                              </span>
+                            </span>
+                            <Badge
+                              variant="secondary"
+                              className="shrink-0 rounded-lg px-2 text-[10px] font-semibold"
+                            >
+                              {DOC_TYPE_LABELS[doc.document_type] ?? doc.document_type}
+                            </Badge>
+                          </li>
+                        ))}
+                        {docs.length > 4 && (
+                          <li className="flex items-center justify-between gap-3 pt-0.5">
+                            <span className="text-[12px] text-muted-foreground">More documents</span>
+                            <Badge variant="secondary" className="shrink-0 rounded-lg px-2 text-[10px] tabular-nums">
+                              +{docs.length - 4}
+                            </Badge>
+                          </li>
+                        )}
+                      </ul>
+                    </PanelCard>
+                  )}
+                </div>
 
                 {/* Version history */}
                 {versions && versions.length > 1 && (
-                  <Card className="border-0 shadow-sm mt-4">
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm flex items-center gap-2">
-                        <GitBranch className="w-4 h-4" />
-                        Operation Versions ({versions.length})
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="p-0 pb-2">
-                      <div className="divide-y">
-                        {versions.map((v) => (
-                          <div
-                            key={v.id}
-                            className={`flex items-center justify-between px-5 py-2.5 cursor-pointer hover:bg-muted/50 transition-colors ${v.id === id ? "bg-primary/5" : ""}`}
-                            onClick={() => v.id !== id && router.push(`/operations/${v.id}`)}
-                          >
-                            <div>
-                              <p className="text-sm font-mono font-semibold">{v.operation_number}</p>
-                              {v.version_notes && (
-                                <p className="text-xs text-muted-foreground italic">{v.version_notes}</p>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <StatusBadge status={v.status} className="text-xs" />
-                              {v.id === id && <Badge variant="secondary" className="text-[10px]">current</Badge>}
-                            </div>
+                  <PanelCard
+                    icon={GitBranch}
+                    tone="amber"
+                    title={`Operation Versions (${versions.length})`}
+                    subtitle="Each reopen creates a linked revision"
+                    flush
+                  >
+                    <div className="divide-y divide-border/70">
+                      {versions.map((v) => (
+                        <button
+                          key={v.id}
+                          type="button"
+                          disabled={v.id === id}
+                          className={cn(
+                            "flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors lg:px-5",
+                            v.id === id ? "bg-brand-50/60 dark:bg-brand-500/10" : "hover:bg-muted/50"
+                          )}
+                          onClick={() => v.id !== id && router.push(`/operations/${v.id}`)}
+                        >
+                          <div className="min-w-0">
+                            <p className="truncate font-mono text-[13px] font-semibold text-foreground">
+                              {v.operation_number}
+                            </p>
+                            {v.version_notes && (
+                              <p className="truncate text-[11px] italic text-muted-foreground">
+                                {v.version_notes}
+                              </p>
+                            )}
                           </div>
-                        ))}
-                      </div>
-                    </CardContent>
-                  </Card>
+                          <div className="flex shrink-0 items-center gap-2">
+                            <StatusBadge status={v.status} />
+                            {v.id === id && (
+                              <Badge variant="secondary" className="text-[10px]">current</Badge>
+                            )}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </PanelCard>
                 )}
               </TabsContent>
 
@@ -3562,7 +3751,7 @@ export default function OperationDetailPage({
                       </Button>
                     </div>
                   )}
-                  <Card className="border-0 shadow-sm">
+                  <Card className="rounded-2xl border border-navy-100 shadow-[0_1px_2px_rgb(16_36_71/0.04)] dark:border-border">
                     <CardContent className="p-0">
                       {tasks?.length ? (
                         <div className="divide-y">
@@ -3631,7 +3820,7 @@ export default function OperationDetailPage({
                       can be nominated/added at any point in the operation's lifecycle, not just
                       while awaiting_feedback — no status gate here by design. */}
                   {(isLO || isBM) && (
-                    <Card className="border-0 shadow-sm">
+                    <Card className="rounded-2xl border border-navy-100 shadow-[0_1px_2px_rgb(16_36_71/0.04)] dark:border-border">
                       <CardContent className="p-5 space-y-4">
                         <>
                             <div>
@@ -3818,7 +4007,7 @@ export default function OperationDetailPage({
                                   </div>
                                 )}
                                 {fb.status === "rejected" && fb.rejection_reason && (
-                                  <p className="text-xs text-red-700">
+                                  <p className="text-xs text-rose-700">
                                     <span className="font-semibold">Rejection reason:</span> {fb.rejection_reason}
                                   </p>
                                 )}
@@ -3832,7 +4021,7 @@ export default function OperationDetailPage({
 
                   {/* BM review panel */}
                   {isBM && !feedbacks?.length && (
-                    <Card className="border-0 shadow-sm">
+                    <Card className="rounded-2xl border border-navy-100 shadow-[0_1px_2px_rgb(16_36_71/0.04)] dark:border-border">
                       <CardContent className="p-0">
                         <div className="flex flex-col items-center py-12 text-muted-foreground">
                           <Truck className="w-10 h-10 mb-3 opacity-30" />
@@ -3855,11 +4044,12 @@ export default function OperationDetailPage({
                     return (
                       <Card
                         key={fb.id}
-                        className={`border shadow-sm ${
-                          isPending  ? "border-amber-200 bg-amber-50/30"
-                          : isApproved ? "border-emerald-200 bg-emerald-50/20"
-                          : "border-red-200 bg-red-50/20"
-                        }`}
+                        className={cn(
+                          "rounded-2xl border shadow-[0_1px_2px_rgb(16_36_71/0.04)]",
+                          isPending    ? "border-amber-200 bg-amber-50/40 dark:border-amber-500/30 dark:bg-amber-500/10"
+                          : isApproved ? "border-emerald-200 bg-emerald-50/30 dark:border-emerald-500/30 dark:bg-emerald-500/10"
+                          : "border-rose-200 bg-rose-50/30 dark:border-rose-500/30 dark:bg-rose-500/10"
+                        )}
                       >
                         <CardContent className="p-5 space-y-4">
                           <div className="flex items-start justify-between gap-3">
@@ -3868,7 +4058,7 @@ export default function OperationDetailPage({
                                 <span className={`text-xs font-semibold px-2 py-0.5 rounded capitalize ${
                                   isPending  ? "bg-amber-100 text-amber-700"
                                   : isApproved ? "bg-emerald-100 text-emerald-700"
-                                  : "bg-red-100 text-red-700"
+                                  : "bg-rose-100 text-rose-700"
                                 }`}>
                                   {fb.status}
                                 </span>
@@ -3909,7 +4099,7 @@ export default function OperationDetailPage({
                               </span>
                             )}
                             {fb.status === "rejected" && (
-                              <span className="text-xs text-red-700 flex items-center gap-1 shrink-0">
+                              <span className="text-xs text-rose-700 flex items-center gap-1 shrink-0">
                                 <XCircle className="w-3.5 h-3.5" />
                                 Rejected
                               </span>
@@ -3927,7 +4117,7 @@ export default function OperationDetailPage({
                                   return (
                                     <Link
                                       key={tid}
-                                      href={`/trucks/${tid}`}
+                                      href={`/fleet/${tid}`}
                                       className="flex items-center justify-between gap-2 text-xs bg-background hover:bg-primary/5 border px-2.5 py-1.5 rounded-md transition-colors"
                                     >
                                       <span className="font-mono font-semibold text-primary">
@@ -3944,11 +4134,11 @@ export default function OperationDetailPage({
                           )}
 
                           {fb.rejection_reason && (
-                            <div className="rounded-md bg-red-50 border border-red-200 px-3 py-2">
-                              <p className="text-xs font-semibold text-red-700 flex items-center gap-1 mb-0.5">
+                            <div className="rounded-md bg-rose-50 border border-rose-200 px-3 py-2">
+                              <p className="text-xs font-semibold text-rose-700 flex items-center gap-1 mb-0.5">
                                 <AlertTriangle className="w-3 h-3" /> Rejection Reason
                               </p>
-                              <p className="text-xs text-red-700">{fb.rejection_reason}</p>
+                              <p className="text-xs text-rose-700">{fb.rejection_reason}</p>
                             </div>
                           )}
 
@@ -4032,10 +4222,10 @@ export default function OperationDetailPage({
 
                   {/* MM: Create BDN form */}
                   {isMM && !["completed", "cancelled", "archived"].includes(op.status) && (
-                    <Card className="border-0 shadow-sm">
+                    <Card className="rounded-2xl border border-navy-100 shadow-[0_1px_2px_rgb(16_36_71/0.04)] dark:border-border">
                       <CardHeader className="pb-3 pt-4 px-5">
                         <div className="flex items-center justify-between">
-                          <CardTitle className="text-sm font-semibold">
+                          <CardTitle className="text-[15px] font-bold tracking-tight">
                             {bdns?.length ? "Submit Another BDN" : "Submit Bunker Delivery Note"}
                           </CardTitle>
                           {(bdns?.length ?? 0) > 0 && (
@@ -4114,7 +4304,7 @@ export default function OperationDetailPage({
                           <div className="space-y-1.5">
                             <Label className="text-xs">Notes</Label>
                             <Textarea
-                              className="text-xs min-h-[60px] resize-none"
+                              className="text-xs min-h-15 resize-none"
                               placeholder="Any additional delivery notes…"
                               value={bdnNotes} onChange={(e) => setBdnNotes(e.target.value)}
                             />
@@ -4132,7 +4322,7 @@ export default function OperationDetailPage({
                   )}
 
                   {/* BDN list */}
-                  <Card className="border-0 shadow-sm">
+                  <Card className="rounded-2xl border border-navy-100 shadow-[0_1px_2px_rgb(16_36_71/0.04)] dark:border-border">
                     <CardContent className="p-0">
                       {bdns?.length ? (
                         <div className="divide-y">
@@ -4162,7 +4352,7 @@ export default function OperationDetailPage({
                                     <div className="space-y-2 border rounded-md p-3 bg-muted/30">
                                       <Label className="text-xs">Rejection reason <span className="text-destructive">*</span></Label>
                                       <Textarea
-                                        className="text-xs min-h-[60px] resize-none"
+                                        className="text-xs min-h-15 resize-none"
                                         placeholder="Explain why this BDN is being rejected (min 10 characters)…"
                                         value={rejectBdnReason}
                                         onChange={(e) => setRejectBdnReason(e.target.value)}
@@ -4228,10 +4418,10 @@ export default function OperationDetailPage({
                       Only valid once delivery completion has been submitted (pending_completion) —
                       that's the only status the state machine allows a Truck BDN submission from. */}
                   {(isOS || isLO) && op.status === "pending_completion" && (
-                    <Card className="border-0 shadow-sm">
+                    <Card className="rounded-2xl border border-navy-100 shadow-[0_1px_2px_rgb(16_36_71/0.04)] dark:border-border">
                       <CardHeader className="pb-3 pt-4 px-5">
                         <div className="flex items-center justify-between">
-                          <CardTitle className="text-sm font-semibold">
+                          <CardTitle className="text-[15px] font-bold tracking-tight">
                             {truckBdns?.length ? "Submit Another Truck BDN" : "Submit Truck Bunker Delivery Note"}
                           </CardTitle>
                           {(truckBdns?.length ?? 0) > 0 && (
@@ -4406,7 +4596,7 @@ export default function OperationDetailPage({
                           <div className="space-y-1.5">
                             <Label className="text-xs">Notes</Label>
                             <Textarea
-                              className="text-xs min-h-[60px] resize-none"
+                              className="text-xs min-h-15 resize-none"
                               placeholder="Any additional delivery notes…"
                               value={truckBdnForm.notes ?? ""}
                               onChange={(e) => setTruckBdnForm((f) => ({ ...f, notes: e.target.value }))}
@@ -4425,7 +4615,7 @@ export default function OperationDetailPage({
                   )}
 
                   {/* Truck BDN list */}
-                  <Card className="border-0 shadow-sm">
+                  <Card className="rounded-2xl border border-navy-100 shadow-[0_1px_2px_rgb(16_36_71/0.04)] dark:border-border">
                     <CardContent className="p-0">
                       {truckBdns?.length ? (
                         <div className="divide-y">
@@ -4545,7 +4735,7 @@ export default function OperationDetailPage({
                                     <div className="space-y-2 border rounded-md p-3 bg-muted/30">
                                       <Label className="text-xs">Rejection reason <span className="text-destructive">*</span></Label>
                                       <Textarea
-                                        className="text-xs min-h-[60px] resize-none"
+                                        className="text-xs min-h-15 resize-none"
                                         placeholder="Explain why this Truck BDN is being rejected (min 10 characters)…"
                                         value={rejectTruckBdnReason}
                                         onChange={(e) => setRejectTruckBdnReason(e.target.value)}
@@ -4647,10 +4837,10 @@ export default function OperationDetailPage({
 
                   {/* OS/Marine: Submit Vessel BDN form */}
                   {(isOS || isMM) && (isVesselOnly ? submittableLegs.length > 0 : submittableActivities.length > 0) && (
-                    <Card className="border-0 shadow-sm">
+                    <Card className="rounded-2xl border border-navy-100 shadow-[0_1px_2px_rgb(16_36_71/0.04)] dark:border-border">
                       <CardHeader className="pb-3 pt-4 px-5">
                         <div className="flex items-center justify-between">
-                          <CardTitle className="text-sm font-semibold">Submit Vessel Bunker Delivery Note</CardTitle>
+                          <CardTitle className="text-[15px] font-bold tracking-tight">Submit Vessel Bunker Delivery Note</CardTitle>
                           {!vesselBdnFormActivityId && (
                             <Select
                               value=""
@@ -4664,7 +4854,7 @@ export default function OperationDetailPage({
                                 );
                               }}
                             >
-                              <SelectTrigger className="h-8 text-xs w-[220px]"><SelectValue placeholder={isVesselOnly ? "Select receiving vessel…" : "Select vessel run…"} /></SelectTrigger>
+                              <SelectTrigger className="h-8 text-xs w-55"><SelectValue placeholder={isVesselOnly ? "Select receiving vessel…" : "Select vessel run…"} /></SelectTrigger>
                               <SelectContent>
                                 {isVesselOnly
                                   ? submittableLegs.map(({ leg, activity }) => (
@@ -4781,7 +4971,7 @@ export default function OperationDetailPage({
 
                           <div className="space-y-1.5">
                             <Label className="text-xs">Notes</Label>
-                            <Textarea className="text-xs min-h-[60px] resize-none" placeholder="Any additional delivery notes…" value={vesselBdnForm.notes ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, notes: e.target.value }))} />
+                            <Textarea className="text-xs min-h-15 resize-none" placeholder="Any additional delivery notes…" value={vesselBdnForm.notes ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, notes: e.target.value }))} />
                           </div>
                           <div className="flex gap-2">
                             <Button size="sm" className="flex-1" disabled={!vesselBdnFormComplete || createVesselBdnMutation.isPending} onClick={() => createVesselBdnMutation.mutate()}>
@@ -4795,13 +4985,13 @@ export default function OperationDetailPage({
                   )}
 
                   {/* Vessel BDN list */}
-                  <Card className="border-0 shadow-sm">
+                  <Card className="rounded-2xl border border-navy-100 shadow-[0_1px_2px_rgb(16_36_71/0.04)] dark:border-border">
                     <CardContent className="p-0">
                       {vesselBdnsLoading ? (
                         <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
                       ) : vesselBdnsErrored ? (
                         <div className="flex flex-col items-center gap-2 py-8">
-                          <p className="text-sm text-red-600">Failed to load Vessel BDNs</p>
+                          <p className="text-sm text-rose-600">Failed to load Vessel BDNs</p>
                           <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => refetchVesselBdns()}>Retry</Button>
                         </div>
                       ) : vesselBdns?.length ? (
@@ -4901,7 +5091,7 @@ export default function OperationDetailPage({
                                   {rejectVesselBdnId === vb.id ? (
                                     <div className="space-y-2 border rounded-md p-3 bg-muted/30">
                                       <Label className="text-xs">Rejection reason <span className="text-destructive">*</span></Label>
-                                      <Textarea className="text-xs min-h-[60px] resize-none" placeholder="Explain why this Vessel BDN is being rejected (min 10 characters)…" value={rejectVesselBdnReason} onChange={(e) => setRejectVesselBdnReason(e.target.value)} />
+                                      <Textarea className="text-xs min-h-15 resize-none" placeholder="Explain why this Vessel BDN is being rejected (min 10 characters)…" value={rejectVesselBdnReason} onChange={(e) => setRejectVesselBdnReason(e.target.value)} />
                                       <div className="flex gap-2">
                                         <Button size="sm" variant="destructive" className="flex-1 text-xs" disabled={rejectVesselBdnReason.trim().length < 10 || rejectVesselBdnMutation.isPending} onClick={() => rejectVesselBdnMutation.mutate({ bdnId: vb.id, reason: rejectVesselBdnReason.trim() })}>
                                           {rejectVesselBdnMutation.isPending ? "Rejecting…" : "Confirm Rejection"}
@@ -4942,6 +5132,84 @@ export default function OperationDetailPage({
               {canSeeMarine && (
                 <TabsContent value="marine" className="mt-4 space-y-4">
 
+                  {/* ── Tab header + the four figures that summarise the run.
+                       Every number is read straight off the vessel activities;
+                       nothing here is derived from a baseline the API can't
+                       produce. ── */}
+                  <section className="overflow-hidden rounded-2xl border border-navy-100 bg-card shadow-[0_1px_2px_rgb(16_36_71/0.04)] dark:border-border">
+                    <div className="px-4 pb-3 pt-4 lg:px-5 lg:pt-5">
+                      <h2 className="text-[15px] font-bold tracking-tight text-foreground">
+                        Marine Operation
+                      </h2>
+                      <p className="mt-0.5 text-[12px] text-muted-foreground">
+                        Track marine activities and receiving vessel progress
+                      </p>
+                    </div>
+
+                    {op.type === "vessel_only" && (() => {
+                      const acts = (vesselActivities ?? []).filter((a) => a.status !== "cancelled");
+                      if (acts.length === 0) return null;
+                      const legs = acts.flatMap((a) => (a.legs ?? []).filter((l) => !l.cancelled_at));
+
+                      const sum = (vals: (string | undefined)[]) =>
+                        vals.reduce<number>((acc, v) => acc + (v ? parseFloat(v) : 0), 0);
+                      const litres = (n: number) => (n > 0 ? `${n.toLocaleString()} L` : "—");
+                      const mtvc = (n: number) => (n > 0 ? `${n.toLocaleString()} MTVC` : undefined);
+
+                      const loadedL   = sum(acts.map((a) => a.loading_received_quantity_litres));
+                      const loadedMt  = sum(acts.map((a) => a.loading_mt_vacuum));
+                      const dischL    = sum(legs.map((l) => l.quantity_discharged_litres));
+                      const dischMt   = sum(legs.map((l) => l.mt_vacuum));
+
+                      // "Completed" is the last discharge actually recorded —
+                      // or the operation's own completion stamp once closed.
+                      const lastDischarge = legs
+                        .map((l) => l.stage_discharge_completed_system_at)
+                        .filter(Boolean)
+                        .sort()
+                        .at(-1);
+                      const completedAt = op.completed_at ?? lastDischarge;
+
+                      return (
+                        <StatTileRow className="border-t border-border/70">
+                          <StatTile
+                            icon={Ship}
+                            label="Loading Received Quantity"
+                            value={litres(loadedL)}
+                            detail={mtvc(loadedMt)}
+                          />
+                          <StatTile
+                            icon={Droplets}
+                            tone="emerald"
+                            label="Discharge Quantity"
+                            value={litres(dischL)}
+                            detail={mtvc(dischMt)}
+                          />
+                          <StatTile
+                            icon={Anchor}
+                            tone="violet"
+                            label={legs.length === 1 ? "Receiving Vessel" : "Receiving Vessels"}
+                            value={legs.length === 1 ? legs[0].receiving_vessel_name : String(legs.length)}
+                            detail={
+                              legs.length === 1
+                                ? legs[0].imo_number
+                                  ? `IMO ${legs[0].imo_number}`
+                                  : undefined
+                                : `${legs.filter((l) => l.stage === "discharge_completed").length} discharged`
+                            }
+                          />
+                          <StatTile
+                            icon={CalendarDays}
+                            tone="amber"
+                            label="Completed"
+                            value={completedAt ? formatDate(completedAt) : "In progress"}
+                            detail={completedAt ? formatDayTime(completedAt) : undefined}
+                          />
+                        </StatTileRow>
+                      );
+                    })()}
+                  </section>
+
                   {/* ── Vessel Receipt Summary: trucks → vessel deliveries (all op types) ── */}
                   {(() => {
                     const delivered = (truckOps ?? []).filter(
@@ -4970,10 +5238,10 @@ export default function OperationDetailPage({
                     );
 
                     return (
-                      <Card className="border-0 shadow-sm">
+                      <Card className="rounded-2xl border border-navy-100 shadow-[0_1px_2px_rgb(16_36_71/0.04)] dark:border-border">
                         <CardHeader className="pb-2 pt-4 px-5">
-                          <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                            <Ship className="w-4 h-4 text-blue-600" />
+                          <CardTitle className="flex items-center gap-2 text-[15px] font-bold tracking-tight">
+                            <Ship className="w-4 h-4 text-brand-600" />
                             Vessel Receipt Summary
                           </CardTitle>
                           <p className="text-xs text-muted-foreground">
@@ -4992,7 +5260,7 @@ export default function OperationDetailPage({
                                   </p>
                                 </div>
                                 <div className="text-right">
-                                  <p className="text-sm font-mono font-semibold text-blue-700">
+                                  <p className="text-sm font-mono font-semibold text-brand-700">
                                     +{row.totalMt.toFixed(3)} L
                                   </p>
                                   <p className="text-[10px] text-muted-foreground uppercase tracking-wide">received</p>
@@ -5018,11 +5286,11 @@ export default function OperationDetailPage({
                        - No activities yet  → form is open by default, no toggle needed
                        - Activities exist   → collapsed behind "Assign Another" button     */}
                   {isBM && (
-                    <Card className="border-0 shadow-sm">
+                    <Card className="rounded-2xl border border-navy-100 shadow-[0_1px_2px_rgb(16_36_71/0.04)] dark:border-border">
                       <CardHeader className="pb-3 pt-4 px-5">
                         <div className="flex items-center justify-between">
                           <div>
-                            <CardTitle className="text-sm font-semibold">
+                            <CardTitle className="text-[15px] font-bold tracking-tight">
                               {vesselActivities?.length ? "Assign Another Supervisor" : "Assign Marine Supervisor"}
                             </CardTitle>
                             {!vesselActivities?.length && (() => {
@@ -5119,7 +5387,7 @@ export default function OperationDetailPage({
                     ) ?? [];
                     return myMarineTasks.length > 0 ? (
                       <div className="space-y-3">
-                        <Card className="border-amber-200 bg-amber-50/40 border shadow-sm">
+                        <Card className="rounded-2xl border border-amber-200 bg-amber-50/50 shadow-[0_1px_2px_rgb(16_36_71/0.04)] dark:border-amber-500/30 dark:bg-amber-500/10">
                           <CardContent className="p-4">
                             <div className="flex items-start gap-3">
                               <Anchor className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
@@ -5134,7 +5402,7 @@ export default function OperationDetailPage({
                           </CardContent>
                         </Card>
                         {myMarineTasks.map(t => (
-                          <Card key={t.id} className="border-0 shadow-sm">
+                          <Card key={t.id} className="rounded-2xl border border-navy-100 shadow-[0_1px_2px_rgb(16_36_71/0.04)] dark:border-border">
                             <CardContent className="p-4">
                               <div className="flex items-start justify-between gap-3">
                                 <div>
@@ -5143,7 +5411,7 @@ export default function OperationDetailPage({
                                   </p>
                                   <div className="flex items-center gap-2 flex-wrap">
                                     <Badge className={`text-[10px] capitalize border-0 ${
-                                      t.status === "in_progress" ? "bg-blue-600 text-white"
+                                      t.status === "in_progress" ? "bg-brand-600 text-white"
                                       : t.status === "completed"  ? "bg-emerald-600 text-white"
                                       : "bg-amber-100 text-amber-800"
                                     }`}>{t.status.replace(/_/g, " ")}</Badge>
@@ -5169,7 +5437,7 @@ export default function OperationDetailPage({
                         ))}
                       </div>
                     ) : (
-                      <Card className="border-0 shadow-sm">
+                      <Card className="rounded-2xl border border-navy-100 shadow-[0_1px_2px_rgb(16_36_71/0.04)] dark:border-border">
                         <CardContent className="py-10 text-center">
                           <Anchor className="w-9 h-9 mx-auto mb-3 text-muted-foreground/30" />
                           <p className="text-sm font-medium text-muted-foreground">No vessel activities assigned yet</p>
@@ -5211,36 +5479,41 @@ export default function OperationDetailPage({
                         return (
                           <Card
                             key={activity.id}
-                            className={`border-0 shadow-sm overflow-hidden ${
-                              activity.status === "active"    ? "ring-1 ring-blue-200"    :
-                              activity.status === "completed" ? "ring-1 ring-emerald-200" : ""
-                            }`}
+                            className={cn(
+                              "overflow-hidden rounded-2xl border border-navy-100 shadow-[0_1px_2px_rgb(16_36_71/0.04)] dark:border-border",
+                              activity.status === "active"    && "ring-1 ring-brand-200 dark:ring-brand-500/30",
+                              activity.status === "completed" && "ring-1 ring-emerald-200 dark:ring-emerald-500/30"
+                            )}
                           >
                             {/* ── Header ── */}
-                            <div className={`px-5 py-3.5 flex items-start justify-between gap-3 ${
-                              activity.status === "active"    ? "bg-blue-50/60"    :
-                              activity.status === "completed" ? "bg-emerald-50/40" :
-                              activity.status === "cancelled" ? "bg-muted/40"      : ""
-                            }`}>
+                            <div className={cn(
+                              "flex items-start justify-between gap-3 border-b border-border/70 px-4 py-3.5 lg:px-5",
+                              activity.status === "active"    ? "bg-brand-50/60 dark:bg-brand-500/10"    :
+                              activity.status === "completed" ? "bg-emerald-50/40 dark:bg-emerald-500/10" :
+                              activity.status === "cancelled" ? "bg-muted/40"                             : ""
+                            )}>
                               <div className="min-w-0">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <p className="text-sm font-mono font-semibold">{activity.activity_number}</p>
-                                  <Badge className={`text-[10px] capitalize border-0 ${
-                                    activity.status === "active"    ? "bg-blue-600 text-white"     :
-                                    activity.status === "completed" ? "bg-emerald-600 text-white"  :
-                                    activity.status === "cancelled" ? "bg-red-100 text-red-700"    :
-                                    "bg-amber-100 text-amber-800"
-                                  }`}>
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <p className="font-mono text-[14px] font-bold tracking-tight text-foreground">
+                                    {activity.activity_number}
+                                  </p>
+                                  <Badge className={cn(
+                                    "rounded-lg border-0 px-2 text-[10px] font-semibold capitalize",
+                                    activity.status === "active"    ? "bg-brand-600 text-white"                                            :
+                                    activity.status === "completed" ? "bg-emerald-600 text-white"                                          :
+                                    activity.status === "cancelled" ? "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300"   :
+                                    "bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300"
+                                  )}>
                                     {activity.status}
                                   </Badge>
                                 </div>
                                 {activity.vessel_name && (
-                                  <p className="text-xs font-medium flex items-center gap-1 mt-0.5">
-                                    <Ship className="w-3 h-3 text-muted-foreground shrink-0" />
+                                  <p className="mt-1 flex items-center gap-1.5 text-[12px] font-medium text-foreground/80">
+                                    <Ship className="h-3.5 w-3.5 shrink-0 text-muted-foreground" strokeWidth={2} />
                                     {activity.vessel_name}
                                   </p>
                                 )}
-                                <p className="text-[10px] text-muted-foreground mt-0.5">
+                                <p className="mt-0.5 text-[11px] tabular-nums text-muted-foreground">
                                   {activity.status === "completed" && activity.completed_at
                                     ? `Completed ${formatDateTime(activity.completed_at)}`
                                     : activity.started_at
@@ -5253,7 +5526,7 @@ export default function OperationDetailPage({
                               {isBM && activity.status !== "completed" && activity.status !== "cancelled" && (
                                 <Button
                                   size="sm" variant="ghost"
-                                  className="text-destructive hover:text-destructive text-xs h-7 shrink-0"
+                                  className="h-8 shrink-0 text-xs font-semibold text-destructive hover:text-destructive"
                                   disabled={cancelActivityMutation.isPending}
                                   onClick={() => cancelActivityMutation.mutate(activity.id)}
                                 >
@@ -5427,7 +5700,7 @@ export default function OperationDetailPage({
                                         </div>
                                         <div className="space-y-1">
                                           <Label className="text-[10px] text-muted-foreground">Comment (optional)</Label>
-                                          <Textarea className="text-xs min-h-[50px] resize-none" value={stageComment} onChange={(e) => setStageComment(e.target.value)} placeholder="Progress notes, delays, explanations…" />
+                                          <Textarea className="text-xs min-h-12.5 resize-none" value={stageComment} onChange={(e) => setStageComment(e.target.value)} placeholder="Progress notes, delays, explanations…" />
                                         </div>
                                         <div className="flex gap-2">
                                           <Button
@@ -5467,7 +5740,7 @@ export default function OperationDetailPage({
                                               {item.item}
                                             </label>
                                           ))}
-                                          <Textarea className="text-xs min-h-[50px] resize-none" placeholder="Notes…" value={hseNotes} onChange={(e) => setHseNotes(e.target.value)} />
+                                          <Textarea className="text-xs min-h-12.5 resize-none" placeholder="Notes…" value={hseNotes} onChange={(e) => setHseNotes(e.target.value)} />
                                           <div className="flex gap-2">
                                             <Button size="sm" className="flex-1 text-xs" disabled={recordHseMutation.isPending} onClick={() => recordHseMutation.mutate(activity.id)}>
                                               {recordHseMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Submit HSE Checklist"}
@@ -5849,7 +6122,7 @@ export default function OperationDetailPage({
                                           <Label className="text-[10px] text-muted-foreground">Commenced At</Label>
                                           <Input type="datetime-local" className="h-8 text-xs" value={commenceUserAt} onChange={(e) => setCommenceUserAt(e.target.value)} />
                                           <Label className="text-[10px] text-muted-foreground">Description (optional)</Label>
-                                          <Textarea className="text-xs min-h-[50px] resize-none" placeholder="Any notes about how the vessel operation is commencing…" value={commenceDescription} onChange={(e) => setCommenceDescription(e.target.value)} />
+                                          <Textarea className="text-xs min-h-12.5 resize-none" placeholder="Any notes about how the vessel operation is commencing…" value={commenceDescription} onChange={(e) => setCommenceDescription(e.target.value)} />
                                           <div className="flex gap-2">
                                             <Button size="sm" className="flex-1 text-xs" disabled={!commenceUserAt || commenceMutation.isPending} onClick={() => commenceMutation.mutate(activity.id)}>
                                               {commenceMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Mark Loading Commenced"}
@@ -5869,15 +6142,15 @@ export default function OperationDetailPage({
 
                                     {/* ── Stages 1–2: LOADING (happens once on the barge run) ── */}
                                     <div>
-                                      <div className="flex items-center justify-between mb-2">
-                                        <div>
-                                          <p className="text-[11px] font-bold uppercase tracking-wider text-foreground">Loading</p>
-                                          <p className="text-[10px] text-muted-foreground">Stages 1–2 · happens once, at the source</p>
-                                        </div>
-                                        {isBM && editTimingActivityId !== activity.id && (
-                                          <button className="text-[10px] text-primary underline" onClick={() => openEditTiming(activity)}>Correct a timing</button>
-                                        )}
-                                      </div>
+                                      <SectionHead
+                                        title="Loading"
+                                        subtitle="Stages 1–2 · happens once, at the source"
+                                        action={
+                                          isBM && editTimingActivityId !== activity.id ? (
+                                            <button className={INLINE_LINK} onClick={() => openEditTiming(activity)}>Correct a timing</button>
+                                          ) : undefined
+                                        }
+                                      />
 
                                       {editTimingActivityId === activity.id ? (
                                         <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
@@ -5901,10 +6174,10 @@ export default function OperationDetailPage({
                                             </div>
                                           </div>
                                           <Label className="text-[10px] text-muted-foreground">Commenced comment</Label>
-                                          <Textarea className="text-xs min-h-[40px] resize-none" value={editCommenceDesc} onChange={(e) => setEditCommenceDesc(e.target.value)} />
+                                          <Textarea className="text-xs min-h-10 resize-none" value={editCommenceDesc} onChange={(e) => setEditCommenceDesc(e.target.value)} />
                                           <Label className="text-[10px] text-muted-foreground">Completed comment</Label>
-                                          <Textarea className="text-xs min-h-[40px] resize-none" value={editCompleteDesc} onChange={(e) => setEditCompleteDesc(e.target.value)} />
-                                          <Textarea className="text-xs min-h-[50px] resize-none" placeholder="Reason for correction (required)…" value={editTimingReason} onChange={(e) => setEditTimingReason(e.target.value)} />
+                                          <Textarea className="text-xs min-h-10 resize-none" value={editCompleteDesc} onChange={(e) => setEditCompleteDesc(e.target.value)} />
+                                          <Textarea className="text-xs min-h-12.5 resize-none" placeholder="Reason for correction (required)…" value={editTimingReason} onChange={(e) => setEditTimingReason(e.target.value)} />
                                           <div className="flex gap-2">
                                             <Button size="sm" className="flex-1 text-xs" disabled={!editTimingReason.trim() || correctTimingMutation.isPending} onClick={() => correctTimingMutation.mutate(activity.id)}>
                                               {correctTimingMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Save Correction"}
@@ -5913,7 +6186,7 @@ export default function OperationDetailPage({
                                           </div>
                                         </div>
                                       ) : (
-                                        <div className="rounded-lg border bg-background p-3">
+                                        <div className="rounded-xl border border-navy-100 bg-background px-3.5 py-1 dark:border-border">
                                           <JourneyStage
                                             number={1}
                                             label="Loading Commenced"
@@ -5938,7 +6211,7 @@ export default function OperationDetailPage({
                                           <div className="rounded-lg border bg-muted/30 p-3 space-y-2 mt-2">
                                             <Label className="text-[10px] text-muted-foreground">Initial ROB (L)</Label>
                                             <Input type="number" className="h-8 text-xs" value={editInitialRob} onChange={(e) => setEditInitialRob(e.target.value)} />
-                                            <Textarea className="text-xs min-h-[40px] resize-none" placeholder="Reason for correction (required)…" value={editInitialRobReason} onChange={(e) => setEditInitialRobReason(e.target.value)} />
+                                            <Textarea className="text-xs min-h-10 resize-none" placeholder="Reason for correction (required)…" value={editInitialRobReason} onChange={(e) => setEditInitialRobReason(e.target.value)} />
                                             <div className="flex gap-2">
                                               <Button size="sm" className="flex-1 text-xs" disabled={!editInitialRob || !editInitialRobReason.trim() || editInitialRobMutation.isPending} onClick={() => editInitialRobMutation.mutate(activity.id)}>
                                                 {editInitialRobMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Save Correction"}
@@ -5976,13 +6249,18 @@ export default function OperationDetailPage({
                                     {(isBM || isOS) && (
                                       <div>
                                         {activity.hse_result && correctHseTarget?.id !== activity.id ? (
-                                          <div className={`rounded-md px-3 py-2 text-xs flex items-center justify-between gap-2 ${activity.hse_result === "satisfactory" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
+                                          <div className={cn(
+                                                              "flex items-center justify-between gap-2 rounded-xl border px-3.5 py-2.5 text-[12px] font-medium",
+                                                              activity.hse_result === "satisfactory"
+                                                                ? "border-emerald-200 bg-emerald-50/70 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300"
+                                                                : "border-amber-200 bg-amber-50/70 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300"
+                                                            )}>
                                             <span className="flex items-center gap-2">
                                               <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
                                               HSE checklist recorded — {activity.hse_result === "satisfactory" ? "Satisfactory" : "Issues noted (recorded, non-blocking)"}
                                             </span>
                                             {isBM && (
-                                              <button className="text-[10px] underline shrink-0" onClick={() => openCorrectHse("activity", activity.id, activity.hse_checklist, activity.hse_notes)}>Correct</button>
+                                              <button className={cn(INLINE_LINK, "shrink-0")} onClick={() => openCorrectHse("activity", activity.id, activity.hse_checklist, activity.hse_notes)}>Correct</button>
                                             )}
                                           </div>
                                         ) : correctHseTarget?.kind === "activity" && correctHseTarget.id === activity.id ? (
@@ -5993,8 +6271,8 @@ export default function OperationDetailPage({
                                               <Input className="h-8 text-xs" value={hseOfficer} onChange={(e) => setHseOfficer(e.target.value)} />
                                             </div>
                                             {renderHseChecklist(hseChecklist, setHseChecklist)}
-                                            <Textarea className="text-xs min-h-[50px] resize-none" placeholder="Overall notes…" value={hseNotes} onChange={(e) => setHseNotes(e.target.value)} />
-                                            <Textarea className="text-xs min-h-[40px] resize-none" placeholder="Reason for correction (required)…" value={correctHseReason} onChange={(e) => setCorrectHseReason(e.target.value)} />
+                                            <Textarea className="text-xs min-h-12.5 resize-none" placeholder="Overall notes…" value={hseNotes} onChange={(e) => setHseNotes(e.target.value)} />
+                                            <Textarea className="text-xs min-h-10 resize-none" placeholder="Reason for correction (required)…" value={correctHseReason} onChange={(e) => setCorrectHseReason(e.target.value)} />
                                             <div className="flex gap-2">
                                               <Button size="sm" className="flex-1 text-xs" disabled={!correctHseReason.trim() || correctHseMutation.isPending} onClick={() => correctHseMutation.mutate()}>
                                                 {correctHseMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Save Correction"}
@@ -6016,7 +6294,7 @@ export default function OperationDetailPage({
                                               <Input className="h-8 text-xs" value={hseOfficer} onChange={(e) => setHseOfficer(e.target.value)} />
                                             </div>
                                             {renderHseChecklist(hseChecklist, setHseChecklist)}
-                                            <Textarea className="text-xs min-h-[50px] resize-none" placeholder="Overall notes…" value={hseNotes} onChange={(e) => setHseNotes(e.target.value)} />
+                                            <Textarea className="text-xs min-h-12.5 resize-none" placeholder="Overall notes…" value={hseNotes} onChange={(e) => setHseNotes(e.target.value)} />
                                             <div className="flex gap-2">
                                               <Button size="sm" className="flex-1 text-xs" disabled={recordHseMutation.isPending} onClick={() => recordHseMutation.mutate(activity.id)}>
                                                 {recordHseMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Submit HSE Checklist"}
@@ -6041,12 +6319,12 @@ export default function OperationDetailPage({
                                             <div key={u.id} className="text-[11px] border-l-2 border-muted pl-2 py-0.5">
                                               {editUpdateId === u.id ? (
                                                 <div className="rounded-lg border bg-muted/30 p-2 space-y-2">
-                                                  <Textarea className="text-xs min-h-[60px] resize-none" value={editUpdateContent} onChange={(e) => setEditUpdateContent(e.target.value)} />
+                                                  <Textarea className="text-xs min-h-15 resize-none" value={editUpdateContent} onChange={(e) => setEditUpdateContent(e.target.value)} />
                                                   <div className="space-y-1">
                                                     <Label className="text-[10px] text-muted-foreground">Replace image (optional)</Label>
                                                     <input type="file" accept="image/*" className="text-xs" onChange={(e) => setEditUpdateImage(e.target.files?.[0] ?? null)} />
                                                   </div>
-                                                  <Textarea className="text-xs min-h-[40px] resize-none" placeholder="Reason for correction (required)…" value={editUpdateReason} onChange={(e) => setEditUpdateReason(e.target.value)} />
+                                                  <Textarea className="text-xs min-h-10 resize-none" placeholder="Reason for correction (required)…" value={editUpdateReason} onChange={(e) => setEditUpdateReason(e.target.value)} />
                                                   <div className="flex gap-2">
                                                     <Button size="sm" className="flex-1 text-xs" disabled={!editUpdateReason.trim() || !editUpdateContent.trim() || editUpdateMutation.isPending} onClick={() => editUpdateMutation.mutate(u.id)}>
                                                       {editUpdateMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Save Correction"}
@@ -6067,7 +6345,7 @@ export default function OperationDetailPage({
                                                       )}
                                                     </div>
                                                     {isBM && (
-                                                      <button className="text-[10px] text-primary underline shrink-0" onClick={() => openEditUpdate(u)}>Edit</button>
+                                                      <button className={cn(INLINE_LINK, "shrink-0")} onClick={() => openEditUpdate(u)}>Edit</button>
                                                     )}
                                                   </div>
                                                   <p className="text-foreground/80">{u.content}</p>
@@ -6083,7 +6361,7 @@ export default function OperationDetailPage({
                                       {canAct && (
                                         updateFormActivityId === activity.id ? (
                                           <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
-                                            <Textarea className="text-xs min-h-[60px] resize-none" placeholder="What's happening…" value={updateContent} onChange={(e) => setUpdateContent(e.target.value)} />
+                                            <Textarea className="text-xs min-h-15 resize-none" placeholder="What's happening…" value={updateContent} onChange={(e) => setUpdateContent(e.target.value)} />
                                             <input
                                               ref={updateImageInputRef} type="file" accept="image/*" className="text-xs"
                                               onChange={(e) => setUpdateImageFile(e.target.files?.[0] ?? null)}
@@ -6111,7 +6389,7 @@ export default function OperationDetailPage({
                                             <Label className="text-[10px] text-muted-foreground">Completed At</Label>
                                             <Input type="datetime-local" className="h-8 text-xs" value={completeUserAt} onChange={(e) => setCompleteUserAt(e.target.value)} />
                                             <Label className="text-[10px] text-muted-foreground">Comment (optional)</Label>
-                                            <Textarea className="text-xs min-h-[50px] resize-none" placeholder="Any notes on how loading finished — delays, shortfalls, conditions…" value={completeDescription} onChange={(e) => setCompleteDescription(e.target.value)} />
+                                            <Textarea className="text-xs min-h-12.5 resize-none" placeholder="Any notes on how loading finished — delays, shortfalls, conditions…" value={completeDescription} onChange={(e) => setCompleteDescription(e.target.value)} />
                                             <div className="flex gap-2">
                                               <Button size="sm" className="flex-1 text-xs bg-emerald-700 hover:bg-emerald-800" disabled={!completeUserAt || completeVesselOpMutation.isPending} onClick={() => completeVesselOpMutation.mutate(activity.id)}>
                                                 {completeVesselOpMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Mark Loading Completed"}
@@ -6130,12 +6408,14 @@ export default function OperationDetailPage({
                                     {/* Loading Received Quantity — visible once Loading Completed, one-time */}
                                     {activity.complete_system_at && (
                                       <div>
-                                        <div className="flex items-center justify-between mb-1.5">
-                                          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Loading Received Quantity</p>
-                                          {activity.loading_quantity_recorded_at && isBM && loadReceiptFormActivityId !== activity.id && (
-                                            <button className="text-[10px] text-primary underline" onClick={() => openLoadReceiptForm(activity)}>Edit</button>
-                                          )}
-                                        </div>
+                                        <SectionHead
+                                          title="Loading Received Quantity"
+                                          action={
+                                            activity.loading_quantity_recorded_at && isBM && loadReceiptFormActivityId !== activity.id ? (
+                                              <button className={INLINE_LINK} onClick={() => openLoadReceiptForm(activity)}>Edit</button>
+                                            ) : undefined
+                                          }
+                                        />
                                         {loadReceiptFormActivityId === activity.id ? (
                                           <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
                                             <div className="grid grid-cols-2 gap-2">
@@ -6176,9 +6456,9 @@ export default function OperationDetailPage({
                                                 </div>
                                               </div>
                                             )}
-                                            <Textarea className="text-xs min-h-[50px] resize-none" placeholder="Description (optional)…" value={loadDescription} onChange={(e) => setLoadDescription(e.target.value)} />
+                                            <Textarea className="text-xs min-h-12.5 resize-none" placeholder="Description (optional)…" value={loadDescription} onChange={(e) => setLoadDescription(e.target.value)} />
                                             {activity.loading_quantity_recorded_at && (
-                                              <Textarea className="text-xs min-h-[40px] resize-none" placeholder="Reason for correction (required)…" value={loadReason} onChange={(e) => setLoadReason(e.target.value)} />
+                                              <Textarea className="text-xs min-h-10 resize-none" placeholder="Reason for correction (required)…" value={loadReason} onChange={(e) => setLoadReason(e.target.value)} />
                                             )}
                                             <div className="flex gap-2">
                                               <Button
@@ -6192,23 +6472,14 @@ export default function OperationDetailPage({
                                             </div>
                                           </div>
                                         ) : activity.loading_quantity_recorded_at ? (
-                                          <div className="grid grid-cols-3 gap-px border rounded-md overflow-hidden text-xs">
-                                            <div className="bg-blue-50/40 px-3 py-2">
-                                              <p className="text-[9px] text-muted-foreground uppercase">Received</p>
-                                              <p className="font-mono font-semibold">{parseFloat(activity.loading_received_quantity_litres ?? "0").toLocaleString()} L</p>
-                                            </div>
-                                            <div className="bg-background px-3 py-2">
-                                              <p className="text-[9px] text-muted-foreground uppercase">MTvac</p>
-                                              <p className="font-mono font-semibold">{parseFloat(activity.loading_mt_vacuum ?? "0").toLocaleString()}</p>
-                                            </div>
-                                            <div className="bg-muted/20 px-3 py-2">
-                                              <p className="text-[9px] text-muted-foreground uppercase">Recorded</p>
-                                              <p className="font-mono font-semibold text-[10px]">{formatDateTime(activity.loading_quantity_recorded_at)}</p>
-                                            </div>
-                                            {activity.loading_quantity_description && (
-                                              <div className="col-span-3 bg-background px-3 py-1.5 text-[11px] text-muted-foreground italic">{activity.loading_quantity_description}</div>
-                                            )}
-                                          </div>
+                                          <QuantityReadout
+                                            columns={[
+                                              ["Received", `${parseFloat(activity.loading_received_quantity_litres ?? "0").toLocaleString()} L`],
+                                              ["MTVC",     parseFloat(activity.loading_mt_vacuum ?? "0").toLocaleString()],
+                                              ["Recorded", formatDateTime(activity.loading_quantity_recorded_at)],
+                                            ]}
+                                            note={activity.loading_quantity_description}
+                                          />
                                         ) : canAct ? (
                                           <Button size="sm" variant="outline" className="text-xs gap-1.5" onClick={() => openLoadReceiptForm(activity)}>
                                             <FileText className="w-3.5 h-3.5" />Record Loading Received Quantity
@@ -6224,20 +6495,22 @@ export default function OperationDetailPage({
                                          Discharge Completed sequence, independently. */}
                                     {activity.complete_system_at && (
                                       <div>
-                                        <div className="flex items-center justify-between mb-2">
-                                          <div>
-                                            <p className="text-[11px] font-bold uppercase tracking-wider text-foreground">Delivery · Receiving Vessels</p>
-                                            <p className="text-[10px] text-muted-foreground">
+                                        <SectionHead
+                                          title="Delivery — Receiving Vessels"
+                                          subtitle={
+                                            <>
                                               Stages 3–6 · repeat per receiving vessel
                                               {activity.legs.length > 0 && ` · ${activity.legs.filter((l) => !l.cancelled_at && l.stage === "discharge_completed").length} of ${activity.legs.filter((l) => !l.cancelled_at).length} complete`}
-                                            </p>
-                                          </div>
-                                          {isBM && addLegFormActivityId !== activity.id && (
-                                            <Button size="sm" variant="outline" className="text-xs gap-1.5 h-7" onClick={() => { setAddLegFormActivityId(activity.id); setNewLegName(""); setNewLegImo(""); setNewLegEta(""); }}>
-                                              <PlusCircle className="w-3.5 h-3.5" />Add Receiving Vessel
-                                            </Button>
-                                          )}
-                                        </div>
+                                            </>
+                                          }
+                                          action={
+                                            isBM && addLegFormActivityId !== activity.id ? (
+                                              <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs" onClick={() => { setAddLegFormActivityId(activity.id); setNewLegName(""); setNewLegImo(""); setNewLegEta(""); }}>
+                                                <PlusCircle className="w-3.5 h-3.5" />Add Receiving Vessel
+                                              </Button>
+                                            ) : undefined
+                                          }
+                                        />
 
                                         {addLegFormActivityId === activity.id && (
                                           <div className="rounded-lg border bg-muted/30 p-3 space-y-2 mb-2">
@@ -6272,24 +6545,33 @@ export default function OperationDetailPage({
                                               const legStageIdx = leg.stage ? LEG_STAGES.findIndex((s) => s.value === leg.stage) : -1;
                                               const nextLegStage = LEG_STAGES[legStageIdx + 1];
                                               return (
-                                                <div key={leg.id} className={`rounded-lg border overflow-hidden ${leg.cancelled_at ? "opacity-60" : ""}`}>
-                                                  <div className="px-3 py-2 bg-muted/20 flex items-center justify-between">
-                                                    <div>
-                                                      <p className="text-xs font-semibold">{leg.receiving_vessel_name}{leg.imo_number ? ` · IMO ${leg.imo_number}` : ""}</p>
-                                                      {leg.eta_at && <p className="text-[10px] text-muted-foreground">ETA {formatDateTime(leg.eta_at)}</p>}
+                                                <div key={leg.id} className={cn(
+                                                  "overflow-hidden rounded-xl border border-navy-100 bg-card dark:border-border",
+                                                  leg.cancelled_at && "opacity-60"
+                                                )}>
+                                                  <div className="flex items-center justify-between gap-3 border-b border-border/70 bg-muted/30 px-3.5 py-2.5">
+                                                    <div className="min-w-0">
+                                                      <p className="truncate text-[13px] font-bold tracking-tight text-foreground">
+                                                        {leg.receiving_vessel_name}{leg.imo_number ? ` • IMO ${leg.imo_number}` : ""}
+                                                      </p>
+                                                      {leg.eta_at && (
+                                                        <p className="text-[11px] tabular-nums text-muted-foreground">
+                                                          ETA: {formatDateTime(leg.eta_at)}
+                                                        </p>
+                                                      )}
                                                     </div>
                                                     <div className="flex items-center gap-2 shrink-0">
                                                       {leg.cancelled_at ? (
                                                         <>
                                                           <Badge variant="outline" className="text-[10px]">Cancelled</Badge>
                                                           {isBM && uncancelLegId !== leg.id && (
-                                                            <button className="text-[10px] text-primary underline" onClick={() => { setUncancelLegId(leg.id); setUncancelReason(""); }}>Restore</button>
+                                                            <button className={INLINE_LINK} onClick={() => { setUncancelLegId(leg.id); setUncancelReason(""); }}>Restore</button>
                                                           )}
                                                         </>
                                                       ) : isBM && cancelLegFormId !== leg.id ? (
                                                         <>
-                                                          <button className="text-[10px] text-primary underline" onClick={() => openEditLeg(leg)}>Edit</button>
-                                                          <button className="text-[10px] text-destructive underline" onClick={() => { setCancelLegFormId(leg.id); setCancelLegReason(""); }}>Cancel</button>
+                                                          <button className={INLINE_LINK} onClick={() => openEditLeg(leg)}>Edit</button>
+                                                          <button className={INLINE_LINK_DANGER} onClick={() => { setCancelLegFormId(leg.id); setCancelLegReason(""); }}>Cancel</button>
                                                         </>
                                                       ) : null}
                                                     </div>
@@ -6311,7 +6593,7 @@ export default function OperationDetailPage({
                                                         <Label className="text-[10px] text-muted-foreground">ETA</Label>
                                                         <Input type="datetime-local" className="h-8 text-xs" value={editLegEta} onChange={(e) => setEditLegEta(e.target.value)} />
                                                       </div>
-                                                      <Textarea className="text-xs min-h-[40px] resize-none" placeholder="Reason for correction (required)…" value={editLegReason} onChange={(e) => setEditLegReason(e.target.value)} />
+                                                      <Textarea className="text-xs min-h-10 resize-none" placeholder="Reason for correction (required)…" value={editLegReason} onChange={(e) => setEditLegReason(e.target.value)} />
                                                       <div className="flex gap-2">
                                                         <Button size="sm" className="flex-1 text-xs" disabled={!editLegName.trim() || !editLegReason.trim() || editLegMutation.isPending} onClick={() => editLegMutation.mutate(leg.id)}>
                                                           {editLegMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Save Correction"}
@@ -6323,7 +6605,7 @@ export default function OperationDetailPage({
 
                                                   {uncancelLegId === leg.id && (
                                                     <div className="px-3 py-2 border-t bg-muted/10 space-y-2">
-                                                      <Textarea className="text-xs min-h-[40px] resize-none" placeholder="Reason for restoring (required)…" value={uncancelReason} onChange={(e) => setUncancelReason(e.target.value)} />
+                                                      <Textarea className="text-xs min-h-10 resize-none" placeholder="Reason for restoring (required)…" value={uncancelReason} onChange={(e) => setUncancelReason(e.target.value)} />
                                                       <div className="flex gap-2">
                                                         <Button size="sm" className="flex-1 text-xs" disabled={!uncancelReason.trim() || uncancelLegMutation.isPending} onClick={() => uncancelLegMutation.mutate(leg.id)}>
                                                           {uncancelLegMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Restore Receiving Vessel"}
@@ -6335,7 +6617,7 @@ export default function OperationDetailPage({
 
                                                   {cancelLegFormId === leg.id && (
                                                     <div className="px-3 py-2 border-t bg-muted/10 space-y-2">
-                                                      <Textarea className="text-xs min-h-[40px] resize-none" placeholder="Reason for cancelling (required)…" value={cancelLegReason} onChange={(e) => setCancelLegReason(e.target.value)} />
+                                                      <Textarea className="text-xs min-h-10 resize-none" placeholder="Reason for cancelling (required)…" value={cancelLegReason} onChange={(e) => setCancelLegReason(e.target.value)} />
                                                       <div className="flex gap-2">
                                                         <Button size="sm" variant="destructive" className="flex-1 text-xs" disabled={!cancelLegReason.trim() || cancelLegMutation.isPending} onClick={() => cancelLegMutation.mutate(leg.id)}>
                                                           {cancelLegMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Confirm Cancel"}
@@ -6351,7 +6633,7 @@ export default function OperationDetailPage({
                                                     <div className="p-3 space-y-3">
                                                       {/* Stages 3–6 for this receiving vessel — continues the
                                                            operation's six-stage journey, numbered to match. */}
-                                                      <div className="rounded-lg border bg-background p-3">
+                                                      <div className="rounded-xl border border-navy-100 bg-background px-3.5 py-1 dark:border-border">
                                                         {LEG_STAGES.map((s, i) => {
                                                           const rec = leg as unknown as Record<string, string>;
                                                           return (
@@ -6383,7 +6665,7 @@ export default function OperationDetailPage({
                                                                 </div>
                                                               ))}
                                                             </div>
-                                                            <Textarea className="text-xs min-h-[40px] resize-none" placeholder="Reason for correction…" value={editLegTimingReason} onChange={(e) => setEditLegTimingReason(e.target.value)} />
+                                                            <Textarea className="text-xs min-h-10 resize-none" placeholder="Reason for correction…" value={editLegTimingReason} onChange={(e) => setEditLegTimingReason(e.target.value)} />
                                                             <div className="flex gap-2">
                                                               <Button size="sm" className="flex-1 text-xs" disabled={!editLegTimingReason.trim() || correctLegTimingMutation.isPending} onClick={() => correctLegTimingMutation.mutate(leg.id)}>
                                                                 {correctLegTimingMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Save Correction"}
@@ -6393,9 +6675,9 @@ export default function OperationDetailPage({
                                                           </div>
                                                         ) : legStageIdx >= 0 && (
                                                           <div className="flex items-center gap-3">
-                                                            <button className="text-[10px] text-primary underline" onClick={() => openEditLegTiming(leg)}>Correct a timing</button>
+                                                            <button className={INLINE_LINK} onClick={() => openEditLegTiming(leg)}>Correct a timing</button>
                                                             {rollbackLegId === leg.id ? null : (
-                                                              <button className="text-[10px] text-primary underline" onClick={() => { setRollbackLegId(leg.id); setRollbackStage(""); setRollbackReason(""); }}>Roll back a stage</button>
+                                                              <button className={INLINE_LINK} onClick={() => { setRollbackLegId(leg.id); setRollbackStage(""); setRollbackReason(""); }}>Roll back a stage</button>
                                                             )}
                                                           </div>
                                                         )
@@ -6412,7 +6694,7 @@ export default function OperationDetailPage({
                                                               ))}
                                                             </SelectContent>
                                                           </Select>
-                                                          <Textarea className="text-xs min-h-[40px] resize-none" placeholder="Reason for rolling back (required)…" value={rollbackReason} onChange={(e) => setRollbackReason(e.target.value)} />
+                                                          <Textarea className="text-xs min-h-10 resize-none" placeholder="Reason for rolling back (required)…" value={rollbackReason} onChange={(e) => setRollbackReason(e.target.value)} />
                                                           <p className="text-[10px] text-muted-foreground">A stage cannot be rolled back once a Vessel BDN has been submitted for this receiving vessel — reject that BDN first.</p>
                                                           <div className="flex gap-2">
                                                             <Button size="sm" className="flex-1 text-xs" disabled={!rollbackStage || !rollbackReason.trim() || rollbackLegMutation.isPending} onClick={() => rollbackLegMutation.mutate(leg.id)}>
@@ -6452,13 +6734,18 @@ export default function OperationDetailPage({
                                                       {(isBM || isOS) && legStageIdx >= 0 && (
                                                         <div>
                                                           {leg.hse_result && correctHseTarget?.id !== leg.id ? (
-                                                            <div className={`rounded-md px-3 py-2 text-xs flex items-center justify-between gap-2 ${leg.hse_result === "satisfactory" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
+                                                            <div className={cn(
+                                                              "flex items-center justify-between gap-2 rounded-xl border px-3.5 py-2.5 text-[12px] font-medium",
+                                                              leg.hse_result === "satisfactory"
+                                                                ? "border-emerald-200 bg-emerald-50/70 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300"
+                                                                : "border-amber-200 bg-amber-50/70 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300"
+                                                            )}>
                                                               <span className="flex items-center gap-2">
                                                                 <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
                                                                 HSE recorded — {leg.hse_result === "satisfactory" ? "Satisfactory" : "Issues noted (non-blocking)"}
                                                               </span>
                                                               {isBM && (
-                                                                <button className="text-[10px] underline shrink-0" onClick={() => openCorrectHse("leg", leg.id, leg.hse_checklist, leg.hse_notes)}>Correct</button>
+                                                                <button className={cn(INLINE_LINK, "shrink-0")} onClick={() => openCorrectHse("leg", leg.id, leg.hse_checklist, leg.hse_notes)}>Correct</button>
                                                               )}
                                                             </div>
                                                           ) : correctHseTarget?.kind === "leg" && correctHseTarget.id === leg.id ? (
@@ -6469,8 +6756,8 @@ export default function OperationDetailPage({
                                                                 <Input className="h-8 text-xs" value={legHseOfficer} onChange={(e) => setLegHseOfficer(e.target.value)} />
                                                               </div>
                                                               {renderHseChecklist(legHseChecklist, setLegHseChecklist)}
-                                                              <Textarea className="text-xs min-h-[50px] resize-none" placeholder="Overall notes…" value={legHseNotes} onChange={(e) => setLegHseNotes(e.target.value)} />
-                                                              <Textarea className="text-xs min-h-[40px] resize-none" placeholder="Reason for correction (required)…" value={correctHseReason} onChange={(e) => setCorrectHseReason(e.target.value)} />
+                                                              <Textarea className="text-xs min-h-12.5 resize-none" placeholder="Overall notes…" value={legHseNotes} onChange={(e) => setLegHseNotes(e.target.value)} />
+                                                              <Textarea className="text-xs min-h-10 resize-none" placeholder="Reason for correction (required)…" value={correctHseReason} onChange={(e) => setCorrectHseReason(e.target.value)} />
                                                               <div className="flex gap-2">
                                                                 <Button size="sm" className="flex-1 text-xs" disabled={!correctHseReason.trim() || correctHseMutation.isPending} onClick={() => correctHseMutation.mutate()}>
                                                                   {correctHseMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Save Correction"}
@@ -6496,7 +6783,7 @@ export default function OperationDetailPage({
                                                                 <Input className="h-8 text-xs" value={legHseOfficer} onChange={(e) => setLegHseOfficer(e.target.value)} />
                                                               </div>
                                                               {renderHseChecklist(legHseChecklist, setLegHseChecklist)}
-                                                              <Textarea className="text-xs min-h-[50px] resize-none" placeholder="Overall notes…" value={legHseNotes} onChange={(e) => setLegHseNotes(e.target.value)} />
+                                                              <Textarea className="text-xs min-h-12.5 resize-none" placeholder="Overall notes…" value={legHseNotes} onChange={(e) => setLegHseNotes(e.target.value)} />
                                                               <div className="flex gap-2">
                                                                 <Button size="sm" className="flex-1 text-xs" disabled={recordLegHseMutation.isPending} onClick={() => recordLegHseMutation.mutate(leg.id)}>
                                                                   {recordLegHseMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Submit HSE Checklist"}
@@ -6515,12 +6802,14 @@ export default function OperationDetailPage({
                                                       {/* Discharge Quantity — once this leg reaches Discharge Completed */}
                                                       {leg.stage === "discharge_completed" && (
                                                         <div>
-                                                          <div className="flex items-center justify-between mb-1.5">
-                                                            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Discharge Quantity</p>
-                                                            {leg.quantity_recorded_at && isBM && legQtyFormLegId !== leg.id && (
-                                                              <button className="text-[10px] text-primary underline" onClick={() => openLegQtyForm(leg)}>Edit</button>
-                                                            )}
-                                                          </div>
+                                                          <SectionHead
+                                                            title="Discharge Quantity"
+                                                            action={
+                                                              leg.quantity_recorded_at && isBM && legQtyFormLegId !== leg.id ? (
+                                                                <button className={INLINE_LINK} onClick={() => openLegQtyForm(leg)}>Edit</button>
+                                                              ) : undefined
+                                                            }
+                                                          />
                                                           {legQtyFormLegId === leg.id ? (
                                                             <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
                                                               <div className="grid grid-cols-2 gap-2">
@@ -6561,9 +6850,9 @@ export default function OperationDetailPage({
                                                                   </div>
                                                                 </div>
                                                               )}
-                                                              <Textarea className="text-xs min-h-[50px] resize-none" placeholder="Description (optional)…" value={legQtyDescription} onChange={(e) => setLegQtyDescription(e.target.value)} />
+                                                              <Textarea className="text-xs min-h-12.5 resize-none" placeholder="Description (optional)…" value={legQtyDescription} onChange={(e) => setLegQtyDescription(e.target.value)} />
                                                               {leg.quantity_recorded_at && (
-                                                                <Textarea className="text-xs min-h-[40px] resize-none" placeholder="Reason for correction (required)…" value={legQtyReason} onChange={(e) => setLegQtyReason(e.target.value)} />
+                                                                <Textarea className="text-xs min-h-10 resize-none" placeholder="Reason for correction (required)…" value={legQtyReason} onChange={(e) => setLegQtyReason(e.target.value)} />
                                                               )}
                                                               <div className="flex gap-2">
                                                                 <Button
@@ -6577,19 +6866,14 @@ export default function OperationDetailPage({
                                                               </div>
                                                             </div>
                                                           ) : leg.quantity_recorded_at ? (
-                                                            <div className="grid grid-cols-2 gap-px border rounded-md overflow-hidden text-xs">
-                                                              <div className="bg-emerald-50/40 px-3 py-2">
-                                                                <p className="text-[9px] text-muted-foreground uppercase">Discharged</p>
-                                                                <p className="font-mono font-semibold">{parseFloat(leg.quantity_discharged_litres ?? "0").toLocaleString()} L</p>
-                                                              </div>
-                                                              <div className="bg-muted/20 px-3 py-2">
-                                                                <p className="text-[9px] text-muted-foreground uppercase">Recorded</p>
-                                                                <p className="font-mono font-semibold text-[10px]">{formatDateTime(leg.quantity_recorded_at)}</p>
-                                                              </div>
-                                                              {leg.quantity_description && (
-                                                                <div className="col-span-2 bg-background px-3 py-1.5 text-[11px] text-muted-foreground italic">{leg.quantity_description}</div>
-                                                              )}
-                                                            </div>
+                                                            <QuantityReadout
+                                                              columns={[
+                                                                ["Discharged", `${parseFloat(leg.quantity_discharged_litres ?? "0").toLocaleString()} L`],
+                                                                ["MTVC",       parseFloat(leg.mt_vacuum ?? "0").toLocaleString()],
+                                                                ["Recorded",   formatDateTime(leg.quantity_recorded_at)],
+                                                              ]}
+                                                              note={leg.quantity_description}
+                                                            />
                                                           ) : canAct ? (
                                                             <Button size="sm" variant="outline" className="text-xs gap-1.5" onClick={() => openLegQtyForm(leg)}>
                                                               <FileText className="w-3.5 h-3.5" />Record Discharge Quantity
@@ -6612,8 +6896,13 @@ export default function OperationDetailPage({
                                               const live = activity.legs.filter((l) => !l.cancelled_at);
                                               const allDone = live.length > 0 && live.every((l) => l.stage === "discharge_completed");
                                               return (
-                                                <div className={`rounded-lg border border-dashed p-3 flex items-center justify-between gap-3 ${allDone ? "bg-emerald-50/40 border-emerald-300" : "bg-muted/20"}`}>
-                                                  <p className="text-[11px] text-muted-foreground">
+                                                <div className={cn(
+                                                  "flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3.5",
+                                                  allDone
+                                                    ? "border-emerald-200 bg-emerald-50/60 dark:border-emerald-500/30 dark:bg-emerald-500/10"
+                                                    : "border-dashed border-navy-100 bg-muted/30 dark:border-border"
+                                                )}>
+                                                  <p className="text-[12px] text-muted-foreground">
                                                     {allDone
                                                       ? "All receiving vessels discharged. Add another to keep this operation going, or raise the Vessel BDNs."
                                                       : "Delivering to another vessel on this same operation?"}
@@ -6621,7 +6910,10 @@ export default function OperationDetailPage({
                                                   <Button
                                                     size="sm"
                                                     variant={allDone ? "default" : "outline"}
-                                                    className="text-xs gap-1.5 shrink-0"
+                                                    className={cn(
+                                                      "h-9 shrink-0 gap-1.5 text-xs font-semibold",
+                                                      allDone && "brand-grad-active text-white shadow-sm"
+                                                    )}
                                                     onClick={() => { setAddLegFormActivityId(activity.id); setNewLegName(""); setNewLegImo(""); setNewLegEta(""); }}
                                                   >
                                                     <PlusCircle className="w-3.5 h-3.5" />Add Another Receiving Vessel
@@ -6654,9 +6946,9 @@ export default function OperationDetailPage({
               {/* ── KPI tab — cast-off to discharge-completed duration + per-stage/role timing, computed live from stage timestamps and the audit trail, no new tables */}
               {isBM && op.type !== "truck_only" && (
                 <TabsContent value="kpi" className="mt-4 space-y-4">
-                  <Card className="border-0 shadow-sm">
+                  <Card className="rounded-2xl border border-navy-100 shadow-[0_1px_2px_rgb(16_36_71/0.04)] dark:border-border">
                     <CardHeader className="pb-2">
-                      <CardTitle className="text-sm flex items-center gap-2">
+                      <CardTitle className="flex items-center gap-2 text-[15px] font-bold tracking-tight">
                         <Gauge className="w-4 h-4 text-primary" />
                         Operation Duration
                       </CardTitle>
@@ -6666,7 +6958,7 @@ export default function OperationDetailPage({
                         <div className="flex justify-center py-6"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
                       ) : operationKpiErrored ? (
                         <div className="flex flex-col items-center gap-2 py-6">
-                          <p className="text-sm text-red-600">Failed to load operation duration</p>
+                          <p className="text-sm text-rose-600">Failed to load operation duration</p>
                           <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => refetchOperationKpi()}>Retry</Button>
                         </div>
                       ) : !operationKpi || (!operationKpi.cast_off_at && !operationKpi.discharge_completed_at) ? (
@@ -6681,16 +6973,16 @@ export default function OperationDetailPage({
                     </CardContent>
                   </Card>
 
-                  <Card className="border-0 shadow-sm">
+                  <Card className="rounded-2xl border border-navy-100 shadow-[0_1px_2px_rgb(16_36_71/0.04)] dark:border-border">
                     <CardHeader className="pb-2">
-                      <CardTitle className="text-sm">Per-Vessel-Run Breakdown</CardTitle>
+                      <CardTitle className="text-[15px] font-bold tracking-tight">Per-Vessel-Run Breakdown</CardTitle>
                     </CardHeader>
                     <CardContent className="p-0">
                       {operationKpiLoading ? (
                         <div className="flex justify-center py-6"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
                       ) : operationKpiErrored ? (
                         <div className="flex flex-col items-center gap-2 py-6">
-                          <p className="text-sm text-red-600">Failed to load vessel-run breakdown</p>
+                          <p className="text-sm text-rose-600">Failed to load vessel-run breakdown</p>
                           <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => refetchOperationKpi()}>Retry</Button>
                         </div>
                       ) : !operationKpi?.vessel_runs.length ? (
@@ -6711,16 +7003,16 @@ export default function OperationDetailPage({
                     </CardContent>
                   </Card>
 
-                  <Card className="border-0 shadow-sm">
+                  <Card className="rounded-2xl border border-navy-100 shadow-[0_1px_2px_rgb(16_36_71/0.04)] dark:border-border">
                     <CardHeader className="pb-2">
-                      <CardTitle className="text-sm">Stage-by-Stage Timing</CardTitle>
+                      <CardTitle className="text-[15px] font-bold tracking-tight">Stage-by-Stage Timing</CardTitle>
                     </CardHeader>
                     <CardContent className="p-0">
                       {stageDurationsLoading ? (
                         <div className="flex justify-center py-6"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
                       ) : stageDurationsErrored ? (
                         <div className="flex flex-col items-center gap-2 py-6">
-                          <p className="text-sm text-red-600">Failed to load stage timing</p>
+                          <p className="text-sm text-rose-600">Failed to load stage timing</p>
                           <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => refetchStageDurations()}>Retry</Button>
                         </div>
                       ) : !stageDurations?.entries.length ? (
@@ -6760,7 +7052,7 @@ export default function OperationDetailPage({
                   )}
 
                   {!truckOps?.length ? (
-                    <Card className="border-0 shadow-sm">
+                    <Card className="rounded-2xl border border-navy-100 shadow-[0_1px_2px_rgb(16_36_71/0.04)] dark:border-border">
                       <CardContent className="flex flex-col items-center py-14 text-muted-foreground gap-1">
                         <Truck className="w-10 h-10 mb-2 opacity-30" />
                         <p className="text-sm font-medium">No trucks initialized for reporting</p>
@@ -6823,7 +7115,7 @@ export default function OperationDetailPage({
                       const postAudit = to.safety_audits?.find((a) => a.phase === "post");
 
                       return (
-                        <Card key={to.id} className="border-0 shadow-sm overflow-hidden">
+                        <Card key={to.id} className="rounded-2xl border border-navy-100 shadow-[0_1px_2px_rgb(16_36_71/0.04)] dark:border-border overflow-hidden">
                           {/* Truck header */}
                           <div className="flex items-center justify-between px-5 py-3.5 border-b bg-muted/20">
                             <div className="flex items-center gap-3 min-w-0">
@@ -6874,7 +7166,7 @@ export default function OperationDetailPage({
 
                           {/* Waybill / driver summary, once linked */}
                           {to.waiver_id && (
-                            <div className="px-5 py-2 border-b bg-sky-50/40 text-[11px] text-sky-800 flex flex-wrap gap-x-4 gap-y-0.5">
+                            <div className="px-5 py-2 border-b bg-brand-50/40 text-[11px] text-brand-800 flex flex-wrap gap-x-4 gap-y-0.5">
                               <span>Driver: <strong>{to.driver_name}</strong> ({to.driver_phone})</span>
                               {to.vendor_name && <span>Vendor: <strong>{to.vendor_name}</strong></span>}
                               {to.waybill_document_number && <span>Waybill No: <strong>{to.waybill_document_number}</strong></span>}
@@ -6888,7 +7180,7 @@ export default function OperationDetailPage({
 
                           {/* BM upload panel */}
                           {isBM && uploadingTruckId === to.id && (
-                            <div className="px-5 py-3 border-b bg-blue-50/30 flex items-center gap-3 flex-wrap">
+                            <div className="px-5 py-3 border-b bg-brand-50/30 flex items-center gap-3 flex-wrap">
                               <button
                                 type="button"
                                 className="flex-1 min-w-0 flex items-center gap-2 text-xs text-muted-foreground border border-dashed border-border rounded-md px-3 py-2 hover:border-primary hover:text-primary transition-colors"
@@ -7010,7 +7302,7 @@ export default function OperationDetailPage({
                                                   </p>
                                                 )}
                                                 {to.spillage_mt && parseFloat(to.spillage_mt) > 0 && (
-                                                  <p className="text-[11px] text-red-600">
+                                                  <p className="text-[11px] text-rose-600">
                                                     Spillage: <span className="font-semibold">{parseFloat(to.spillage_mt).toFixed(3)} L</span>
                                                   </p>
                                                 )}
@@ -7186,7 +7478,7 @@ export default function OperationDetailPage({
                                     <span className="text-muted-foreground">Variance: </span>
                                     <span className={`font-semibold ${
                                       parseFloat(to.quantity_discharged_mt) < parseFloat(to.quantity_loaded_mt)
-                                      ? "text-red-600" : "text-emerald-600"
+                                      ? "text-rose-600" : "text-emerald-600"
                                     }`}>
                                       {(parseFloat(to.quantity_discharged_mt) - parseFloat(to.quantity_loaded_mt)).toFixed(3)} L
                                     </span>
@@ -7195,7 +7487,7 @@ export default function OperationDetailPage({
                                 {to.spillage_mt && parseFloat(to.spillage_mt) > 0 && (
                                   <div className="text-xs">
                                     <span className="text-muted-foreground">Spillage: </span>
-                                    <span className="font-semibold text-red-600">{parseFloat(to.spillage_mt).toLocaleString()} L</span>
+                                    <span className="font-semibold text-rose-600">{parseFloat(to.spillage_mt).toLocaleString()} L</span>
                                   </div>
                                 )}
                                 {to.waybill_number && (
@@ -7300,7 +7592,7 @@ export default function OperationDetailPage({
 
                           {/* Submit completion — truck_only */}
                           {firstPendingIdx === -1 && (isLO || isOS) && (op.status === "active" || op.status === "payment_confirmed") && op.type === "truck_only" && (
-                            <div className="px-5 py-3 border-t bg-green-50/30 flex items-center justify-between gap-3">
+                            <div className="px-5 py-3 border-t bg-emerald-50/30 flex items-center justify-between gap-3">
                               <div className="flex items-center gap-2">
                                 <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
                                 <p className="text-sm font-medium text-emerald-800">All deliveries complete — submit for completion</p>
@@ -7318,7 +7610,7 @@ export default function OperationDetailPage({
                           )}
                           {/* For full/vessel operations: truck stages done is informational; BM drives vessel ops next */}
                           {firstPendingIdx === -1 && (isLO || isOS) && op.status === "active" && op.type !== "truck_only" && (
-                            <div className="px-5 py-3 border-t bg-green-50/30 flex items-center gap-2">
+                            <div className="px-5 py-3 border-t bg-emerald-50/30 flex items-center gap-2">
                               <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
                               <p className="text-sm font-medium text-emerald-800">All truck stages complete — BM will initiate vessel operations</p>
                             </div>
@@ -7335,10 +7627,10 @@ export default function OperationDetailPage({
                 <>
                     {/* Upload form (BM-only) */}
                     {isBM && (
-                    <Card className="border-0 shadow-sm">
+                    <Card className="rounded-2xl border border-navy-100 shadow-[0_1px_2px_rgb(16_36_71/0.04)] dark:border-border">
                       <CardHeader className="pb-3 pt-4 px-5">
                         <div className="flex items-center justify-between">
-                          <CardTitle className="text-sm font-semibold">Upload Document</CardTitle>
+                          <CardTitle className="text-[15px] font-bold tracking-tight">Upload Document</CardTitle>
                           {!showDocUploadForm && (
                             <Button size="sm" onClick={() => setShowDocUploadForm(true)}>
                               <PlusCircle className="w-3.5 h-3.5 mr-1.5" />Upload
@@ -7365,16 +7657,8 @@ export default function OperationDetailPage({
                               <Select value={opDocType} onValueChange={setOpDocType}>
                                 <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
                                 <SelectContent>
-                                  {[
-                                    ["bdn",             "BDN"],
-                                    ["invoice",         "Invoice"],
-                                    ["payment_voucher", "Payment Voucher"],
-                                    ["pfi",             "PFI"],
-                                    ["report",          "Report"],
-                                    ["clearance",       "Port / Customs Clearance"],
-                                    ["other",           "Other"],
-                                  ].map(([v, l]) => (
-                                    <SelectItem key={v} value={v} className="text-xs">{l}</SelectItem>
+                                  {DOC_TYPES.map((d) => (
+                                    <SelectItem key={d.value} value={d.value} className="text-xs">{d.label}</SelectItem>
                                   ))}
                                 </SelectContent>
                               </Select>
@@ -7408,7 +7692,7 @@ export default function OperationDetailPage({
                     )}
 
                     {/* Document list — visible/read-only to all roles who can see this tab */}
-                    <Card className="border-0 shadow-sm">
+                    <Card className="rounded-2xl border border-navy-100 shadow-[0_1px_2px_rgb(16_36_71/0.04)] dark:border-border">
                       <CardContent className="p-0">
                         {docs?.length ? (
                           <div className="divide-y">
@@ -7472,7 +7756,7 @@ export default function OperationDetailPage({
                     </div>
                   </div>
 
-                  <Card className="border-0 shadow-sm">
+                  <Card className="rounded-2xl border border-navy-100 shadow-[0_1px_2px_rgb(16_36_71/0.04)] dark:border-border">
                     <CardContent className="p-0">
                       {!activityLog?.length ? (
                         <div className="flex flex-col items-center py-10 text-muted-foreground gap-2">
@@ -7536,64 +7820,13 @@ export default function OperationDetailPage({
               )}
 
             </Tabs>
-          </div>
-
-          {/* ── Right: Status Timeline */}
-          <div>
-            <Card className="border-0 shadow-sm">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                  <Clock className="w-4 h-4 text-primary" />
-                  Status Timeline
-                  {timeline?.length ? (
-                    <span className="ml-auto text-xs font-normal text-muted-foreground">{timeline.length} events</span>
-                  ) : null}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-0 pb-4">
-                {timeline?.length ? (
-                  <ol className="relative px-5">
-                    {timeline.map((entry, i) => {
-                      const isLast = i === timeline.length - 1;
-                      const isDraft        = entry.to_status === "draft";
-                      const isCompleted    = entry.to_status === "completed";
-                      const isRejected     = entry.to_status === "feedback_rejected" || entry.to_status === "cancelled";
-                      const isApproval     = entry.to_status === "active" || entry.to_status === "feedback_approved" || entry.to_status === "bdn_approved" || entry.to_status === "payment_confirmed";
-                      const dotColor = isCompleted ? "border-emerald-500 bg-emerald-500"
-                        : isRejected   ? "border-red-500 bg-red-100"
-                        : isApproval   ? "border-emerald-400 bg-emerald-50"
-                        : isDraft      ? "border-muted-foreground/40 bg-muted"
-                        : "border-primary bg-primary/10";
-                      const labelColor = isCompleted ? "text-emerald-700 font-bold"
-                        : isRejected   ? "text-red-600 font-semibold"
-                        : isApproval   ? "text-emerald-700 font-semibold"
-                        : "font-semibold";
-                      return (
-                        <li key={entry.id} className="relative pb-5 pl-7">
-                          {!isLast && (
-                            <div className={`absolute left-1.25 top-3 bottom-0 w-px ${isCompleted || isApproval ? "bg-emerald-200" : "bg-border"}`} />
-                          )}
-                          <div className={`absolute left-0 top-1.5 w-3 h-3 rounded-full border-2 ${dotColor}`} />
-                          <div className="space-y-0.5">
-                            <p className={`text-xs capitalize ${labelColor}`}>
-                              {entry.to_status.replace(/_/g, " ")}
-                            </p>
-                            {entry.reason && (
-                              <p className="text-[11px] text-muted-foreground leading-snug">{entry.reason}</p>
-                            )}
-                            <p className="text-[10px] text-muted-foreground/60">{formatDateTime(entry.created_at)}</p>
-                          </div>
-                        </li>
-                      );
-                    })}
-                  </ol>
-                ) : (
-                  <p className="text-sm text-muted-foreground text-center py-6">No history yet</p>
-                )}
-              </CardContent>
-            </Card>
-          </div>
         </div>
+
+        {/* ── Right rail — identity and history, constant across every tab */}
+        <aside className="animate-rise flex flex-col gap-4">
+          <OperationSummaryCard op={op} />
+          <StatusTimeline events={timeline ?? []} isLoading={timelineLoading} />
+        </aside>
       </div>
 
       {/* ── Assign Task Dialog */}
@@ -7710,7 +7943,7 @@ export default function OperationDetailPage({
                   const checkedAt = auditItemTimestamps[item];
                   return (
                     <label key={item} className={`flex items-center gap-3 cursor-pointer rounded-lg border px-3 py-2.5 transition-colors ${
-                      passed ? "border-emerald-300 bg-emerald-50" : "border-red-200 bg-red-50/50 hover:border-red-300"
+                      passed ? "border-emerald-300 bg-emerald-50" : "border-rose-200 bg-rose-50/50 hover:border-rose-300"
                     }`}>
                       <input
                         type="checkbox"
@@ -7718,11 +7951,11 @@ export default function OperationDetailPage({
                         checked={passed}
                         onChange={(e) => toggleAuditItem(item, e.target.checked)}
                       />
-                      <span className={`text-sm flex-1 ${passed ? "text-emerald-800" : "text-red-700 font-medium"}`}>
+                      <span className={`text-sm flex-1 ${passed ? "text-emerald-800" : "text-rose-700 font-medium"}`}>
                         {item}
                         {checkedAt && <span className="ml-2 text-[10px] text-muted-foreground font-normal">{formatDateTime(checkedAt)}</span>}
                       </span>
-                      <span className={`text-xs font-bold shrink-0 ${passed ? "text-emerald-600" : "text-red-500"}`}>
+                      <span className={`text-xs font-bold shrink-0 ${passed ? "text-emerald-600" : "text-rose-500"}`}>
                         {passed ? "✓ PASS" : "✗ FAIL"}
                       </span>
                     </label>
@@ -7747,7 +7980,7 @@ export default function OperationDetailPage({
                   <ShieldCheck className="w-4 h-4" />
                   Satisfactory
                 </label>
-                <label className={`flex-1 flex items-center justify-center gap-2 rounded-lg border px-3 py-2.5 cursor-pointer text-sm font-medium transition-colors ${auditResult === "not_satisfactory" ? "border-red-500 bg-red-50 text-red-700" : "border-border text-muted-foreground hover:border-primary/50"}`}>
+                <label className={`flex-1 flex items-center justify-center gap-2 rounded-lg border px-3 py-2.5 cursor-pointer text-sm font-medium transition-colors ${auditResult === "not_satisfactory" ? "border-rose-500 bg-rose-50 text-rose-700" : "border-border text-muted-foreground hover:border-primary/50"}`}>
                   <input type="radio" className="sr-only" value="not_satisfactory" checked={auditResult === "not_satisfactory"} onChange={() => setAuditResult("not_satisfactory")} />
                   <ShieldAlert className="w-4 h-4" />
                   Not Satisfactory
@@ -8230,7 +8463,7 @@ export default function OperationDetailPage({
 
             <div className="space-y-1.5">
               <Label className="text-xs">Message (optional)</Label>
-              <Textarea className="text-xs min-h-[60px] resize-none" placeholder="Additional message content…" value={customMessage} onChange={(e) => setCustomMessage(e.target.value)} />
+              <Textarea className="text-xs min-h-15 resize-none" placeholder="Additional message content…" value={customMessage} onChange={(e) => setCustomMessage(e.target.value)} />
             </div>
 
             <div className="space-y-1.5">
@@ -8258,7 +8491,7 @@ export default function OperationDetailPage({
                     <div className="pl-6 flex items-center gap-2 text-[11px] text-muted-foreground">
                       {etaEditId === r.naval_clearance_vessel_id ? (
                         <>
-                          <Input type="datetime-local" className="h-6 text-[11px] w-[160px]" value={etaEditValue} onChange={(e) => setEtaEditValue(e.target.value)} />
+                          <Input type="datetime-local" className="h-6 text-[11px] w-40" value={etaEditValue} onChange={(e) => setEtaEditValue(e.target.value)} />
                           <Input className="h-6 text-[11px]" placeholder="Reason (e.g. weather)" value={etaEditReason} onChange={(e) => setEtaEditReason(e.target.value)} />
                           <Button size="sm" className="h-6 px-2 text-[11px]" disabled={!etaEditValue || setEtaMutation.isPending} onClick={() => setEtaMutation.mutate(r.naval_clearance_vessel_id)}>Save</Button>
                           <Button size="sm" variant="ghost" className="h-6 px-2 text-[11px]" onClick={() => setEtaEditId(null)}>Cancel</Button>
@@ -8566,25 +8799,51 @@ export default function OperationDetailPage({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </DashboardShell>
   );
 }
 
 // ─── Helper component ────────────────────────────────────────────────────────
 
+/**
+ * One label/value pair in a definition list. `mono` for identifiers, `numeric`
+ * for figures and timestamps, `wide` to span both columns of the Overview grid,
+ * `muted` for editorial notes.
+ */
 function InfoItem({
   label,
   value,
+  hint,
   mono = false,
+  numeric = false,
+  wide = false,
+  muted = false,
 }: {
   label: string;
   value: string;
+  hint?: string;
   mono?: boolean;
+  numeric?: boolean;
+  wide?: boolean;
+  muted?: boolean;
 }) {
   return (
-    <div>
-      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{label}</p>
-      <p className={`text-sm mt-0.5 ${mono ? "font-mono font-semibold" : ""}`}>{value}</p>
+    <div className={cn("min-w-0", wide && "sm:col-span-2")}>
+      <dt className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+        {label}
+      </dt>
+      <dd
+        className={cn(
+          "mt-1 text-[13px] font-semibold text-foreground",
+          mono && "font-mono",
+          numeric && "tabular-nums",
+          muted && "font-normal italic text-muted-foreground",
+          wide && "leading-relaxed"
+        )}
+      >
+        {value}
+      </dd>
+      {hint && <dd className="mt-0.5 truncate text-[11px] text-muted-foreground">{hint}</dd>}
     </div>
   );
 }

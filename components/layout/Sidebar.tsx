@@ -13,40 +13,17 @@ import {
   BarChart3,
   Users,
   LogOut,
-  ChevronLeft,
-  ChevronRight,
   ScrollText,
   Bell,
   BadgeCheck,
-  UserCog,
-  Check,
   Anchor,
   FileBadge2,
 } from "lucide-react";
-import { useState } from "react";
-import { cn, getInitials } from "@/lib/utils";
-import { ROLE_LABELS } from "@/lib/auth";
+import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
+import { useSidebar } from "@/components/layout/SidebarContext";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import type { UserRole } from "@/types";
-
-// The 4 roles a Bunker Manager may temporarily act as.
-const ACT_AS_ROLES: { value: string; label: string }[] = [
-  { value: "ops_supervisor", label: "Ops Supervisor" },
-  { value: "logistics_officer", label: "Logistics Officer" },
-  { value: "marine_manager", label: "Marine Manager" },
-  { value: "finance_manager", label: "Finance Manager" },
-];
 
 export interface NavItem {
   href: string;
@@ -164,35 +141,29 @@ export const NAV_ITEMS: NavItem[] = [
   },
 ];
 
+/** Shared active-route test — `/` must match exactly, everything else by prefix. */
+export function isNavItemActive(href: string, pathname: string): boolean {
+  return href === "/" ? pathname === "/" : pathname.startsWith(href);
+}
+
+/** Nav row styling, shared with the mobile drawer so both stay in lockstep. */
+export function navRowClasses(active: boolean): string {
+  return cn(
+    "group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium",
+    "transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2",
+    "focus-visible:ring-sidebar-ring focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar",
+    active
+      ? "brand-grad-active text-white shadow-[0_10px_22px_-12px_rgb(14_121_200/0.85)]"
+      : "text-sidebar-foreground/55 hover:bg-white/[0.06] hover:text-sidebar-foreground"
+  );
+}
+
 export function Sidebar() {
-  const { user, logout, effectiveRole, isActingAs, actAs, clearActAs } = useAuth();
+  const { user, logout, effectiveRole } = useAuth();
   const pathname = usePathname();
-  const [collapsed, setCollapsed] = useState(false);
-  const [switching, setSwitching] = useState(false);
+  const { collapsed } = useSidebar();
 
   if (!user) return null;
-
-  // The switcher itself must always be reachable by the real BM, even while
-  // acting as another role — so this checks the real role, not effectiveRole.
-  const isRealBM = user.role === "bunker_manager";
-
-  const handleActAs = async (role: string) => {
-    try {
-      setSwitching(true);
-      await actAs(role);
-    } finally {
-      setSwitching(false);
-    }
-  };
-
-  const handleClearActAs = async () => {
-    try {
-      setSwitching(true);
-      await clearActAs();
-    } finally {
-      setSwitching(false);
-    }
-  };
 
   const visibleItems = NAV_ITEMS.filter((item) =>
     item.roles.includes((effectiveRole ?? user.role) as UserRole)
@@ -202,22 +173,28 @@ export function Sidebar() {
     <aside
       className={cn(
         // Desktop-only: the mobile drawer (MobileNav) replaces this below md.
-        "relative hidden md:flex flex-col h-full bg-sidebar text-sidebar-foreground transition-all duration-300 border-r border-sidebar-border",
-        collapsed ? "w-16" : "w-60"
+        "relative z-20 hidden h-full shrink-0 flex-col bg-sidebar text-sidebar-foreground md:flex",
+        "brand-grad-sidebar",
+        "transition-[width] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
+        collapsed ? "w-19" : "w-62"
       )}
     >
-      {/* Logo */}
-      <div className="flex items-center gap-3 px-4 py-5 border-b border-sidebar-border">
-        <div className="shrink-0 w-9 h-9 rounded-lg bg-white flex items-center justify-center overflow-hidden ring-1 ring-sidebar-border">
+      {/* Brand */}
+      <div className={cn("flex items-center gap-3 px-4 py-5", collapsed && "justify-center px-0")}>
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white ring-2 ring-white/15">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo.jpeg" alt="Reliant Anchor Logistics" className="w-full h-full object-contain" />
-        </div>
+          <img
+            src="/logo-mark.png"
+            alt=""
+            className="h-full w-full object-contain"
+          />
+        </span>
         {!collapsed && (
-          <div className="overflow-hidden">
-            <p className="text-sm font-bold tracking-tight text-sidebar-foreground truncate">
+          <div className="min-w-0">
+            <p className="truncate text-[15px] font-bold leading-tight tracking-tight text-white">
               Reliant Anchor
             </p>
-            <p className="text-[10px] text-sidebar-foreground/50 truncate">
+            <p className="truncate text-[11px] leading-tight text-sidebar-foreground/45">
               Operations
             </p>
           </div>
@@ -225,25 +202,21 @@ export function Sidebar() {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 py-4 px-2 space-y-0.5 overflow-y-auto">
+      <nav
+        className="scrollbar-slim flex-1 space-y-1 overflow-y-auto px-3 py-2 text-sidebar-foreground"
+        aria-label="Main navigation"
+      >
         {visibleItems.map((item) => {
           const Icon = item.icon;
-          const isActive =
-            item.href === "/"
-              ? pathname === "/"
-              : pathname.startsWith(item.href);
+          const active = isNavItemActive(item.href, pathname);
 
-          const linkContent = (
+          const link = (
             <Link
               href={item.href}
-              className={cn(
-                "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all",
-                isActive
-                  ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                  : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-              )}
+              aria-current={active ? "page" : undefined}
+              className={cn(navRowClasses(active), collapsed && "justify-center px-0")}
             >
-              <Icon className="w-4 h-4 shrink-0" />
+              <Icon className="h-4.5 w-4.5 shrink-0" strokeWidth={2} />
               {!collapsed && <span className="truncate">{item.label}</span>}
             </Link>
           );
@@ -251,145 +224,53 @@ export function Sidebar() {
           if (collapsed) {
             return (
               <Tooltip key={item.href} delayDuration={0}>
-                <TooltipTrigger asChild>{linkContent}</TooltipTrigger>
+                <TooltipTrigger asChild>{link}</TooltipTrigger>
                 <TooltipContent side="right">{item.label}</TooltipContent>
               </Tooltip>
             );
           }
-
-          return <div key={item.href}>{linkContent}</div>;
+          return <div key={item.href}>{link}</div>;
         })}
       </nav>
 
-      {/* Notifications shortcut */}
-      <div className="px-2 pb-2 border-t border-sidebar-border pt-2">
+      {/* Utility rows */}
+      <div className="space-y-1 px-3 pb-5 pt-2">
         <Tooltip delayDuration={0}>
           <TooltipTrigger asChild>
             <Link
               href="/notifications"
+              aria-current={pathname === "/notifications" ? "page" : undefined}
               className={cn(
-                "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all",
-                pathname === "/notifications"
-                  ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                  : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                navRowClasses(pathname === "/notifications"),
+                collapsed && "justify-center px-0"
               )}
             >
-              <Bell className="w-4 h-4 shrink-0" />
-              {!collapsed && <span>Notifications</span>}
+              <Bell className="h-4.5 w-4.5 shrink-0" strokeWidth={2} />
+              {!collapsed && <span className="truncate">Notifications</span>}
             </Link>
           </TooltipTrigger>
           {collapsed && <TooltipContent side="right">Notifications</TooltipContent>}
         </Tooltip>
-      </div>
 
-      {/* User profile + logout */}
-      <div className="px-2 pb-4 pt-2 border-t border-sidebar-border">
-        <div className="flex items-center gap-3 px-3 py-2">
-          <Avatar className="w-7 h-7 shrink-0 bg-sidebar-primary">
-            <AvatarFallback className="text-[11px] bg-sidebar-primary text-sidebar-primary-foreground">
-              {getInitials(user.full_name)}
-            </AvatarFallback>
-          </Avatar>
-          {!collapsed && (
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-medium truncate text-sidebar-foreground">
-                {user.full_name}
-              </p>
-              <p className="text-[10px] text-sidebar-foreground/50 truncate">
-                {isActingAs ? (
-                  <>
-                    {ROLE_LABELS[user.role]}
-                    <span className="text-amber-400"> → {ROLE_LABELS[effectiveRole ?? ""] ?? effectiveRole}</span>
-                  </>
-                ) : (
-                  ROLE_LABELS[user.role]
-                )}
-              </p>
-            </div>
-          )}
-          {!collapsed && isRealBM && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent"
-                  disabled={switching}
-                  title={isActingAs ? "Switch acted role" : "Act as another role"}
-                >
-                  <UserCog className="w-3.5 h-3.5" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuLabel className="text-xs text-muted-foreground">
-                  {isActingAs ? "Switch acted role" : "Act as…"}
-                </DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                {ACT_AS_ROLES.map((r) => (
-                  <DropdownMenuItem
-                    key={r.value}
-                    disabled={switching}
-                    onClick={() => handleActAs(r.value)}
-                    className="text-xs justify-between"
-                  >
-                    {r.label}
-                    {effectiveRole === r.value && <Check className="w-3.5 h-3.5" />}
-                  </DropdownMenuItem>
-                ))}
-                {isActingAs && (
-                  <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      disabled={switching}
-                      onClick={handleClearActAs}
-                      className="text-xs text-amber-700 focus:text-amber-700 focus:bg-amber-50"
-                    >
-                      Switch back to Bunker Manager
-                    </DropdownMenuItem>
-                  </>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
-          {!collapsed && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent"
+        <Tooltip delayDuration={0}>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
               onClick={logout}
+              className={cn(
+                "flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium",
+                "text-rose-300/80 transition-colors hover:bg-rose-500/10 hover:text-rose-200",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/60",
+                collapsed && "justify-center px-0"
+              )}
             >
-              <LogOut className="w-3.5 h-3.5" />
-            </Button>
-          )}
-        </div>
-        {collapsed && (
-          <Tooltip delayDuration={0}>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="w-full h-8 text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent"
-                onClick={logout}
-              >
-                <LogOut className="w-4 h-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="right">Sign out</TooltipContent>
-          </Tooltip>
-        )}
+              <LogOut className="h-4.5 w-4.5 shrink-0" strokeWidth={2} />
+              {!collapsed && <span>Log out</span>}
+            </button>
+          </TooltipTrigger>
+          {collapsed && <TooltipContent side="right">Log out</TooltipContent>}
+        </Tooltip>
       </div>
-
-      {/* Collapse toggle */}
-      <button
-        onClick={() => setCollapsed((v) => !v)}
-        className="absolute -right-3 top-6 z-10 w-6 h-6 rounded-full bg-sidebar-border border border-sidebar-border flex items-center justify-center hover:bg-sidebar-accent transition-colors"
-      >
-        {collapsed ? (
-          <ChevronRight className="w-3 h-3 text-sidebar-foreground" />
-        ) : (
-          <ChevronLeft className="w-3 h-3 text-sidebar-foreground" />
-        )}
-      </button>
     </aside>
   );
 }

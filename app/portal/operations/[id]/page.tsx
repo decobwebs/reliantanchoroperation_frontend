@@ -3,14 +3,15 @@
 import { use } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { ArrowLeft, Loader2, FileText, CheckCircle2, Clock } from "lucide-react";
+import { ArrowLeft, FileText, Files, Receipt } from "lucide-react";
 import { api } from "@/lib/api";
 import { StatusBadge } from "@/components/shared/StatusBadge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { PanelCard } from "@/components/dashboard/PanelCard";
+import { MilestoneTimeline } from "@/components/shared/MilestoneTimeline";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
-import { formatDate, formatDateTime, OP_TYPE_LABELS } from "@/lib/utils";
+import { Skeleton } from "@/components/ui/skeleton";
+import { cn, formatDate, OP_TYPE_LABELS } from "@/lib/utils";
 import type {
   ApiResponse,
   Operation,
@@ -78,22 +79,28 @@ export default function PortalOperationDetailPage({
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-24">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      <div className="space-y-4">
+        <Skeleton className="h-9 w-64" />
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <div className="space-y-4 lg:col-span-2">
+            <Skeleton className="h-56 w-full rounded-2xl" />
+          </div>
+          <Skeleton className="h-72 w-full rounded-2xl" />
+        </div>
       </div>
     );
   }
 
   if (!op) {
     return (
-      <div className="flex flex-col items-center justify-center py-24 text-center gap-3">
-        <p className="text-sm font-semibold">Operation not found</p>
+      <div className="flex flex-col items-center justify-center gap-3 py-24 text-center">
+        <p className="text-sm font-semibold text-foreground">Operation not found</p>
         <p className="max-w-sm text-xs text-muted-foreground">
           This operation may not exist, or you don&rsquo;t have access to it.
         </p>
-        <Button variant="outline" size="sm" asChild>
+        <Button variant="outline" size="sm" className="rounded-lg" asChild>
           <Link href="/portal/operations">
-            <ArrowLeft className="w-4 h-4 mr-1.5" />
+            <ArrowLeft className="h-4 w-4" strokeWidth={2.5} />
             Back to operations
           </Link>
         </Button>
@@ -102,94 +109,80 @@ export default function PortalOperationDetailPage({
   }
 
   return (
-    <div className="space-y-6">
-      {/* Back + header */}
-      <div className="flex items-center gap-3">
-        <Button variant="outline" size="sm" asChild>
-          <Link href="/portal/operations">
-            <ArrowLeft className="w-4 h-4 mr-1.5" />
-            Back
-          </Link>
-        </Button>
-        <div>
-          <h2 className="text-xl font-bold">{op.operation_number}</h2>
-          <p className="text-sm text-muted-foreground">
+    <div className="animate-rise space-y-6">
+      <div className="flex flex-wrap items-center gap-3">
+        <Link
+          href="/portal/operations"
+          className="inline-flex items-center gap-1.5 rounded text-[13px] font-medium text-brand-600 transition-colors hover:text-brand-700"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" strokeWidth={2.5} />
+          Back
+        </Link>
+        <div className="min-w-0">
+          <h1 className="font-mono text-[22px] font-extrabold leading-none tracking-tight text-foreground">{op.operation_number}</h1>
+          <p className="mt-1.5 text-[12.5px] text-muted-foreground">
             {OP_TYPE_LABELS[op.type]}
           </p>
         </div>
-        <StatusBadge
-          status={op.status as OperationStatus}
-          className="ml-auto text-sm px-3 py-1"
-        />
+        <StatusBadge status={op.status as OperationStatus} className="ml-auto" />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left column */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Details */}
-          <Card className="border-0 shadow-sm">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-semibold">Details</CardTitle>
-            </CardHeader>
-            <CardContent className="grid grid-cols-2 gap-4 text-sm">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <div className="space-y-4 lg:col-span-2">
+          <PanelCard icon={FileText} tone="blue" title="Details">
+            <dl className="grid grid-cols-2 gap-4 text-sm">
               <div>
-                <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Type</p>
-                <p className="mt-0.5">{OP_TYPE_LABELS[op.type]}</p>
+                <dt className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Type</dt>
+                <dd className="mt-0.5 text-[13px] font-semibold text-foreground">{OP_TYPE_LABELS[op.type]}</dd>
               </div>
               <div>
-                <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Currency</p>
-                <p className="mt-0.5">{op.currency}</p>
+                <dt className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Currency</dt>
+                <dd className="mt-0.5 text-[13px] font-semibold text-foreground">{op.currency}</dd>
               </div>
               <div>
-                <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Expected Volume</p>
-                <p className="mt-0.5">
+                <dt className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Expected Volume</dt>
+                <dd className="mt-0.5 text-[13px] font-semibold tabular-nums text-foreground">
                   {op.expected_volume_mt
                     ? `${parseFloat(op.expected_volume_mt).toLocaleString()} L`
                     : "—"}
-                </p>
+                </dd>
               </div>
               <div>
-                <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Actual Volume</p>
-                <p className="mt-0.5">
+                <dt className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Actual Volume</dt>
+                <dd className="mt-0.5 text-[13px] font-semibold tabular-nums text-foreground">
                   {op.actual_volume_mt
                     ? `${parseFloat(op.actual_volume_mt).toLocaleString()} L`
                     : "—"}
-                </p>
+                </dd>
               </div>
               <div>
-                <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Created</p>
-                <p className="mt-0.5">{formatDate(op.created_at)}</p>
+                <dt className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Created</dt>
+                <dd className="mt-0.5 text-[13px] font-semibold text-foreground">{formatDate(op.created_at)}</dd>
               </div>
               <div>
-                <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Completed</p>
-                <p className="mt-0.5">{op.completed_at ? formatDate(op.completed_at) : "—"}</p>
+                <dt className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Completed</dt>
+                <dd className="mt-0.5 text-[13px] font-semibold text-foreground">{op.completed_at ? formatDate(op.completed_at) : "—"}</dd>
               </div>
               {op.notes && (
                 <div className="col-span-2">
-                  <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Notes</p>
-                  <p className="mt-0.5">{op.notes}</p>
+                  <dt className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Notes</dt>
+                  <dd className="mt-0.5 text-[13px] text-foreground">{op.notes}</dd>
                 </div>
               )}
-            </CardContent>
-          </Card>
+            </dl>
+          </PanelCard>
 
-          {/* BDNs */}
           {bdns && bdns.length > 0 && (
-            <Card className="border-0 shadow-sm">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-semibold">
-                  Bunker Delivery Notes
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-0 pb-2">
+            <PanelCard icon={Receipt} tone="blue" title="Bunker Delivery Notes" flush>
+              <div className="divide-y divide-border/70">
                 {bdns.map((bdn) => (
                   <div
                     key={bdn.id}
-                    className="flex items-center justify-between px-5 py-3 border-b last:border-0"
+                    className="flex items-center justify-between px-4 py-3 lg:px-5"
                   >
                     <div>
-                      <p className="text-sm font-mono font-semibold">{bdn.bdn_number}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">
+                      <p className="font-mono text-[13px] font-semibold text-foreground">{bdn.bdn_number}</p>
+                      <p className="mt-0.5 text-[12px] text-muted-foreground">
                         {parseFloat(bdn.quantity_delivered_mt).toLocaleString()} L
                         {bdn.product_type ? ` · ${bdn.product_type}` : ""}
                         {" · "}{formatDate(bdn.delivery_date)}
@@ -197,31 +190,27 @@ export default function PortalOperationDetailPage({
                     </div>
                     <Badge
                       variant={bdn.status === "approved" ? "default" : "secondary"}
-                      className="text-xs"
+                      className="rounded-md text-[11px] capitalize"
                     >
                       {bdn.status}
                     </Badge>
                   </div>
                 ))}
-              </CardContent>
-            </Card>
+              </div>
+            </PanelCard>
           )}
 
-          {/* Invoices */}
           {invoices && invoices.length > 0 && (
-            <Card className="border-0 shadow-sm">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-semibold">Invoices</CardTitle>
-              </CardHeader>
-              <CardContent className="p-0 pb-2">
+            <PanelCard icon={FileText} tone="blue" title="Invoices" flush>
+              <div className="divide-y divide-border/70">
                 {invoices.map((inv) => (
                   <div
                     key={inv.id}
-                    className="flex items-center justify-between px-5 py-3 border-b last:border-0"
+                    className="flex items-center justify-between px-4 py-3 lg:px-5"
                   >
                     <div>
-                      <p className="text-sm font-mono font-semibold">{inv.invoice_number}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">
+                      <p className="font-mono text-[13px] font-semibold text-foreground">{inv.invoice_number}</p>
+                      <p className="mt-0.5 text-[12px] tabular-nums text-muted-foreground">
                         {inv.currency} {parseFloat(inv.total_amount).toLocaleString()}
                         {inv.due_date ? ` · Due ${formatDate(inv.due_date)}` : ""}
                       </p>
@@ -232,9 +221,9 @@ export default function PortalOperationDetailPage({
                           href={inv.pdf_url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-xs text-primary hover:underline flex items-center gap-1"
+                          className="flex items-center gap-1 rounded text-[12px] font-semibold text-brand-600 hover:underline"
                         >
-                          <FileText className="w-3.5 h-3.5" />
+                          <FileText className="h-3.5 w-3.5" />
                           PDF
                         </a>
                       )}
@@ -246,85 +235,46 @@ export default function PortalOperationDetailPage({
                             ? "destructive"
                             : "secondary"
                         }
-                        className="text-xs"
+                        className="rounded-md text-[11px] capitalize"
                       >
                         {inv.status}
                       </Badge>
                     </div>
                   </div>
                 ))}
-              </CardContent>
-            </Card>
+              </div>
+            </PanelCard>
           )}
 
-          {/* Documents */}
           {docs && docs.length > 0 && (
-            <Card className="border-0 shadow-sm">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-semibold">Documents</CardTitle>
-              </CardHeader>
-              <CardContent className="p-0 pb-2">
+            <PanelCard icon={Files} tone="blue" title="Documents" flush>
+              <div className="divide-y divide-border/70">
                 {docs.map((doc) => (
                   <a
                     key={doc.id}
                     href={doc.file_url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex items-center gap-3 px-5 py-3 border-b last:border-0 hover:bg-muted/50 transition-colors"
+                    className={cn(
+                      "flex items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/40 lg:px-5"
+                    )}
                   >
-                    <FileText className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                    <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
                     <div className="min-w-0">
-                      <p className="text-sm font-medium text-primary truncate">{doc.file_name}</p>
-                      <p className="text-xs text-muted-foreground">
+                      <p className="truncate text-[13px] font-medium text-brand-600">{doc.file_name}</p>
+                      <p className="text-[11.5px] text-muted-foreground">
                         {doc.document_type} · {formatDate(doc.created_at)}
                       </p>
                     </div>
                   </a>
                 ))}
-              </CardContent>
-            </Card>
+              </div>
+            </PanelCard>
           )}
         </div>
 
-        {/* Right: milestones */}
         <div>
-          <Card className="border-0 shadow-sm">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                <Clock className="w-4 h-4 text-primary" />
-                Progress Milestones
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-0 pb-4">
-              {milestones?.length ? (
-                <ol className="px-5 space-y-0">
-                  {milestones.map((m, i) => (
-                    <li key={i} className="relative pb-5 pl-6">
-                      {i < milestones.length - 1 && (
-                        <div className="absolute left-0 top-3 bottom-0 w-px bg-border ml-[5px]" />
-                      )}
-                      <div className="absolute left-0 top-1.5 w-3 h-3 rounded-full bg-primary flex items-center justify-center">
-                        <CheckCircle2 className="w-2.5 h-2.5 text-primary-foreground" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold">{m.title}</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          {m.description}
-                        </p>
-                        <p className="text-[10px] text-muted-foreground/60 mt-1">
-                          {formatDateTime(m.reached_at)}
-                        </p>
-                      </div>
-                    </li>
-                  ))}
-                </ol>
-              ) : (
-                <p className="text-sm text-muted-foreground text-center py-6">
-                  No milestones yet
-                </p>
-              )}
-            </CardContent>
-          </Card>
+          <MilestoneTimeline milestones={milestones ?? []} />
         </div>
       </div>
     </div>

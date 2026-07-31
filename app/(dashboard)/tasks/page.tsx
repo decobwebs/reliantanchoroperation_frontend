@@ -19,35 +19,41 @@ import { z } from "zod";
 import { toast } from "sonner";
 import { api, getErrorMessage } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
-import { Header } from "@/components/layout/Header";
-import { Card, CardContent } from "@/components/ui/card";
+import { DashboardShell } from "@/components/dashboard/DashboardShell";
+import { PanelCard } from "@/components/dashboard/PanelCard";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { formatDate, formatDateTime } from "@/lib/utils";
+import { cn, formatDate, formatDateTime } from "@/lib/utils";
 import type { ApiResponse, Task, Truck as TruckType } from "@/types";
 
 // ─── Styling helpers ─────────────────────────────────────────────────────────
+// Task status/priority are their own four/four-value vocabularies (distinct
+// from OperationStatus), so they keep a local colour map rather than routing
+// through StatusBadge — but the actual colours converge with the dashboard
+// TaskRow's STATUS_CLASSES/PRIORITY_CLASSES so the same word reads the same
+// colour everywhere in the app.
 
 const TASK_STATUS_COLOR: Record<string, string> = {
-  pending:     "bg-gray-100 text-gray-700 border-gray-200",
-  in_progress: "bg-blue-100 text-blue-700 border-blue-200",
-  completed:   "bg-emerald-100 text-emerald-700 border-emerald-200",
-  cancelled:   "bg-red-100 text-red-700 border-red-200",
+  pending:     "bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-500/15 dark:text-slate-300 dark:border-slate-500/30",
+  in_progress: "bg-brand-50 text-brand-700 border-brand-200 dark:bg-brand-500/15 dark:text-brand-300 dark:border-brand-500/30",
+  completed:   "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/30",
+  cancelled:   "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-500/15 dark:text-rose-300 dark:border-rose-500/30",
 };
 
 const PRIORITY_COLOR: Record<string, string> = {
-  low:    "bg-gray-100 text-gray-600",
-  normal: "bg-blue-100 text-blue-700",
-  high:   "bg-amber-100 text-amber-700",
-  urgent: "bg-red-100 text-red-700",
+  low:    "bg-slate-100 text-slate-600 dark:bg-slate-500/15 dark:text-slate-300",
+  normal: "bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300",
+  high:   "bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300",
+  urgent: "bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300",
 };
 
 const TASK_TYPE_LABEL: Record<string, string> = {
@@ -367,78 +373,80 @@ export default function TasksPage() {
   const doneTasks = tasks?.filter((t) => ["completed", "cancelled"].includes(t.status)) ?? [];
 
   return (
-    <div>
-      <Header
-        title="My Tasks"
-        subtitle={`${activeTasks.length} active · ${doneTasks.length} completed`}
-      />
-
-      <div className="p-4 md:p-6 space-y-6">
-        {isLoading ? (
-          <div className="flex items-center justify-center py-16">
-            <Loader2 className="w-7 h-7 animate-spin text-primary" />
+    <DashboardShell
+      icon={CheckSquare}
+      iconTone="blue"
+      showRole={false}
+      title="My Tasks"
+      subtitle={`${activeTasks.length} active · ${doneTasks.length} completed`}
+    >
+      {isLoading ? (
+        <div className="space-y-4">
+          <Skeleton className="h-48 w-full rounded-2xl" />
+          <Skeleton className="h-48 w-full rounded-2xl" />
+        </div>
+      ) : tasks?.length === 0 ? (
+        <PanelCard icon={CheckSquare} tone="blue" title="Active Tasks" className="animate-rise">
+          <div className="flex flex-col items-center py-12 text-center">
+            <CheckSquare className="h-9 w-9 text-muted-foreground/25" strokeWidth={1.5} />
+            <p className="mt-3 text-sm font-medium text-foreground">No tasks assigned to you</p>
           </div>
-        ) : tasks?.length === 0 ? (
-          <div className="flex flex-col items-center py-16 text-muted-foreground">
-            <CheckSquare className="w-10 h-10 mb-3 opacity-30" />
-            <p className="text-sm">No tasks assigned to you</p>
-          </div>
-        ) : (
-          <>
-            {/* Active tasks */}
-            {activeTasks.length > 0 && (
-              <div>
-                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-                  Active Tasks ({activeTasks.length})
-                </h3>
-                <Card className="border-0 shadow-sm">
-                  <CardContent className="p-0">
-                    <div className="divide-y">
-                      {activeTasks.map((task) => (
-                        <TaskRow
-                          key={task.id}
-                          task={task}
-                          isLO={isLO}
-                          isMM={isMM}
-                          onStart={() => updateMutation.mutate({ taskId: task.id as string, status: "in_progress" })}
-                          onComplete={() => updateMutation.mutate({ taskId: task.id as string, status: "completed" })}
-                          onReadiness={() => setReadinessTask(task)}
-                          onVesselReady={() => setVesselReadyTask(task)}
-                          isPending={updateMutation.isPending}
-                        />
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
+        </PanelCard>
+      ) : (
+        <>
+          {/* Active tasks */}
+          {activeTasks.length > 0 && (
+            <PanelCard
+              icon={Play}
+              tone="blue"
+              title="Active Tasks"
+              subtitle={`${activeTasks.length} in progress or pending`}
+              flush
+              className="animate-rise"
+            >
+              <div className="divide-y divide-border/70">
+                {activeTasks.map((task) => (
+                  <TaskRow
+                    key={task.id}
+                    task={task}
+                    isLO={isLO}
+                    isMM={isMM}
+                    onStart={() => updateMutation.mutate({ taskId: task.id as string, status: "in_progress" })}
+                    onComplete={() => updateMutation.mutate({ taskId: task.id as string, status: "completed" })}
+                    onReadiness={() => setReadinessTask(task)}
+                    onVesselReady={() => setVesselReadyTask(task)}
+                    isPending={updateMutation.isPending}
+                  />
+                ))}
               </div>
-            )}
+            </PanelCard>
+          )}
 
-            {/* Completed / cancelled tasks */}
-            {doneTasks.length > 0 && (
-              <div>
-                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-                  Completed / Cancelled ({doneTasks.length})
-                </h3>
-                <Card className="border-0 shadow-sm">
-                  <CardContent className="p-0">
-                    <div className="divide-y">
-                      {doneTasks.map((task) => (
-                        <TaskRow
-                          key={task.id}
-                          task={task}
-                          isLO={isLO}
-                          isMM={isMM}
-                          isPending={false}
-                        />
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
+          {/* Completed / cancelled tasks */}
+          {doneTasks.length > 0 && (
+            <PanelCard
+              icon={CheckCircle2}
+              tone="emerald"
+              title="Completed / Cancelled"
+              subtitle={`${doneTasks.length} resolved`}
+              flush
+              className="animate-rise"
+            >
+              <div className="divide-y divide-border/70">
+                {doneTasks.map((task) => (
+                  <TaskRow
+                    key={task.id}
+                    task={task}
+                    isLO={isLO}
+                    isMM={isMM}
+                    isPending={false}
+                  />
+                ))}
               </div>
-            )}
-          </>
-        )}
-      </div>
+            </PanelCard>
+          )}
+        </>
+      )}
 
       {/* LO Readiness Report Dialog */}
       {readinessTask && (
@@ -465,7 +473,7 @@ export default function TasksPage() {
           }}
         />
       )}
-    </div>
+    </DashboardShell>
   );
 }
 
@@ -493,35 +501,42 @@ function TaskRow({
   const isDone = task.status === "completed" || task.status === "cancelled";
 
   return (
-    <div className={`px-5 py-4 ${isDone ? "opacity-60" : ""}`}>
-      <div className="flex items-start justify-between gap-4">
+    <div className={cn("px-4 py-4 lg:px-5", isDone && "opacity-60")}>
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           {/* Task type + operation */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <p className="text-sm font-semibold">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-[13px] font-semibold text-foreground">
               {TASK_TYPE_LABEL[task.task_type] ?? task.task_type.replace(/_/g, " ")}
             </p>
             {task.operation && (
-              <Link href={`/operations/${task.operation.id}`}>
-                <span className="text-[11px] text-primary font-mono hover:underline cursor-pointer">
-                  {task.operation.operation_number}
-                  <ChevronRight className="w-3 h-3 inline-block" />
-                </span>
+              <Link
+                href={`/operations/${task.operation.id}`}
+                className="inline-flex items-center gap-0.5 rounded font-mono text-[11px] font-semibold text-brand-600 transition-colors hover:text-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                {task.operation.operation_number}
+                <ChevronRight className="h-3 w-3" strokeWidth={2.5} />
               </Link>
             )}
           </div>
 
           {/* Meta */}
-          <div className="flex items-center gap-2 mt-1 flex-wrap">
-            <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded border ${TASK_STATUS_COLOR[task.status] ?? "bg-gray-100 text-gray-700 border-gray-200"}`}>
+          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+            <span className={cn(
+              "rounded-md border px-1.5 py-0.5 text-[10px] font-semibold capitalize",
+              TASK_STATUS_COLOR[task.status] ?? TASK_STATUS_COLOR.pending
+            )}>
               {task.status.replace(/_/g, " ")}
             </span>
-            <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${PRIORITY_COLOR[task.priority] ?? "bg-gray-100 text-gray-600"}`}>
+            <span className={cn(
+              "rounded-md px-1.5 py-0.5 text-[10px] font-semibold capitalize",
+              PRIORITY_COLOR[task.priority] ?? PRIORITY_COLOR.normal
+            )}>
               {task.priority}
             </span>
-            <span className="text-[10px] text-muted-foreground">{formatDateTime(task.created_at)}</span>
+            <span className="text-[10.5px] tabular-nums text-muted-foreground">{formatDateTime(task.created_at)}</span>
             {task.due_date && (
-              <span className="text-[10px] text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded">
+              <span className="rounded-md bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">
                 Due: {formatDate(task.due_date)}
               </span>
             )}
@@ -529,12 +544,12 @@ function TaskRow({
 
           {/* Instructions */}
           {task.instructions && (
-            <p className="text-xs text-muted-foreground mt-1.5 italic leading-relaxed max-w-lg">
+            <p className="mt-1.5 max-w-lg text-[12.5px] italic leading-relaxed text-muted-foreground">
               {task.instructions}
             </p>
           )}
           {task.completed_at && (
-            <p className="text-[10px] text-emerald-700 mt-1">
+            <p className="mt-1 text-[10.5px] text-emerald-700 dark:text-emerald-400">
               Completed: {formatDateTime(task.completed_at)}
             </p>
           )}
@@ -542,16 +557,16 @@ function TaskRow({
 
         {/* Action buttons */}
         {!isDone && (
-          <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+          <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
             {task.status === "pending" && (
               <Button
                 size="sm"
                 variant="outline"
-                className="h-8 text-xs"
+                className="h-8 rounded-lg text-xs font-semibold"
                 disabled={isPending}
                 onClick={onStart}
               >
-                <Play className="w-3 h-3 mr-1" />
+                <Play className="h-3 w-3" strokeWidth={2.5} />
                 Start
               </Button>
             )}
@@ -559,10 +574,10 @@ function TaskRow({
             {task.status === "in_progress" && isLO && task.task_type === "truck_logistics" && (
               <Button
                 size="sm"
-                className="h-8 text-xs"
+                className="h-8 rounded-lg text-xs font-semibold"
                 onClick={onReadiness}
               >
-                <Truck className="w-3 h-3 mr-1" />
+                <Truck className="h-3 w-3" strokeWidth={2.5} />
                 Submit Readiness Report
               </Button>
             )}
@@ -570,10 +585,10 @@ function TaskRow({
             {task.status === "in_progress" && isMM && (task.task_type === "vessel_operations" || task.task_type === "marine_discharge") && (
               <Button
                 size="sm"
-                className="h-8 text-xs"
+                className="h-8 rounded-lg text-xs font-semibold"
                 onClick={onVesselReady}
               >
-                <Anchor className="w-3 h-3 mr-1" />
+                <Anchor className="h-3 w-3" strokeWidth={2.5} />
                 Mark Vessel Ready
               </Button>
             )}
@@ -582,11 +597,11 @@ function TaskRow({
               <Button
                 size="sm"
                 variant="outline"
-                className="h-8 text-xs"
+                className="h-8 rounded-lg text-xs font-semibold"
                 disabled={isPending}
                 onClick={onComplete}
               >
-                <CheckCircle2 className="w-3 h-3 mr-1" />
+                <CheckCircle2 className="h-3 w-3" strokeWidth={2.5} />
                 Complete
               </Button>
             )}

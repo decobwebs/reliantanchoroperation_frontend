@@ -112,14 +112,14 @@ export function StandaloneInvoiceDialog({
     <Dialog open={open} onOpenChange={(v) => { if (!v) reset(); onOpenChange(v); }}>
       <DialogContent className="sm:max-w-lg" aria-describedby={undefined}>
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <FileText className="w-4 h-4 text-primary" />
+          <DialogTitle className="flex items-center gap-2 text-[15px] font-bold tracking-tight">
+            <FileText className="h-4 w-4 text-brand-600" strokeWidth={2.2} />
             New Invoice (no operation)
           </DialogTitle>
         </DialogHeader>
 
         <div className="space-y-3 mt-1">
-          <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2.5 text-xs text-blue-800">
+          <div className="rounded-lg border border-brand-200 bg-brand-50 px-3 py-2.5 text-xs text-brand-800 dark:border-brand-500/30 dark:bg-brand-500/10 dark:text-brand-300">
             For ad-hoc billing that isn&rsquo;t tied to an operation (e.g. demurrage,
             agency fees). A branded PDF is generated using the description below.
           </div>

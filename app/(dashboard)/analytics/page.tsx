@@ -1,15 +1,13 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Loader2, TrendingUp, BarChart3 } from "lucide-react";
-import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer,
-} from "recharts";
+import { TrendingUp, BarChart3 } from "lucide-react";
 import { api } from "@/lib/api";
-import { Header } from "@/components/layout/Header";
+import { DashboardShell } from "@/components/dashboard/DashboardShell";
+import { PanelCard } from "@/components/dashboard/PanelCard";
 import { StatCard } from "@/components/shared/StatCard";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { OperationsStatusChart } from "@/components/dashboard/OperationsStatusChart";
+import { Skeleton } from "@/components/ui/skeleton";
 import { formatCurrency, STATUS_LABELS } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { canAccessAnalytics } from "@/lib/auth";
@@ -35,94 +33,81 @@ export default function AnalyticsPage() {
     queryKey: ["analytics-monthly"],
     enabled: canSee,
     queryFn: async () => {
-      const res = await api.get<ApiResponse<{month:number;count:number}[]>>(
-        `/analytics/operations/monthly?year=${new Date().getFullYear()}`
-      );
-      return res.data.data.map((m) => ({ month: MONTH_NAMES[m.month - 1], count: m.count }));
+      // The endpoint returns { year, months: [{ month, total }] } — not a bare array.
+      const res = await api.get<
+        ApiResponse<{ year: number; months: { month: number; total: number }[] }>
+      >(`/analytics/operations/monthly?year=${new Date().getFullYear()}`);
+      return (res.data.data.months ?? []).map((m) => ({
+        label: MONTH_NAMES[m.month - 1],
+        count: m.total,
+      }));
     },
   });
 
   if (user && !canSee) {
     return (
-      <div>
-        <Header title="Analytics" subtitle="Restricted" />
-        <div className="p-6"><QueryError error={{ isAxiosError: true, response: { status: 403 } }} /></div>
-      </div>
+      <DashboardShell icon={BarChart3} iconTone="blue" showRole={false} title="Analytics" subtitle="Restricted">
+        <QueryError error={{ isAxiosError: true, response: { status: 403 } }} />
+      </DashboardShell>
     );
   }
 
   if (isError) {
     return (
-      <div>
-        <Header title="Analytics" subtitle="Operational insights" />
-        <div className="p-6"><QueryError error={error} onRetry={() => refetch()} /></div>
-      </div>
+      <DashboardShell icon={BarChart3} iconTone="blue" showRole={false} title="Analytics" subtitle="Operational insights">
+        <QueryError error={error} onRetry={() => refetch()} />
+      </DashboardShell>
     );
   }
 
   if (isLoading) {
-    return <div className="flex items-center justify-center h-full">
-      <Loader2 className="w-8 h-8 animate-spin text-primary" />
-    </div>;
+    return (
+      <DashboardShell icon={BarChart3} iconTone="blue" showRole={false} title="Analytics" subtitle="Operations and revenue insights">
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-32 rounded-2xl" />)}
+        </div>
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <Skeleton className="h-72 rounded-2xl" />
+          <Skeleton className="h-72 rounded-2xl" />
+        </div>
+      </DashboardShell>
+    );
   }
 
   const ops = analytics?.operations;
   const statusData = ops?.by_status
     ?.filter((s) => s.count > 0)
     .map((s) => ({
-      status: STATUS_LABELS[s.status as OperationStatus] ?? s.status,
+      label: STATUS_LABELS[s.status as OperationStatus] ?? s.status,
       count: s.count,
     })) ?? [];
 
   return (
-    <div>
-      <Header title="Analytics" subtitle="Operations and revenue insights" />
-      <div className="p-4 md:p-6 space-y-6">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <StatCard title="Total Ops" value={ops?.total_operations ?? 0} icon={BarChart3} color="blue" />
-          <StatCard title="Active Ops" value={ops?.active_operations ?? 0} icon={TrendingUp} color="amber" />
-          <StatCard title="Completed (month)" value={ops?.completed_this_month ?? 0} icon={BarChart3} color="emerald" />
-          {(analytics?.revenue ?? []).slice(0, 1).map((r) => (
-            <StatCard key={r.currency} title={`Revenue (${r.currency})`} value={formatCurrency(parseFloat(r.total_amount), r.currency)} icon={TrendingUp} color="purple" />
-          ))}
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <Card className="border-0 shadow-sm">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base font-semibold">Monthly Operations ({new Date().getFullYear()})</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={220}>
-                <BarChart data={monthly ?? []} barSize={24}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                  <XAxis dataKey="month" tick={{fontSize:11}} axisLine={false} tickLine={false} />
-                  <YAxis tick={{fontSize:11}} axisLine={false} tickLine={false} allowDecimals={false} />
-                  <Tooltip contentStyle={{fontSize:12,borderRadius:8}} />
-                  <Bar dataKey="count" name="Operations" fill="oklch(0.255 0.09 240)" radius={[4,4,0,0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-
-          <Card className="border-0 shadow-sm">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base font-semibold">Operations by Status</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={220}>
-                <BarChart data={statusData} layout="vertical" barSize={16}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
-                  <XAxis type="number" tick={{fontSize:11}} axisLine={false} tickLine={false} />
-                  <YAxis type="category" dataKey="status" tick={{fontSize:10}} width={110} axisLine={false} tickLine={false} />
-                  <Tooltip contentStyle={{fontSize:12,borderRadius:8}} />
-                  <Bar dataKey="count" name="Count" fill="oklch(0.58 0.125 247)" radius={[0,4,4,0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-        </div>
+    <DashboardShell
+      icon={BarChart3}
+      iconTone="blue"
+      showRole={false}
+      title="Analytics"
+      subtitle="Operations and revenue insights"
+    >
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+        <StatCard title="Total Ops" value={ops?.total_operations ?? 0} icon={BarChart3} color="blue" />
+        <StatCard title="Active Ops" value={ops?.active_operations ?? 0} icon={TrendingUp} color="amber" />
+        <StatCard title="Completed (month)" value={ops?.completed_this_month ?? 0} icon={BarChart3} color="emerald" />
+        {(analytics?.revenue ?? []).slice(0, 1).map((r) => (
+          <StatCard key={r.currency} title={`Revenue (${r.currency})`} value={formatCurrency(parseFloat(r.total_amount), r.currency)} icon={TrendingUp} color="purple" />
+        ))}
       </div>
-    </div>
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <PanelCard icon={BarChart3} tone="blue" title={`Monthly Operations (${new Date().getFullYear()})`} className="animate-rise">
+          <OperationsStatusChart data={monthly ?? []} />
+        </PanelCard>
+
+        <PanelCard icon={BarChart3} tone="blue" title="Operations by Status" className="animate-rise">
+          <OperationsStatusChart data={statusData} />
+        </PanelCard>
+      </div>
+    </DashboardShell>
   );
 }

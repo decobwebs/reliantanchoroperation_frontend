@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -10,13 +11,6 @@ import { getErrorMessage } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 
 const schema = z.object({
   email: z.string().email("Enter a valid email address"),
@@ -24,6 +18,9 @@ const schema = z.object({
 });
 
 type FormData = z.infer<typeof schema>;
+
+const fieldClass =
+  "h-11 rounded-lg border-border bg-card px-4 shadow-xs placeholder:text-muted-foreground/60";
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -50,51 +47,61 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-linear-to-br from-[oklch(0.18_0.06_240)] via-[oklch(0.22_0.07_240)] to-[oklch(0.15_0.05_240)] p-4">
-      {/* Background pattern */}
-      <div
-        className="absolute inset-0 opacity-5"
-        style={{
-          backgroundImage:
-            "radial-gradient(circle at 1px 1px, white 1px, transparent 0)",
-          backgroundSize: "32px 32px",
-        }}
-      />
+    // bg-white rather than bg-background: the panel image's left edge is
+    // #FEFEFE, so anything darker leaves a visible seam between the columns.
+    <div className="min-h-screen bg-white lg:grid lg:grid-cols-2">
+      {/* ── Form column ─────────────────────────────────────────────── */}
+      <div className="flex min-h-screen flex-col px-6 py-10 sm:px-10">
+        <div className="flex flex-1 items-center justify-center">
+          <div
+            className={`w-full max-w-[400px] ${
+              shake ? "animate-[shake_0.4s_ease-in-out]" : ""
+            }`}
+          >
+            {/* Brand lockup — the source PNG is the full stacked lockup, so the
+                mark is zoomed to the anchor glyph (ink spans 40.5% down, half the
+                canvas tall) and the wordmark is set in type instead. */}
+            <div className="mb-12 flex items-center gap-4">
+              <div className="h-14 w-14 shrink-0 overflow-hidden">
+                <Image
+                  src="/logo-mark.png"
+                  alt=""
+                  width={160}
+                  height={160}
+                  priority
+                  className="h-full w-full translate-y-[17%] scale-[1.75] object-cover"
+                />
+              </div>
+              <div>
+                <p className="text-2xl font-bold leading-none tracking-tight text-foreground">
+                  Reliant Anchor
+                </p>
+                <p className="mt-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-brand-600">
+                  Operations Management System
+                </p>
+              </div>
+            </div>
 
-      <div className="relative w-full max-w-md">
-        {/* Logo */}
-        <div className="flex flex-col items-center mb-8">
-          <div className="flex items-center justify-center w-20 h-20 rounded-2xl bg-white mb-4 shadow-lg overflow-hidden">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/logo.jpeg" alt="Reliant Anchor Logistics" className="w-full h-full object-contain p-1" />
-          </div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">
-            Reliant Anchor
-          </h1>
-          <p className="text-sm text-white/50 mt-1">
-            Operations Management System
-          </p>
-        </div>
-
-        <Card className={`border-0 shadow-2xl transition-transform ${shake ? "animate-[shake_0.4s_ease-in-out]" : ""}`}>
-          <CardHeader className="pb-4">
-            <CardTitle className="text-xl">Sign in to your account</CardTitle>
-            <CardDescription>
+            <h1 className="text-3xl font-bold tracking-tight text-foreground">
+              Sign in to your account
+            </h1>
+            <p className="mt-2 text-sm text-muted-foreground">
               Enter your credentials to access the dashboard
-            </CardDescription>
-          </CardHeader>
+            </p>
 
-          <CardContent>
-            <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+            <form onSubmit={handleSubmit(onSubmit)} className="mt-10 space-y-6">
               {loginError && (
-                <div className="flex items-start gap-2.5 rounded-md border border-destructive/40 bg-destructive/10 px-3.5 py-3 text-sm text-destructive">
+                <div className="flex items-start gap-2.5 rounded-lg border border-destructive/40 bg-destructive/10 px-3.5 py-3 text-sm text-destructive">
                   <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
                   <span>{loginError}</span>
                 </div>
               )}
+
               {/* Email */}
-              <div className="space-y-1.5">
-                <Label htmlFor="email">Email address</Label>
+              <div className="space-y-2">
+                <Label htmlFor="email" className="text-[0.9375rem] font-semibold">
+                  Email address
+                </Label>
                 <Input
                   id="email"
                   type="email"
@@ -102,18 +109,18 @@ export default function LoginPage() {
                   autoComplete="email"
                   autoFocus
                   {...register("email")}
-                  className={errors.email ? "border-destructive" : ""}
+                  className={`${fieldClass} ${errors.email ? "border-destructive" : ""}`}
                 />
                 {errors.email && (
-                  <p className="text-xs text-destructive">
-                    {errors.email.message}
-                  </p>
+                  <p className="text-xs text-destructive">{errors.email.message}</p>
                 )}
               </div>
 
               {/* Password */}
-              <div className="space-y-1.5">
-                <Label htmlFor="password">Password</Label>
+              <div className="space-y-2">
+                <Label htmlFor="password" className="text-[0.9375rem] font-semibold">
+                  Password
+                </Label>
                 <div className="relative">
                   <Input
                     id="password"
@@ -121,36 +128,37 @@ export default function LoginPage() {
                     placeholder="••••••••"
                     autoComplete="current-password"
                     {...register("password")}
-                    className={errors.password ? "border-destructive pr-10" : "pr-10"}
+                    className={`${fieldClass} pr-11 ${
+                      errors.password ? "border-destructive" : ""
+                    }`}
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword((v) => !v)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
                     tabIndex={-1}
+                    aria-label={showPassword ? "Hide password" : "Show password"}
                   >
                     {showPassword ? (
-                      <EyeOff className="w-4 h-4" />
+                      <EyeOff className="h-4 w-4" />
                     ) : (
-                      <Eye className="w-4 h-4" />
+                      <Eye className="h-4 w-4" />
                     )}
                   </button>
                 </div>
                 {errors.password && (
-                  <p className="text-xs text-destructive">
-                    {errors.password.message}
-                  </p>
+                  <p className="text-xs text-destructive">{errors.password.message}</p>
                 )}
               </div>
 
               <Button
                 type="submit"
-                className="w-full font-semibold"
+                className="h-11 w-full rounded-lg text-[0.9375rem] font-semibold"
                 disabled={isSubmitting}
               >
                 {isSubmitting ? (
                   <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Signing in…
                   </>
                 ) : (
@@ -158,21 +166,33 @@ export default function LoginPage() {
                 )}
               </Button>
             </form>
-          </CardContent>
-        </Card>
-
-        <div className="text-center mt-6 space-y-2">
-          <p className="text-xs text-white/30">
-            © {new Date().getFullYear()} Reliant Anchor Ltd. All rights reserved.
-          </p>
-          <div className="flex items-center justify-center gap-4 text-xs text-white/20">
-            <a href="/privacy" className="hover:text-white/50 transition-colors">Privacy Policy</a>
-            <span>·</span>
-            <a href="/terms" className="hover:text-white/50 transition-colors">Terms of Use</a>
-            <span>·</span>
-            <a href="/cookies" className="hover:text-white/50 transition-colors">Cookies</a>
           </div>
         </div>
+
+        {/* Footer */}
+        <div className="mx-auto w-full max-w-[400px] pt-10">
+          <p className="text-xs text-muted-foreground">
+            © {new Date().getFullYear()} Reliant Anchor Ltd. All rights reserved.
+          </p>
+          <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground/70">
+            <a href="/cookies" className="transition-colors hover:text-foreground">
+              Cookies
+            </a>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Illustration column ─────────────────────────────────────── */}
+      <div className="relative hidden lg:block">
+        <Image
+          src="/auth-panel.png"
+          alt=""
+          fill
+          priority
+          sizes="50vw"
+          /* The vessels sit low-right, so bias the crop away from empty sky. */
+          className="object-cover object-[60%_75%]"
+        />
       </div>
     </div>
   );

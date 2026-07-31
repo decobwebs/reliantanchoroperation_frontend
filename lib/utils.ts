@@ -7,7 +7,7 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-function toUtcDate(date: string): Date {
+export function toUtcDate(date: string): Date {
   // Append Z if no timezone info so JS treats it as UTC (not local time)
   const s = /[Z+]/.test(date) ? date : date + "Z";
   return new Date(s);
@@ -21,6 +21,12 @@ export function formatDate(date: string | null | undefined): string {
 export function formatDateTime(date: string | null | undefined): string {
   if (!date) return "—";
   return format(toUtcDate(date), "dd MMM yyyy, HH:mm");
+}
+
+/** Year-less day + time — for dense rails and steppers where the year is noise. */
+export function formatDayTime(date: string | null | undefined): string {
+  if (!date) return "—";
+  return format(toUtcDate(date), "dd MMM, HH:mm");
 }
 
 export function formatRelative(date: string | null | undefined): string {

@@ -6,8 +6,9 @@ import { Loader2, PlusCircle, Fuel, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { api, getErrorMessage } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
-import { Header } from "@/components/layout/Header";
-import { Card, CardContent } from "@/components/ui/card";
+import { DashboardShell } from "@/components/dashboard/DashboardShell";
+import { PanelCard } from "@/components/dashboard/PanelCard";
+import { ReasonGatedDialog } from "@/components/shared/ReasonGatedDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,6 +19,7 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
+import { Skeleton } from "@/components/ui/skeleton";
 import { formatDate } from "@/lib/utils";
 import { PRODUCT_TYPE_LABELS, type ApiResponse, type Bfl } from "@/types";
 
@@ -110,92 +112,94 @@ export default function BflPage() {
     onError: (err) => toast.error(getErrorMessage(err)),
   });
 
-  return (
-    <div>
-      <Header
-        title="BFL"
-        subtitle="Sits under the current PPDL — multiple BFLs can be active at once"
-        actions={canAdd ? (
-          <Button size="sm" onClick={() => setShowCreate(true)} className="gap-1.5">
-            <PlusCircle className="w-3.5 h-3.5" />New BFL
-          </Button>
-        ) : undefined}
-      />
+  const deactivatingBfl = bfls?.find((b) => b.id === deactivateId);
 
-      <div className="p-4 md:p-6">
-        <Card className="border-0 shadow-sm">
-          <CardContent className="p-0">
-            {isLoading ? (
-              <div className="flex items-center justify-center py-12">
-                <Loader2 className="w-7 h-7 animate-spin text-primary" />
-              </div>
-            ) : bfls?.length ? (
-              <div className="divide-y">
-                {bfls.map((b) => {
-                  const total = parseFloat(b.quantity_litres) || 0;
-                  const remaining = b.remaining_litres !== undefined ? parseFloat(b.remaining_litres) : total;
-                  return (
-                    <div key={b.id} className="px-5 py-3.5 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-mono font-semibold">{b.bfl_number}</span>
-                          <Badge variant="outline" className="text-[10px]">{b.product_type}</Badge>
-                          {!b.is_active && <Badge variant="secondary" className="text-[10px]">Inactive</Badge>}
-                        </div>
-                        {canAdd && b.is_active && (
-                          <div className="flex items-center gap-1">
-                            <Button size="sm" variant="ghost" className="h-6 px-1.5" onClick={() => openEdit(b)}>
-                              <Pencil className="w-3 h-3" />
-                            </Button>
-                            <Button
-                              size="sm" variant="ghost" className="h-6 px-1.5 text-destructive hover:text-destructive"
-                              onClick={() => { setDeactivateId(b.id); setDeactivateReason(""); }}
-                            >
-                              <Trash2 className="w-3 h-3" />
-                            </Button>
-                          </div>
+  return (
+    <DashboardShell
+      icon={Fuel}
+      iconTone="blue"
+      showRole={false}
+      title="BFL"
+      subtitle="Sits under the current PPDL — multiple BFLs can be active at once"
+      actions={canAdd ? (
+        <Button
+          className="h-10.5 gap-2 rounded-xl px-4 text-[13px] font-semibold"
+          onClick={() => setShowCreate(true)}
+        >
+          <PlusCircle className="h-4 w-4" strokeWidth={2.5} />
+          New BFL
+        </Button>
+      ) : undefined}
+    >
+      {isLoading ? (
+        <Skeleton className="h-80 w-full rounded-2xl" />
+      ) : (
+        <PanelCard icon={Fuel} tone="blue" title="Registry" flush className="animate-rise">
+          {bfls?.length ? (
+            <div className="divide-y divide-border/70">
+              {bfls.map((b) => {
+                const total = parseFloat(b.quantity_litres) || 0;
+                const remaining = b.remaining_litres !== undefined ? parseFloat(b.remaining_litres) : total;
+                return (
+                  <div key={b.id} className="space-y-2 px-4 py-3.5 lg:px-5">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-mono text-[13px] font-semibold text-foreground">{b.bfl_number}</span>
+                        <Badge variant="outline" className="rounded-md text-[10px]">{b.product_type}</Badge>
+                        {!b.is_active && (
+                          <Badge variant="secondary" className="rounded-md text-[10px]">Inactive</Badge>
                         )}
                       </div>
-                      <p className="text-xs text-muted-foreground">
-                        PPDL {b.ppdl_number ?? "—"} · {remaining.toLocaleString()} / {total.toLocaleString()} L remaining
-                        {b.vessel && <> · Vessel: {b.vessel}</>}
-                        {" · "}Expires {formatDate(b.expiry_date)}
-                      </p>
-                      {deactivateId === b.id && (
-                        <div className="flex items-center gap-1.5 pt-1">
-                          <Input
-                            className="h-7 text-xs" placeholder="Reason for deactivating this BFL…"
-                            value={deactivateReason} onChange={(e) => setDeactivateReason(e.target.value)}
-                          />
+                      {canAdd && b.is_active && (
+                        <div className="flex shrink-0 items-center gap-1">
                           <Button
-                            size="sm" variant="destructive" className="h-7 px-2 text-xs shrink-0"
-                            disabled={!deactivateReason.trim() || deactivateMutation.isPending}
-                            onClick={() => deactivateMutation.mutate(b.id)}
+                            size="icon" variant="ghost"
+                            aria-label="Edit BFL"
+                            className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                            onClick={() => openEdit(b)}
                           >
-                            {deactivateMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Confirm"}
+                            <Pencil className="h-3.5 w-3.5" />
                           </Button>
-                          <Button size="sm" variant="ghost" className="h-7 px-2 text-xs shrink-0" onClick={() => setDeactivateId(null)}>Cancel</Button>
+                          <Button
+                            size="icon" variant="ghost"
+                            aria-label="Deactivate BFL"
+                            className="h-7 w-7 text-destructive hover:text-destructive"
+                            onClick={() => { setDeactivateId(b.id); setDeactivateReason(""); }}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
                         </div>
                       )}
                     </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="flex flex-col items-center py-12 text-muted-foreground gap-1">
-                <Fuel className="w-7 h-7 mb-1 opacity-25" />
-                <p className="text-sm font-medium">No BFLs yet</p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+                    <p className="text-[12.5px] text-muted-foreground">
+                      PPDL {b.ppdl_number ?? "—"} ·{" "}
+                      <span className="tabular-nums">{remaining.toLocaleString()} / {total.toLocaleString()} L</span> remaining
+                      {b.vessel && <> · Vessel: {b.vessel}</>}
+                      {" · "}Expires {formatDate(b.expiry_date)}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center py-12 text-center">
+              <Fuel className="h-8 w-8 text-muted-foreground/25" strokeWidth={1.5} />
+              <p className="mt-2.5 text-sm font-medium text-foreground">No BFLs yet</p>
+            </div>
+          )}
+        </PanelCard>
+      )}
 
       {/* ── Create dialog ── */}
       <Dialog open={showCreate} onOpenChange={(v) => { setShowCreate(v); if (!v) resetCreate(); }}>
         <DialogContent className="sm:max-w-md" aria-describedby={undefined}>
-          <DialogHeader><DialogTitle>New BFL</DialogTitle></DialogHeader>
-          <div className="space-y-3 mt-1">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-[15px] font-bold tracking-tight">
+              <Fuel className="h-4 w-4 text-brand-600" strokeWidth={2.2} />
+              New BFL
+            </DialogTitle>
+          </DialogHeader>
+          <div className="mt-1 space-y-3">
             <div className="space-y-1.5">
               <Label className="text-xs">BFL Number *</Label>
               <Input value={number} onChange={(e) => setNumber(e.target.value)} placeholder="From the issued document" />
@@ -229,7 +233,7 @@ export default function BflPage() {
           <DialogFooter className="mt-4">
             <Button variant="outline" onClick={() => setShowCreate(false)}>Cancel</Button>
             <Button disabled={!createValid || createMutation.isPending} onClick={() => createMutation.mutate()}>
-              {createMutation.isPending && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
+              {createMutation.isPending && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
               Create BFL
             </Button>
           </DialogFooter>
@@ -237,32 +241,43 @@ export default function BflPage() {
       </Dialog>
 
       {/* ── Edit dialog ── */}
-      <Dialog open={!!editId} onOpenChange={(v) => { if (!v) setEditId(null); }}>
-        <DialogContent className="sm:max-w-sm" aria-describedby={undefined}>
-          <DialogHeader><DialogTitle className="flex items-center gap-2"><Pencil className="w-4 h-4 text-primary" />Edit BFL</DialogTitle></DialogHeader>
-          <div className="space-y-3 mt-1">
-            <div className="space-y-1.5">
-              <Label className="text-xs">Quantity (L)</Label>
-              <Input type="number" value={editQuantity} onChange={(e) => setEditQuantity(e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Vessel</Label>
-              <Input value={editVessel} onChange={(e) => setEditVessel(e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Reason for edit <span className="text-destructive">*</span></Label>
-              <Input placeholder="Why is this being changed…" value={editReason} onChange={(e) => setEditReason(e.target.value)} />
-            </div>
-          </div>
-          <DialogFooter className="mt-4">
-            <Button variant="outline" onClick={() => setEditId(null)}>Cancel</Button>
-            <Button disabled={!editQuantity || !editReason.trim() || editMutation.isPending} onClick={() => editMutation.mutate()}>
-              {editMutation.isPending && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
-              Save Changes
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
+      <ReasonGatedDialog
+        open={!!editId}
+        onOpenChange={(v) => !v && setEditId(null)}
+        title="Edit BFL"
+        icon={Pencil}
+        reason={editReason}
+        onReasonChange={setEditReason}
+        confirmLabel="Save Changes"
+        pending={editMutation.isPending}
+        confirmDisabled={!editQuantity}
+        onConfirm={() => editMutation.mutate()}
+      >
+        <div className="space-y-1.5">
+          <Label className="text-xs">Quantity (L)</Label>
+          <Input type="number" value={editQuantity} onChange={(e) => setEditQuantity(e.target.value)} />
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-xs">Vessel</Label>
+          <Input value={editVessel} onChange={(e) => setEditVessel(e.target.value)} />
+        </div>
+      </ReasonGatedDialog>
+
+      {/* ── Deactivate dialog ── */}
+      <ReasonGatedDialog
+        open={!!deactivateId}
+        onOpenChange={(v) => !v && setDeactivateId(null)}
+        title="Deactivate BFL"
+        icon={Trash2}
+        description={deactivatingBfl ? `${deactivatingBfl.bfl_number} will no longer be usable for drawdowns.` : undefined}
+        destructive
+        reason={deactivateReason}
+        onReasonChange={setDeactivateReason}
+        reasonLabel="Reason for deactivating"
+        confirmLabel="Deactivate"
+        pending={deactivateMutation.isPending}
+        onConfirm={() => deactivateId && deactivateMutation.mutate(deactivateId)}
+      />
+    </DashboardShell>
   );
 }

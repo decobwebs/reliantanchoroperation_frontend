@@ -6,12 +6,15 @@ import { Loader2, PlusCircle, FileText, Pencil, Trash2, ShieldCheck } from "luci
 import { toast } from "sonner";
 import { api, getErrorMessage } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
-import { Header } from "@/components/layout/Header";
-import { Card, CardContent } from "@/components/ui/card";
+import { DashboardShell } from "@/components/dashboard/DashboardShell";
+import { PanelCard } from "@/components/dashboard/PanelCard";
+import { ReasonGatedDialog } from "@/components/shared/ReasonGatedDialog";
+import { useDynamicRows, DynamicRowCard } from "@/components/shared/DynamicRows";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -24,6 +27,7 @@ import { PRODUCT_TYPE_LABELS, type ApiResponse, type Ppdl } from "@/types";
 const PRODUCT_TYPES = Object.keys(PRODUCT_TYPE_LABELS);
 
 type ProductRow = { product_type: string; quantity_litres: string };
+const emptyProductRow = (): ProductRow => ({ product_type: "", quantity_litres: "" });
 
 export default function PpdlPage() {
   const { effectiveRole } = useAuth();
@@ -45,14 +49,14 @@ export default function PpdlPage() {
   const [number, setNumber] = useState("");
   const [issueDate, setIssueDate] = useState("");
   const [expiryDate, setExpiryDate] = useState("");
-  const [products, setProducts] = useState<ProductRow[]>([{ product_type: "", quantity_litres: "" }]);
+  const productRows = useDynamicRows<ProductRow>(emptyProductRow);
 
   const resetCreate = () => {
     setNumber(""); setIssueDate(""); setExpiryDate("");
-    setProducts([{ product_type: "", quantity_litres: "" }]);
+    productRows.reset();
   };
 
-  const productsValid = products.length > 0 && products.every((p) => p.product_type && parseFloat(p.quantity_litres) > 0);
+  const productsValid = productRows.rows.length > 0 && productRows.rows.every((p) => p.product_type && parseFloat(p.quantity_litres) > 0);
   const createValid = number.trim() && issueDate && expiryDate && productsValid;
 
   const createMutation = useMutation({
@@ -61,7 +65,7 @@ export default function PpdlPage() {
         ppdl_number: number.trim(),
         issue_date: issueDate,
         expiry_date: expiryDate,
-        products: products.map((p) => ({ product_type: p.product_type, quantity_litres: parseFloat(p.quantity_litres) })),
+        products: productRows.rows.map((p) => ({ product_type: p.product_type, quantity_litres: parseFloat(p.quantity_litres) })),
       });
     },
     onSuccess: () => {
@@ -95,92 +99,102 @@ export default function PpdlPage() {
   });
 
   return (
-    <div>
-      <Header
-        title="PPDL"
-        subtitle="Top of the licence chain — every operation carries whichever PPDL is current"
-        actions={canAdd ? (
-          <Button size="sm" onClick={() => setShowCreate(true)} className="gap-1.5">
-            <PlusCircle className="w-3.5 h-3.5" />New PPDL
-          </Button>
-        ) : undefined}
-      />
-
-      <div className="p-4 md:p-6 space-y-4">
-        {isLoading ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="w-7 h-7 animate-spin text-primary" />
-          </div>
-        ) : ppdls?.length ? (
-          ppdls.map((ppdl) => (
-            <Card key={ppdl.id} className="border-0 shadow-sm">
-              <CardContent className="p-5 space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <p className="text-sm font-mono font-semibold">{ppdl.ppdl_number}</p>
-                    {ppdl.is_current && (
-                      <Badge className="gap-1 text-[10px]"><ShieldCheck className="w-3 h-3" />Current</Badge>
-                    )}
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Issued {formatDate(ppdl.issue_date)} · Expires {formatDate(ppdl.expiry_date)}
-                  </p>
-                </div>
-
-                <div className="space-y-2.5">
-                  {ppdl.products.map((p) => {
-                    const total = parseFloat(p.quantity_litres) || 0;
-                    const remaining = p.remaining_litres !== undefined ? parseFloat(p.remaining_litres) : total;
-                    const pct = total > 0 ? Math.max(0, Math.min(100, (remaining / total) * 100)) : 0;
-                    return (
-                      <div key={p.id} className="space-y-1">
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="font-medium">{p.product_type}</span>
-                          <div className="flex items-center gap-2">
-                            <span className="text-muted-foreground">
-                              {remaining.toLocaleString()} / {total.toLocaleString()} L remaining
-                            </span>
-                            {canAdd && (
-                              <Button
-                                size="sm" variant="ghost" className="h-5 px-1"
-                                onClick={() => {
-                                  setEditTarget({ ppdlId: ppdl.id, productId: p.id, current: p.quantity_litres, label: p.product_type });
-                                  setEditQuantity(p.quantity_litres);
-                                  setEditReason("");
-                                }}
-                              >
-                                <Pencil className="w-3 h-3" />
-                              </Button>
-                            )}
-                          </div>
-                        </div>
-                        <div className="h-2 rounded-full bg-muted overflow-hidden">
-                          <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${pct}%` }} />
+    <DashboardShell
+      icon={FileText}
+      iconTone="blue"
+      showRole={false}
+      title="PPDL"
+      subtitle="Top of the licence chain — every operation carries whichever PPDL is current"
+      actions={canAdd ? (
+        <Button
+          className="h-10.5 gap-2 rounded-xl px-4 text-[13px] font-semibold"
+          onClick={() => setShowCreate(true)}
+        >
+          <PlusCircle className="h-4 w-4" strokeWidth={2.5} />
+          New PPDL
+        </Button>
+      ) : undefined}
+    >
+      {isLoading ? (
+        <div className="space-y-4">
+          <Skeleton className="h-48 w-full rounded-2xl" />
+          <Skeleton className="h-48 w-full rounded-2xl" />
+        </div>
+      ) : ppdls?.length ? (
+        <div className="space-y-4">
+          {ppdls.map((ppdl) => (
+            <PanelCard
+              key={ppdl.id}
+              icon={FileText}
+              tone={ppdl.is_current ? "emerald" : "blue"}
+              title={ppdl.ppdl_number}
+              subtitle={`Issued ${formatDate(ppdl.issue_date)} · Expires ${formatDate(ppdl.expiry_date)}`}
+              action={ppdl.is_current ? (
+                <Badge className="gap-1 rounded-md bg-emerald-100 text-[10px] text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300">
+                  <ShieldCheck className="h-3 w-3" />Current
+                </Badge>
+              ) : undefined}
+              className="animate-rise"
+            >
+              <div className="space-y-3">
+                {ppdl.products.map((p) => {
+                  const total = parseFloat(p.quantity_litres) || 0;
+                  const remaining = p.remaining_litres !== undefined ? parseFloat(p.remaining_litres) : total;
+                  const pct = total > 0 ? Math.max(0, Math.min(100, (remaining / total) * 100)) : 0;
+                  return (
+                    <div key={p.id} className="space-y-1.5">
+                      <div className="flex items-center justify-between text-[12.5px]">
+                        <span className="font-medium text-foreground">{p.product_type}</span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="tabular-nums text-muted-foreground">
+                            {remaining.toLocaleString()} / {total.toLocaleString()} L remaining
+                          </span>
+                          {canAdd && (
+                            <Button
+                              size="icon" variant="ghost"
+                              aria-label={`Edit ${p.product_type} quantity`}
+                              className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                              onClick={() => {
+                                setEditTarget({ ppdlId: ppdl.id, productId: p.id, current: p.quantity_litres, label: p.product_type });
+                                setEditQuantity(p.quantity_litres);
+                                setEditReason("");
+                              }}
+                            >
+                              <Pencil className="h-3 w-3" />
+                            </Button>
+                          )}
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
-              </CardContent>
-            </Card>
-          ))
-        ) : (
-          <div className="flex flex-col items-center py-12 text-muted-foreground gap-1">
-            <FileText className="w-7 h-7 mb-1 opacity-25" />
-            <p className="text-sm font-medium">No PPDLs yet</p>
+                      <div className="h-2 overflow-hidden rounded-full bg-muted">
+                        <div className="brand-grad-bar h-full rounded-full" style={{ width: `${pct}%` }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </PanelCard>
+          ))}
+        </div>
+      ) : (
+        <PanelCard icon={FileText} tone="blue" title="Registry" className="animate-rise">
+          <div className="flex flex-col items-center py-12 text-center">
+            <FileText className="h-8 w-8 text-muted-foreground/25" strokeWidth={1.5} />
+            <p className="mt-2.5 text-sm font-medium text-foreground">No PPDLs yet</p>
           </div>
-        )}
-      </div>
+        </PanelCard>
+      )}
 
       {/* ── Create dialog ── */}
       <Dialog open={showCreate} onOpenChange={(v) => { setShowCreate(v); if (!v) resetCreate(); }}>
         <DialogContent className="sm:max-w-lg" aria-describedby={undefined}>
           <DialogHeader>
-            <DialogTitle>New PPDL</DialogTitle>
+            <DialogTitle className="flex items-center gap-2 text-[15px] font-bold tracking-tight">
+              <FileText className="h-4 w-4 text-brand-600" strokeWidth={2.2} />New PPDL
+            </DialogTitle>
           </DialogHeader>
-          <div className="space-y-3 mt-1 max-h-[70vh] overflow-y-auto pr-1">
+          <div className="mt-1 max-h-[70vh] space-y-3 overflow-y-auto pr-1">
             <div className="grid grid-cols-3 gap-3">
-              <div className="space-y-1.5 col-span-1">
+              <div className="col-span-1 space-y-1.5">
                 <Label className="text-xs">PPDL Number *</Label>
                 <Input value={number} onChange={(e) => setNumber(e.target.value)} placeholder="PPDL-001" />
               </div>
@@ -198,17 +212,17 @@ export default function PpdlPage() {
               <div className="flex items-center justify-between">
                 <Label className="text-xs">Products</Label>
                 <Button
-                  type="button" size="sm" variant="outline" className="h-6 text-xs gap-1"
-                  onClick={() => setProducts((p) => [...p, { product_type: "", quantity_litres: "" }])}
+                  type="button" size="sm" variant="outline" className="h-6 gap-1 rounded-md text-xs"
+                  onClick={productRows.add}
                 >
-                  <PlusCircle className="w-3 h-3" />Add Product
+                  <PlusCircle className="h-3 w-3" />Add Product
                 </Button>
               </div>
-              {products.map((p, i) => (
-                <div key={i} className="rounded-lg border bg-muted/30 p-3 grid grid-cols-2 gap-2">
+              {productRows.rows.map((p, i) => (
+                <DynamicRowCard key={i} className="grid grid-cols-2 gap-2">
                   <div className="space-y-1">
                     <Label className="text-[10px] text-muted-foreground">Product Type</Label>
-                    <Select value={p.product_type} onValueChange={(v) => setProducts((rows) => rows.map((r, idx) => idx === i ? { ...r, product_type: v } : r))}>
+                    <Select value={p.product_type} onValueChange={(v) => productRows.update(i, { product_type: v })}>
                       <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select…" /></SelectTrigger>
                       <SelectContent>
                         {PRODUCT_TYPES.map((pt) => <SelectItem key={pt} value={pt} className="text-xs">{pt}</SelectItem>)}
@@ -220,23 +234,28 @@ export default function PpdlPage() {
                     <div className="flex gap-1">
                       <Input
                         type="number" className="h-8 text-xs" value={p.quantity_litres}
-                        onChange={(e) => setProducts((rows) => rows.map((r, idx) => idx === i ? { ...r, quantity_litres: e.target.value } : r))}
+                        onChange={(e) => productRows.update(i, { quantity_litres: e.target.value })}
                       />
-                      {products.length > 1 && (
-                        <Button type="button" size="icon" variant="ghost" className="h-8 w-8 shrink-0 text-destructive" onClick={() => setProducts((rows) => rows.filter((_, idx) => idx !== i))}>
-                          <Trash2 className="w-3.5 h-3.5" />
+                      {productRows.rows.length > 1 && (
+                        <Button
+                          type="button" size="icon" variant="ghost"
+                          aria-label="Remove product line"
+                          className="h-8 w-8 shrink-0 text-destructive"
+                          onClick={() => productRows.remove(i)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                       )}
                     </div>
                   </div>
-                </div>
+                </DynamicRowCard>
               ))}
             </div>
           </div>
           <DialogFooter className="mt-4">
             <Button variant="outline" onClick={() => setShowCreate(false)}>Cancel</Button>
             <Button disabled={!createValid || createMutation.isPending} onClick={() => createMutation.mutate()}>
-              {createMutation.isPending && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
+              {createMutation.isPending && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
               Create PPDL
             </Button>
           </DialogFooter>
@@ -244,33 +263,24 @@ export default function PpdlPage() {
       </Dialog>
 
       {/* ── Edit product quantity dialog ── */}
-      <Dialog open={!!editTarget} onOpenChange={(v) => { if (!v) setEditTarget(null); }}>
-        <DialogContent className="sm:max-w-sm" aria-describedby={undefined}>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2"><Pencil className="w-4 h-4 text-primary" />Edit {editTarget?.label} Quantity</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3 mt-1">
-            <div className="space-y-1.5">
-              <Label className="text-xs">Quantity (L)</Label>
-              <Input type="number" value={editQuantity} onChange={(e) => setEditQuantity(e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Reason for change <span className="text-destructive">*</span></Label>
-              <Input placeholder="Why is this being changed…" value={editReason} onChange={(e) => setEditReason(e.target.value)} />
-            </div>
-          </div>
-          <DialogFooter className="mt-4">
-            <Button variant="outline" onClick={() => setEditTarget(null)}>Cancel</Button>
-            <Button
-              disabled={!editQuantity || !editReason.trim() || editMutation.isPending}
-              onClick={() => editMutation.mutate()}
-            >
-              {editMutation.isPending && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
-              Save
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
+      <ReasonGatedDialog
+        open={!!editTarget}
+        onOpenChange={(v) => !v && setEditTarget(null)}
+        title={`Edit ${editTarget?.label ?? ""} Quantity`}
+        icon={Pencil}
+        reason={editReason}
+        onReasonChange={setEditReason}
+        reasonLabel="Reason for change"
+        confirmLabel="Save"
+        pending={editMutation.isPending}
+        confirmDisabled={!editQuantity}
+        onConfirm={() => editMutation.mutate()}
+      >
+        <div className="space-y-1.5">
+          <Label className="text-xs">Quantity (L)</Label>
+          <Input type="number" value={editQuantity} onChange={(e) => setEditQuantity(e.target.value)} />
+        </div>
+      </ReasonGatedDialog>
+    </DashboardShell>
   );
 }

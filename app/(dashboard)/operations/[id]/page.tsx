@@ -7150,8 +7150,8 @@ export default function OperationDetailPage({
                                   {to.waiver_id ? "Edit Waybill" : "Link Waybill"}
                                 </Button>
                               )}
-                              {/* BM: upload document for this truck */}
-                              {isBM && (
+                              {/* BM and LO: upload document for this truck */}
+                              {(isBM || isLO) && (
                                 <Button
                                   size="sm"
                                   variant="outline"
@@ -7183,8 +7183,8 @@ export default function OperationDetailPage({
                           {renderAuditBanner(to, "pre", preAudit)}
                           {renderAuditBanner(to, "post", postAudit)}
 
-                          {/* BM upload panel */}
-                          {isBM && uploadingTruckId === to.id && (
+                          {/* BM/LO upload panel */}
+                          {(isBM || isLO) && uploadingTruckId === to.id && (
                             <div className="px-5 py-3 border-b bg-brand-50/30 flex items-center gap-3 flex-wrap">
                               <button
                                 type="button"

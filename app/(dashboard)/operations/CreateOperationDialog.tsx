@@ -457,9 +457,9 @@ function PfiAllocationRow({
               ) : (
                 unlinkedPfis.map((p) => (
                   <SelectItem key={p.id} value={p.id} className="text-xs">
-                    {p.pfi_number} — {p.currency} {parseFloat(p.amount).toLocaleString()}
+                    {p.pfi_number}
                     {p.remaining_litres != null
-                      ? ` (${parseFloat(p.remaining_litres).toLocaleString()} L left)`
+                      ? ` — ${parseFloat(p.remaining_litres).toLocaleString()} L left`
                       : ""}
                   </SelectItem>
                 ))

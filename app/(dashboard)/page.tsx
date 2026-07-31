@@ -1,7 +1,8 @@
 "use client";
 
-import { Loader2 } from "lucide-react";
+
 import { useAuth } from "@/hooks/useAuth";
+import { Spinner } from "@/components/ui/spinner";
 import { BunkerManagerDashboard } from "./_dashboards/BunkerManagerDashboard";
 import { OpsSupervisorDashboard } from "./_dashboards/OpsSupervisorDashboard";
 import { LogisticsOfficerDashboard } from "./_dashboards/LogisticsOfficerDashboard";
@@ -14,7 +15,7 @@ export default function DashboardPage() {
   if (loading || !user) {
     return (
       <div className="flex items-center justify-center h-full">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        <Spinner size={32} className="text-primary" />
       </div>
     );
   }

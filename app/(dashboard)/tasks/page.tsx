@@ -5,7 +5,6 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import {
   CheckSquare,
-  Loader2,
   Play,
   CheckCircle2,
   Truck,
@@ -13,6 +12,7 @@ import {
   ChevronRight,
   AlertCircle,
 } from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -166,7 +166,7 @@ function SubmitReadinessDialog({
             </Label>
             {trucksLoading ? (
               <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
-                <Loader2 className="w-4 h-4 animate-spin" />
+                <Spinner size={16} />
                 Loading trucks...
               </div>
             ) : trucks?.length ? (
@@ -248,7 +248,7 @@ function SubmitReadinessDialog({
               Cancel
             </Button>
             <Button type="submit" disabled={mutation.isPending || selectedTruckIds.length === 0}>
-              {mutation.isPending && <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />}
+              {mutation.isPending && <Spinner size={16} className="mr-1.5" />}
               Submit Report
             </Button>
           </div>
@@ -328,7 +328,7 @@ function MarkVesselReadyDialog({
           <div className="flex justify-end gap-2 pt-1">
             <Button type="button" variant="outline" onClick={() => { reset(); onClose(); }}>Cancel</Button>
             <Button type="submit" disabled={mutation.isPending}>
-              {mutation.isPending && <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />}
+              {mutation.isPending && <Spinner size={16} className="mr-1.5" />}
               Confirm Vessel Ready
             </Button>
           </div>

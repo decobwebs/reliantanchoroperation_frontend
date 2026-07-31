@@ -3,7 +3,15 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Loader2, PlusCircle, FileWarning, Pencil, Trash2, CheckCircle2, Link2 } from "lucide-react";
+import {
+  PlusCircle,
+  FileWarning,
+  Pencil,
+  Trash2,
+  CheckCircle2,
+  Link2,
+} from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
 import { toast } from "sonner";
 import { api, getErrorMessage } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
@@ -138,7 +146,7 @@ export default function WaiversPage() {
               onClick={() => bulkAddMutation.mutate()}
             >
               {bulkAddMutation.isPending
-                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ? <Spinner size={14} />
                 : <PlusCircle className="h-3.5 w-3.5" />}
               Add Numbers
             </Button>

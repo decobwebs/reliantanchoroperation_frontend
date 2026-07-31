@@ -133,6 +133,58 @@
   animation: rise-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
+@keyframes spinner-rotate {
+  to { transform: rotate(360deg); }
+}
+@keyframes spinner-rotate-reverse {
+  to { transform: rotate(-360deg); }
+}
+
+/* The loading indicator, everywhere in the app — three concentric rings,
+ * alternating spin direction. Colour is `currentColor`, not a hardcoded hue:
+ * the outer and inner rings pick up whatever text colour the surrounding
+ * element already has (white inside a filled button, brand azure inside an
+ * outline one, muted inside a ghost one — exactly how the old lucide spinner
+ * behaved), so it's always on-brand without per-instance colour props. The
+ * middle ring is the same colour at reduced opacity, standing in for the
+ * reference design's second hue without introducing one.
+ */
+.spinner {
+  width: var(--spinner-size, 16px);
+  height: var(--spinner-size, 16px);
+  display: inline-block;
+  position: relative;
+  box-sizing: border-box;
+  border-radius: 50%;
+  border: calc(var(--spinner-size, 16px) * 0.11) solid;
+  border-color: currentColor currentColor transparent transparent;
+  animation: spinner-rotate 0.85s linear infinite;
+}
+.spinner::before,
+.spinner::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  box-sizing: border-box;
+  border-radius: 50%;
+}
+.spinner::after {
+  width: 84%;
+  height: 84%;
+  border: calc(var(--spinner-size, 16px) * 0.11) solid;
+  border-color: transparent transparent currentColor currentColor;
+  opacity: 0.4;
+  animation: spinner-rotate-reverse 0.6s linear infinite;
+}
+.spinner::before {
+  width: 64%;
+  height: 64%;
+  border: calc(var(--spinner-size, 16px) * 0.11) solid;
+  border-color: currentColor currentColor transparent transparent;
+  animation: spinner-rotate 1.25s linear infinite;
+}
+
 /* ── Brand gradients ────────────────────────────────────────────────────────
    Declared once here so no component ever inlines a blue. Each is built from
    the two logo colours only. */
@@ -257,6 +309,14 @@
 @media (prefers-reduced-motion: reduce) {
   .animate-rise {
     animation: none;
+  }
+  /* A fully-static spinner reads as frozen/broken rather than "loading", so
+     slow it down instead of stopping it outright — same convention as most
+     OS-level activity indicators under reduced motion. */
+  .spinner,
+  .spinner::before,
+  .spinner::after {
+    animation-duration: 2.4s;
   }
 }
 

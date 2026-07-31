@@ -48,6 +48,7 @@ import {
   Droplets,
   Users,
 } from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
 import { toast } from "sonner";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -423,7 +424,7 @@ function AssignTaskDialog({
           <div className="flex justify-end gap-2 pt-1">
             <Button type="button" variant="outline" onClick={() => { reset(); onClose(); }}>Cancel</Button>
             <Button type="submit" disabled={mutation.isPending}>
-              {mutation.isPending && <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />}
+              {mutation.isPending && <Spinner size={16} className="mr-1.5" />}
               Assign Task
             </Button>
           </div>
@@ -3326,7 +3327,7 @@ export default function OperationDetailPage({
                   onClick={() => transitionMutation.mutate({ to_status: "active", reason: "Returned to active by BM" })}
                 >
                   {transitionMutation.isPending
-                    ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                    ? <Spinner size={14} className="mr-1.5" />
                     : <XCircle className="w-3.5 h-3.5 mr-1.5" />}
                   Return to Active
                 </Button>
@@ -3404,7 +3405,7 @@ export default function OperationDetailPage({
                         disabled={!linkPfiId || !linkQuantity || parseFloat(linkQuantity) <= 0 || linkPfiMutation.isPending}
                         onClick={() => linkPfiMutation.mutate()}
                       >
-                        {linkPfiMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Link"}
+                        {linkPfiMutation.isPending ? <Spinner size={14} /> : "Link"}
                       </Button>
                     </div>
                   )}
@@ -3439,7 +3440,7 @@ export default function OperationDetailPage({
                     onClick={() => setShowTransitionConfirm(t)}
                   >
                     {transitionMutation.isPending
-                      ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                      ? <Spinner size={14} className="mr-1.5" />
                       : <ChevronRight className="w-3.5 h-3.5 mr-1.5" />}
                     {t.label}
                   </Button>
@@ -3970,7 +3971,7 @@ export default function OperationDetailPage({
                                 disabled={loSelectedTrucks.length === 0 || loSummary.trim().length < 5 || submitFeedbackMutation.isPending}
                                 onClick={() => submitFeedbackMutation.mutate()}
                               >
-                                {submitFeedbackMutation.isPending && <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />}
+                                {submitFeedbackMutation.isPending && <Spinner size={16} className="mr-1.5" />}
                                 Submit Feedback
                               </Button>
                             </div>
@@ -4175,7 +4176,7 @@ export default function OperationDetailPage({
                                     comment: approveComment.trim() || undefined,
                                   })}
                                 >
-                                  {approveFeedbackMutation.isPending && <Loader2 className="w-3 h-3 mr-1 animate-spin" />}
+                                  {approveFeedbackMutation.isPending && <Spinner size={12} className="mr-1" />}
                                   Confirm Approval
                                 </Button>
                               </div>
@@ -4208,7 +4209,7 @@ export default function OperationDetailPage({
                                   disabled={rejectReason.trim().length < 10 || rejectFeedbackMutation.isPending}
                                   onClick={() => rejectFeedbackMutation.mutate({ feedbackId: fb.id, reason: rejectReason.trim() })}
                                 >
-                                  {rejectFeedbackMutation.isPending && <Loader2 className="w-3 h-3 mr-1 animate-spin" />}
+                                  {rejectFeedbackMutation.isPending && <Spinner size={12} className="mr-1" />}
                                   Confirm Reject
                                 </Button>
                               </div>
@@ -4993,7 +4994,7 @@ export default function OperationDetailPage({
                   <Card className="rounded-2xl border border-navy-100 shadow-[0_1px_2px_rgb(16_36_71/0.04)] dark:border-border">
                     <CardContent className="p-0">
                       {vesselBdnsLoading ? (
-                        <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
+                        <div className="flex justify-center py-8"><Spinner size={20} className="text-muted-foreground" /></div>
                       ) : vesselBdnsErrored ? (
                         <div className="flex flex-col items-center gap-2 py-8">
                           <p className="text-sm text-rose-600">Failed to load Vessel BDNs</p>
@@ -5374,7 +5375,7 @@ export default function OperationDetailPage({
                               disabled={!actVesselId || !actAssignedTo || assignActivityMutation.isPending}
                               onClick={() => assignActivityMutation.mutate()}
                             >
-                              {assignActivityMutation.isPending && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
+                              {assignActivityMutation.isPending && <Spinner size={14} className="mr-1.5" />}
                               Assign Activity
                             </Button>
                           </div>
@@ -5566,7 +5567,7 @@ export default function OperationDetailPage({
                                         disabled={!editRobValue || patchInitialRobMutation.isPending}
                                         onClick={() => patchInitialRobMutation.mutate({ activityId: activity.id, value: editRobValue })}
                                       >
-                                        {patchInitialRobMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Save"}
+                                        {patchInitialRobMutation.isPending ? <Spinner size={12} /> : "Save"}
                                       </Button>
                                       <Button
                                         size="sm" variant="ghost" className="h-6 px-2 text-xs"
@@ -5713,7 +5714,7 @@ export default function OperationDetailPage({
                                             disabled={!stageOccurredAt || advanceStageMutation.isPending}
                                             onClick={() => advanceStageMutation.mutate({ activityId: activity.id, stage: nextStage.value })}
                                           >
-                                            {advanceStageMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : `Confirm ${nextStage.label}`}
+                                            {advanceStageMutation.isPending ? <Spinner size={14} /> : `Confirm ${nextStage.label}`}
                                           </Button>
                                           <Button size="sm" variant="ghost" className="text-xs" onClick={() => { setStageFormActivityId(null); setStageOccurredAt(""); setStageComment(""); }}>Cancel</Button>
                                         </div>
@@ -5748,7 +5749,7 @@ export default function OperationDetailPage({
                                           <Textarea className="text-xs min-h-12.5 resize-none" placeholder="Notes…" value={hseNotes} onChange={(e) => setHseNotes(e.target.value)} />
                                           <div className="flex gap-2">
                                             <Button size="sm" className="flex-1 text-xs" disabled={recordHseMutation.isPending} onClick={() => recordHseMutation.mutate(activity.id)}>
-                                              {recordHseMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Submit HSE Checklist"}
+                                              {recordHseMutation.isPending ? <Spinner size={14} /> : "Submit HSE Checklist"}
                                             </Button>
                                             <Button size="sm" variant="ghost" className="text-xs" onClick={closeHseForm}>Cancel</Button>
                                           </div>
@@ -5796,7 +5797,7 @@ export default function OperationDetailPage({
                                               disabled={!dqGov || !dqVcf || !dqDensity || recordDischargeQtyMutation.isPending}
                                               onClick={() => recordDischargeQtyMutation.mutate(activity.id)}
                                             >
-                                              {recordDischargeQtyMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Compute GSV/MTvac"}
+                                              {recordDischargeQtyMutation.isPending ? <Spinner size={14} /> : "Compute GSV/MTvac"}
                                             </Button>
                                             <Button size="sm" variant="ghost" className="text-xs" onClick={closeDischargeQtyForm}>Cancel</Button>
                                           </div>
@@ -5870,7 +5871,7 @@ export default function OperationDetailPage({
                                           disabled={startActivityMutation.isPending}
                                         >
                                           {startActivityMutation.isPending
-                                            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                            ? <Spinner size={14} />
                                             : <PlayCircle className="w-3.5 h-3.5 mr-1.5" />}
                                           Start Activity
                                         </Button>
@@ -5976,7 +5977,7 @@ export default function OperationDetailPage({
                                                 activityId: activity.id,
                                                 previousRob: parseFloat(activity.initial_rob_mt!),
                                               })}>
-                                              {recordReceiptMutation.isPending && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
+                                              {recordReceiptMutation.isPending && <Spinner size={14} className="mr-1.5" />}
                                               Save
                                             </Button>
                                           </div>
@@ -6017,7 +6018,7 @@ export default function OperationDetailPage({
                                             <Button size="sm" variant="outline"
                                               disabled={(!actBunkerStart && !actBunkerEnd) || recordBunkeringMutation.isPending}
                                               onClick={() => recordBunkeringMutation.mutate(activity.id)}>
-                                              {recordBunkeringMutation.isPending && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
+                                              {recordBunkeringMutation.isPending && <Spinner size={14} className="mr-1.5" />}
                                               Save Timing
                                             </Button>
                                           </div>
@@ -6063,7 +6064,7 @@ export default function OperationDetailPage({
                                             <Button size="sm" variant="outline"
                                               disabled={!actDischQty || activityDischargeMutation.isPending}
                                               onClick={() => activityDischargeMutation.mutate(activity.id)}>
-                                              {activityDischargeMutation.isPending && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
+                                              {activityDischargeMutation.isPending && <Spinner size={14} className="mr-1.5" />}
                                               Record Discharge
                                             </Button>
                                           </div>
@@ -6100,7 +6101,7 @@ export default function OperationDetailPage({
                                         <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800"
                                           disabled={completeActivityMutation.isPending}
                                           onClick={() => completeActivityMutation.mutate(activity.id)}>
-                                          {completeActivityMutation.isPending && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
+                                          {completeActivityMutation.isPending && <Spinner size={14} className="mr-1.5" />}
                                           <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" />
                                           Complete Activity
                                         </Button>
@@ -6130,7 +6131,7 @@ export default function OperationDetailPage({
                                           <Textarea className="text-xs min-h-12.5 resize-none" placeholder="Any notes about how the vessel operation is commencing…" value={commenceDescription} onChange={(e) => setCommenceDescription(e.target.value)} />
                                           <div className="flex gap-2">
                                             <Button size="sm" className="flex-1 text-xs" disabled={!commenceUserAt || commenceMutation.isPending} onClick={() => commenceMutation.mutate(activity.id)}>
-                                              {commenceMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Mark Loading Commenced"}
+                                              {commenceMutation.isPending ? <Spinner size={14} /> : "Mark Loading Commenced"}
                                             </Button>
                                             <Button size="sm" variant="ghost" className="text-xs" onClick={() => { setCommenceFormActivityId(null); setCommenceUserAt(""); setCommenceDescription(""); }}>Cancel</Button>
                                           </div>
@@ -6185,7 +6186,7 @@ export default function OperationDetailPage({
                                           <Textarea className="text-xs min-h-12.5 resize-none" placeholder="Reason for correction (required)…" value={editTimingReason} onChange={(e) => setEditTimingReason(e.target.value)} />
                                           <div className="flex gap-2">
                                             <Button size="sm" className="flex-1 text-xs" disabled={!editTimingReason.trim() || correctTimingMutation.isPending} onClick={() => correctTimingMutation.mutate(activity.id)}>
-                                              {correctTimingMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Save Correction"}
+                                              {correctTimingMutation.isPending ? <Spinner size={14} /> : "Save Correction"}
                                             </Button>
                                             <Button size="sm" variant="ghost" className="text-xs" onClick={() => setEditTimingActivityId(null)}>Cancel</Button>
                                           </div>
@@ -6219,7 +6220,7 @@ export default function OperationDetailPage({
                                             <Textarea className="text-xs min-h-10 resize-none" placeholder="Reason for correction (required)…" value={editInitialRobReason} onChange={(e) => setEditInitialRobReason(e.target.value)} />
                                             <div className="flex gap-2">
                                               <Button size="sm" className="flex-1 text-xs" disabled={!editInitialRob || !editInitialRobReason.trim() || editInitialRobMutation.isPending} onClick={() => editInitialRobMutation.mutate(activity.id)}>
-                                                {editInitialRobMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Save Correction"}
+                                                {editInitialRobMutation.isPending ? <Spinner size={14} /> : "Save Correction"}
                                               </Button>
                                               <Button size="sm" variant="ghost" className="text-xs" onClick={() => setEditInitialRobId(null)}>Cancel</Button>
                                             </div>
@@ -6280,7 +6281,7 @@ export default function OperationDetailPage({
                                             <Textarea className="text-xs min-h-10 resize-none" placeholder="Reason for correction (required)…" value={correctHseReason} onChange={(e) => setCorrectHseReason(e.target.value)} />
                                             <div className="flex gap-2">
                                               <Button size="sm" className="flex-1 text-xs" disabled={!correctHseReason.trim() || correctHseMutation.isPending} onClick={() => correctHseMutation.mutate()}>
-                                                {correctHseMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Save Correction"}
+                                                {correctHseMutation.isPending ? <Spinner size={14} /> : "Save Correction"}
                                               </Button>
                                               <Button size="sm" variant="ghost" className="text-xs" onClick={() => setCorrectHseTarget(null)}>Cancel</Button>
                                             </div>
@@ -6302,7 +6303,7 @@ export default function OperationDetailPage({
                                             <Textarea className="text-xs min-h-12.5 resize-none" placeholder="Overall notes…" value={hseNotes} onChange={(e) => setHseNotes(e.target.value)} />
                                             <div className="flex gap-2">
                                               <Button size="sm" className="flex-1 text-xs" disabled={recordHseMutation.isPending} onClick={() => recordHseMutation.mutate(activity.id)}>
-                                                {recordHseMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Submit HSE Checklist"}
+                                                {recordHseMutation.isPending ? <Spinner size={14} /> : "Submit HSE Checklist"}
                                               </Button>
                                               <Button size="sm" variant="ghost" className="text-xs" onClick={closeHseForm}>Cancel</Button>
                                             </div>
@@ -6332,7 +6333,7 @@ export default function OperationDetailPage({
                                                   <Textarea className="text-xs min-h-10 resize-none" placeholder="Reason for correction (required)…" value={editUpdateReason} onChange={(e) => setEditUpdateReason(e.target.value)} />
                                                   <div className="flex gap-2">
                                                     <Button size="sm" className="flex-1 text-xs" disabled={!editUpdateReason.trim() || !editUpdateContent.trim() || editUpdateMutation.isPending} onClick={() => editUpdateMutation.mutate(u.id)}>
-                                                      {editUpdateMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Save Correction"}
+                                                      {editUpdateMutation.isPending ? <Spinner size={14} /> : "Save Correction"}
                                                     </Button>
                                                     <Button size="sm" variant="ghost" className="text-xs" onClick={resetEditUpdate}>Cancel</Button>
                                                   </div>
@@ -6373,7 +6374,7 @@ export default function OperationDetailPage({
                                             />
                                             <div className="flex gap-2">
                                               <Button size="sm" className="flex-1 text-xs" disabled={!updateContent.trim() || addUpdateMutation.isPending} onClick={() => addUpdateMutation.mutate(activity.id)}>
-                                                {addUpdateMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Post Update"}
+                                                {addUpdateMutation.isPending ? <Spinner size={14} /> : "Post Update"}
                                               </Button>
                                               <Button size="sm" variant="ghost" className="text-xs" onClick={() => { setUpdateFormActivityId(null); setUpdateContent(""); setUpdateImageFile(null); if (updateImageInputRef.current) updateImageInputRef.current.value = ""; }}>Cancel</Button>
                                             </div>
@@ -6397,7 +6398,7 @@ export default function OperationDetailPage({
                                             <Textarea className="text-xs min-h-12.5 resize-none" placeholder="Any notes on how loading finished — delays, shortfalls, conditions…" value={completeDescription} onChange={(e) => setCompleteDescription(e.target.value)} />
                                             <div className="flex gap-2">
                                               <Button size="sm" className="flex-1 text-xs bg-emerald-700 hover:bg-emerald-800" disabled={!completeUserAt || completeVesselOpMutation.isPending} onClick={() => completeVesselOpMutation.mutate(activity.id)}>
-                                                {completeVesselOpMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Mark Loading Completed"}
+                                                {completeVesselOpMutation.isPending ? <Spinner size={14} /> : "Mark Loading Completed"}
                                               </Button>
                                               <Button size="sm" variant="ghost" className="text-xs" onClick={() => { setCompleteFormActivityId(null); setCompleteUserAt(""); setCompleteDescription(""); }}>Cancel</Button>
                                             </div>
@@ -6471,7 +6472,7 @@ export default function OperationDetailPage({
                                                 disabled={!loadReceived || !loadDensity || !loadTempBefore || !loadTempAfter || !loadVcf || !loadGov || (!!activity.loading_quantity_recorded_at && !loadReason.trim()) || recordLoadingReceiptMutation.isPending}
                                                 onClick={() => recordLoadingReceiptMutation.mutate(activity.id)}
                                               >
-                                                {recordLoadingReceiptMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Save Loading Receipt"}
+                                                {recordLoadingReceiptMutation.isPending ? <Spinner size={14} /> : "Save Loading Receipt"}
                                               </Button>
                                               <Button size="sm" variant="ghost" className="text-xs" onClick={resetLoadReceiptForm}>Cancel</Button>
                                             </div>
@@ -6535,7 +6536,7 @@ export default function OperationDetailPage({
                                             </div>
                                             <div className="flex gap-2">
                                               <Button size="sm" className="flex-1 text-xs" disabled={!newLegName.trim() || addLegMutation.isPending} onClick={() => addLegMutation.mutate(activity.id)}>
-                                                {addLegMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Add Receiving Vessel"}
+                                                {addLegMutation.isPending ? <Spinner size={14} /> : "Add Receiving Vessel"}
                                               </Button>
                                               <Button size="sm" variant="ghost" className="text-xs" onClick={() => setAddLegFormActivityId(null)}>Cancel</Button>
                                             </div>
@@ -6601,7 +6602,7 @@ export default function OperationDetailPage({
                                                       <Textarea className="text-xs min-h-10 resize-none" placeholder="Reason for correction (required)…" value={editLegReason} onChange={(e) => setEditLegReason(e.target.value)} />
                                                       <div className="flex gap-2">
                                                         <Button size="sm" className="flex-1 text-xs" disabled={!editLegName.trim() || !editLegReason.trim() || editLegMutation.isPending} onClick={() => editLegMutation.mutate(leg.id)}>
-                                                          {editLegMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Save Correction"}
+                                                          {editLegMutation.isPending ? <Spinner size={14} /> : "Save Correction"}
                                                         </Button>
                                                         <Button size="sm" variant="ghost" className="text-xs" onClick={() => setEditLegId(null)}>Cancel</Button>
                                                       </div>
@@ -6613,7 +6614,7 @@ export default function OperationDetailPage({
                                                       <Textarea className="text-xs min-h-10 resize-none" placeholder="Reason for restoring (required)…" value={uncancelReason} onChange={(e) => setUncancelReason(e.target.value)} />
                                                       <div className="flex gap-2">
                                                         <Button size="sm" className="flex-1 text-xs" disabled={!uncancelReason.trim() || uncancelLegMutation.isPending} onClick={() => uncancelLegMutation.mutate(leg.id)}>
-                                                          {uncancelLegMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Restore Receiving Vessel"}
+                                                          {uncancelLegMutation.isPending ? <Spinner size={14} /> : "Restore Receiving Vessel"}
                                                         </Button>
                                                         <Button size="sm" variant="ghost" className="text-xs" onClick={() => setUncancelLegId(null)}>Cancel</Button>
                                                       </div>
@@ -6625,7 +6626,7 @@ export default function OperationDetailPage({
                                                       <Textarea className="text-xs min-h-10 resize-none" placeholder="Reason for cancelling (required)…" value={cancelLegReason} onChange={(e) => setCancelLegReason(e.target.value)} />
                                                       <div className="flex gap-2">
                                                         <Button size="sm" variant="destructive" className="flex-1 text-xs" disabled={!cancelLegReason.trim() || cancelLegMutation.isPending} onClick={() => cancelLegMutation.mutate(leg.id)}>
-                                                          {cancelLegMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Confirm Cancel"}
+                                                          {cancelLegMutation.isPending ? <Spinner size={14} /> : "Confirm Cancel"}
                                                         </Button>
                                                         <Button size="sm" variant="ghost" className="text-xs" onClick={() => setCancelLegFormId(null)}>Back</Button>
                                                       </div>
@@ -6673,7 +6674,7 @@ export default function OperationDetailPage({
                                                             <Textarea className="text-xs min-h-10 resize-none" placeholder="Reason for correction…" value={editLegTimingReason} onChange={(e) => setEditLegTimingReason(e.target.value)} />
                                                             <div className="flex gap-2">
                                                               <Button size="sm" className="flex-1 text-xs" disabled={!editLegTimingReason.trim() || correctLegTimingMutation.isPending} onClick={() => correctLegTimingMutation.mutate(leg.id)}>
-                                                                {correctLegTimingMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Save Correction"}
+                                                                {correctLegTimingMutation.isPending ? <Spinner size={14} /> : "Save Correction"}
                                                               </Button>
                                                               <Button size="sm" variant="ghost" className="text-xs" onClick={() => setEditLegTimingId(null)}>Cancel</Button>
                                                             </div>
@@ -6703,7 +6704,7 @@ export default function OperationDetailPage({
                                                           <p className="text-[10px] text-muted-foreground">A stage cannot be rolled back once a Vessel BDN has been submitted for this receiving vessel — reject that BDN first.</p>
                                                           <div className="flex gap-2">
                                                             <Button size="sm" className="flex-1 text-xs" disabled={!rollbackStage || !rollbackReason.trim() || rollbackLegMutation.isPending} onClick={() => rollbackLegMutation.mutate(leg.id)}>
-                                                              {rollbackLegMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Roll Back"}
+                                                              {rollbackLegMutation.isPending ? <Spinner size={14} /> : "Roll Back"}
                                                             </Button>
                                                             <Button size="sm" variant="ghost" className="text-xs" onClick={() => setRollbackLegId(null)}>Cancel</Button>
                                                           </div>
@@ -6722,7 +6723,7 @@ export default function OperationDetailPage({
                                                                 disabled={!legStageOccurredAt || advanceLegStageMutation.isPending}
                                                                 onClick={() => { setLegStageTarget(nextLegStage.value); advanceLegStageMutation.mutate(leg.id); }}
                                                               >
-                                                                {advanceLegStageMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : `Log ${nextLegStage.label}`}
+                                                                {advanceLegStageMutation.isPending ? <Spinner size={14} /> : `Log ${nextLegStage.label}`}
                                                               </Button>
                                                               <Button size="sm" variant="ghost" className="text-xs" onClick={() => { setLegStageFormLegId(null); setLegStageOccurredAt(""); }}>Cancel</Button>
                                                             </div>
@@ -6765,7 +6766,7 @@ export default function OperationDetailPage({
                                                               <Textarea className="text-xs min-h-10 resize-none" placeholder="Reason for correction (required)…" value={correctHseReason} onChange={(e) => setCorrectHseReason(e.target.value)} />
                                                               <div className="flex gap-2">
                                                                 <Button size="sm" className="flex-1 text-xs" disabled={!correctHseReason.trim() || correctHseMutation.isPending} onClick={() => correctHseMutation.mutate()}>
-                                                                  {correctHseMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Save Correction"}
+                                                                  {correctHseMutation.isPending ? <Spinner size={14} /> : "Save Correction"}
                                                                 </Button>
                                                                 <Button size="sm" variant="ghost" className="text-xs" onClick={() => setCorrectHseTarget(null)}>Cancel</Button>
                                                               </div>
@@ -6791,7 +6792,7 @@ export default function OperationDetailPage({
                                                               <Textarea className="text-xs min-h-12.5 resize-none" placeholder="Overall notes…" value={legHseNotes} onChange={(e) => setLegHseNotes(e.target.value)} />
                                                               <div className="flex gap-2">
                                                                 <Button size="sm" className="flex-1 text-xs" disabled={recordLegHseMutation.isPending} onClick={() => recordLegHseMutation.mutate(leg.id)}>
-                                                                  {recordLegHseMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Submit HSE Checklist"}
+                                                                  {recordLegHseMutation.isPending ? <Spinner size={14} /> : "Submit HSE Checklist"}
                                                                 </Button>
                                                                 <Button size="sm" variant="ghost" className="text-xs" onClick={() => setLegHseFormLegId(null)}>Cancel</Button>
                                                               </div>
@@ -6865,7 +6866,7 @@ export default function OperationDetailPage({
                                                                   disabled={!legQtyDischarged || !legQtyDensity || !legQtyTempBefore || !legQtyTempAfter || !legQtyVcf || !legQtyGov || (!!leg.quantity_recorded_at && !legQtyReason.trim()) || recordLegQtyMutation.isPending}
                                                                   onClick={() => recordLegQtyMutation.mutate(leg.id)}
                                                                 >
-                                                                  {recordLegQtyMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Save Quantities"}
+                                                                  {recordLegQtyMutation.isPending ? <Spinner size={14} /> : "Save Quantities"}
                                                                 </Button>
                                                                 <Button size="sm" variant="ghost" className="text-xs" onClick={resetLegQtyForm}>Cancel</Button>
                                                               </div>
@@ -6960,7 +6961,7 @@ export default function OperationDetailPage({
                     </CardHeader>
                     <CardContent className="p-5 pt-0">
                       {operationKpiLoading ? (
-                        <div className="flex justify-center py-6"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
+                        <div className="flex justify-center py-6"><Spinner size={20} className="text-muted-foreground" /></div>
                       ) : operationKpiErrored ? (
                         <div className="flex flex-col items-center gap-2 py-6">
                           <p className="text-sm text-rose-600">Failed to load operation duration</p>
@@ -6984,7 +6985,7 @@ export default function OperationDetailPage({
                     </CardHeader>
                     <CardContent className="p-0">
                       {operationKpiLoading ? (
-                        <div className="flex justify-center py-6"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
+                        <div className="flex justify-center py-6"><Spinner size={20} className="text-muted-foreground" /></div>
                       ) : operationKpiErrored ? (
                         <div className="flex flex-col items-center gap-2 py-6">
                           <p className="text-sm text-rose-600">Failed to load vessel-run breakdown</p>
@@ -7014,7 +7015,7 @@ export default function OperationDetailPage({
                     </CardHeader>
                     <CardContent className="p-0">
                       {stageDurationsLoading ? (
-                        <div className="flex justify-center py-6"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
+                        <div className="flex justify-center py-6"><Spinner size={20} className="text-muted-foreground" /></div>
                       ) : stageDurationsErrored ? (
                         <div className="flex flex-col items-center gap-2 py-6">
                           <p className="text-sm text-rose-600">Failed to load stage timing</p>
@@ -7081,7 +7082,7 @@ export default function OperationDetailPage({
                                   })}
                                 >
                                   {initTrucksMutation.isPending
-                                    ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                                    ? <Spinner size={14} className="mr-1.5" />
                                     : <PlusCircle className="w-3.5 h-3.5 mr-1.5" />}
                                   Initialize {fbTruckIds.length} Truck{fbTruckIds.length > 1 ? "s" : ""} for Reporting
                                 </Button>
@@ -7204,7 +7205,7 @@ export default function OperationDetailPage({
                                   disabled={!docFile || uploadTruckDocMutation.isPending}
                                   onClick={() => docFile && uploadTruckDocMutation.mutate({ file: docFile, truckNumber: label })}
                                 >
-                                  {uploadTruckDocMutation.isPending && <Loader2 className="w-3 h-3 mr-1 animate-spin" />}
+                                  {uploadTruckDocMutation.isPending && <Spinner size={12} className="mr-1" />}
                                   Upload
                                 </Button>
                               </div>
@@ -7449,7 +7450,7 @@ export default function OperationDetailPage({
                                               }
                                               onClick={() => recordStageMutation.mutate({ truckOpId: to.id, stageKey: stage.key, form })}
                                             >
-                                              {recordStageMutation.isPending && <Loader2 className="w-3 h-3 mr-1 animate-spin" />}
+                                              {recordStageMutation.isPending && <Spinner size={12} className="mr-1" />}
                                               Save Progress
                                             </Button>
                                           </div>
@@ -7548,7 +7549,7 @@ export default function OperationDetailPage({
                                       onClick={() => approveDischargeM.mutate(to.id)}
                                     >
                                       {approveDischargeM.isPending ? (
-                                        <Loader2 className="w-3 h-3 animate-spin" />
+                                        <Spinner size={12} />
                                       ) : (
                                         <BadgeCheck className="w-3 h-3" />
                                       )}
@@ -7608,7 +7609,7 @@ export default function OperationDetailPage({
                                 disabled={submitCompletionMutation.isPending}
                                 onClick={() => submitCompletionMutation.mutate()}
                               >
-                                {submitCompletionMutation.isPending && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
+                                {submitCompletionMutation.isPending && <Spinner size={14} className="mr-1.5" />}
                                 Submit Completion
                               </Button>
                             </div>
@@ -7908,7 +7909,7 @@ export default function OperationDetailPage({
                 });
               }}
             >
-              {transitionMutation.isPending && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
+              {transitionMutation.isPending && <Spinner size={14} className="mr-1.5" />}
               Confirm
             </Button>
           </DialogFooter>
@@ -8013,7 +8014,7 @@ export default function OperationDetailPage({
               variant={auditResult === "not_satisfactory" ? "destructive" : "default"}
               onClick={() => auditDialogTruckOpId && submitAuditMutation.mutate({ truckOpId: auditDialogTruckOpId })}
             >
-              {submitAuditMutation.isPending && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
+              {submitAuditMutation.isPending && <Spinner size={14} className="mr-1.5" />}
               Submit Audit
             </Button>
           </DialogFooter>
@@ -8095,7 +8096,7 @@ export default function OperationDetailPage({
               }
               onClick={() => createTruckMutation.mutate()}
             >
-              {createTruckMutation.isPending && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
+              {createTruckMutation.isPending && <Spinner size={14} className="mr-1.5" />}
               Create & Nominate
             </Button>
           </DialogFooter>
@@ -8154,7 +8155,7 @@ export default function OperationDetailPage({
               disabled={!waybillWaiverId || !waybillDriver.trim() || !waybillPhone.trim() || linkWaybillMutation.isPending}
               onClick={() => linkWaybillMutation.mutate()}
             >
-              {linkWaybillMutation.isPending && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
+              {linkWaybillMutation.isPending && <Spinner size={14} className="mr-1.5" />}
               Link Waybill
             </Button>
           </DialogFooter>
@@ -8266,7 +8267,7 @@ export default function OperationDetailPage({
               disabled={editDischargeM.isPending}
               onClick={() => editDischargeM.mutate()}
             >
-              {editDischargeM.isPending && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
+              {editDischargeM.isPending && <Spinner size={14} className="mr-1.5" />}
               Save Changes
             </Button>
           </DialogFooter>
@@ -8313,7 +8314,7 @@ export default function OperationDetailPage({
                 notes: waiverNotes,
               })}
             >
-              {waiveItemMutation.isPending && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
+              {waiveItemMutation.isPending && <Spinner size={14} className="mr-1.5" />}
               Confirm Waiver
             </Button>
           </DialogFooter>
@@ -8346,7 +8347,7 @@ export default function OperationDetailPage({
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowReopenDialog(false)}>Cancel</Button>
             <Button disabled={reopenMutation.isPending} onClick={() => reopenMutation.mutate()}>
-              {reopenMutation.isPending && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
+              {reopenMutation.isPending && <Spinner size={14} className="mr-1.5" />}
               Create Revision
             </Button>
           </DialogFooter>
@@ -8397,7 +8398,7 @@ export default function OperationDetailPage({
           <DialogFooter className="mt-4">
             <Button variant="outline" onClick={() => setShowLinkNc(false)}>Cancel</Button>
             <Button disabled={!linkNcId || linkNcMutation.isPending} onClick={() => linkNcMutation.mutate()}>
-              {linkNcMutation.isPending && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
+              {linkNcMutation.isPending && <Spinner size={14} className="mr-1.5" />}
               Link
             </Button>
           </DialogFooter>
@@ -8422,7 +8423,7 @@ export default function OperationDetailPage({
               disabled={!unlinkNcReason.trim() || unlinkNcMutation.isPending}
               onClick={() => unlinkNcMutation.mutate()}
             >
-              {unlinkNcMutation.isPending && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
+              {unlinkNcMutation.isPending && <Spinner size={14} className="mr-1.5" />}
               Unlink
             </Button>
           </DialogFooter>
@@ -8531,7 +8532,7 @@ export default function OperationDetailPage({
           <DialogFooter className="mt-4">
             <Button variant="outline" onClick={() => setShowNotifyDialog(false)}>Cancel</Button>
             <Button disabled={tickedRecipients.size === 0 || sendNotificationMutation.isPending} onClick={() => sendNotificationMutation.mutate()}>
-              {sendNotificationMutation.isPending && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
+              {sendNotificationMutation.isPending && <Spinner size={14} className="mr-1.5" />}
               Send to {tickedRecipients.size || 0} Recipient(s)
             </Button>
           </DialogFooter>
@@ -8698,7 +8699,7 @@ export default function OperationDetailPage({
               disabled={!editTruckBdnReason.trim() || editTruckBdnMutation.isPending}
               onClick={() => editTruckBdnMutation.mutate()}
             >
-              {editTruckBdnMutation.isPending && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
+              {editTruckBdnMutation.isPending && <Spinner size={14} className="mr-1.5" />}
               Save Changes
             </Button>
           </DialogFooter>
@@ -8798,7 +8799,7 @@ export default function OperationDetailPage({
           <DialogFooter className="mt-4">
             <Button variant="outline" onClick={() => setEditVesselBdnId(null)}>Cancel</Button>
             <Button disabled={!editVesselBdnReason.trim() || editVesselBdnMutation.isPending} onClick={() => editVesselBdnMutation.mutate()}>
-              {editVesselBdnMutation.isPending && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
+              {editVesselBdnMutation.isPending && <Spinner size={14} className="mr-1.5" />}
               Save Changes
             </Button>
           </DialogFooter>

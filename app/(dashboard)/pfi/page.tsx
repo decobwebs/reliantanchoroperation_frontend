@@ -3,7 +3,14 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Loader2, PlusCircle, Pencil, FileText, BadgeCheck, ExternalLink } from "lucide-react";
+import {
+  PlusCircle,
+  Pencil,
+  FileText,
+  BadgeCheck,
+  ExternalLink,
+} from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
 import { toast } from "sonner";
 import { api, getErrorMessage } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
@@ -292,7 +299,7 @@ export default function PfiPage() {
               disabled={!amount || parseFloat(amount) <= 0 || createMutation.isPending}
               onClick={() => createMutation.mutate()}
             >
-              {createMutation.isPending && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
+              {createMutation.isPending && <Spinner size={14} className="mr-1.5" />}
               Create
             </Button>
           </DialogFooter>

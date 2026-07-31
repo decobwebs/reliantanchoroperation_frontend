@@ -8,10 +8,10 @@ import {
   CheckCircle2,
   ChevronRight,
   Gauge,
-  Loader2,
   Play,
   Ship,
 } from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
 import { toast } from "sonner";
 import { api, getErrorMessage } from "@/lib/api";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
@@ -233,7 +233,7 @@ export function MarineManagerDashboard() {
                           onClick={() => startMutation.mutate(activity.id)}
                         >
                           {startMutation.isPending ? (
-                            <Loader2 className="h-3 w-3 animate-spin" />
+                            <Spinner size={12} />
                           ) : (
                             <Play className="h-3 w-3" />
                           )}

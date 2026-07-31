@@ -3,7 +3,10 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Loader2, FileText } from "lucide-react";
+import {
+  FileText,
+} from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
 import { api, getErrorMessage } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -228,7 +231,7 @@ export function StandaloneInvoiceDialog({
         <DialogFooter>
           <Button variant="outline" onClick={() => { reset(); onOpenChange(false); }}>Cancel</Button>
           <Button disabled={!canSubmit} onClick={() => mutation.mutate()}>
-            {mutation.isPending && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
+            {mutation.isPending && <Spinner size={14} className="mr-1.5" />}
             Create Invoice
           </Button>
         </DialogFooter>

@@ -6,7 +6,13 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Loader2, Plus, Trash2, ChevronDown, ChevronUp } from "lucide-react";
+import {
+  Plus,
+  Trash2,
+  ChevronDown,
+  ChevronUp,
+} from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
 import { api, getErrorMessage, extractData } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -211,7 +217,7 @@ function AssignmentRow({
             <SelectContent>
               {isStaffLoading ? (
                 <div className="px-3 py-2 text-xs text-muted-foreground flex items-center gap-1.5">
-                  <Loader2 className="w-3 h-3 animate-spin" />
+                  <Spinner size={12} />
                   Loading staff…
                 </div>
               ) : filteredStaff.length === 0 ? (
@@ -447,7 +453,7 @@ function PfiAllocationRow({
             <SelectContent>
               {isPfisLoading ? (
                 <div className="px-3 py-2 text-xs text-muted-foreground flex items-center gap-1.5">
-                  <Loader2 className="w-3 h-3 animate-spin" />
+                  <Spinner size={12} />
                   Loading PFIs…
                 </div>
               ) : unlinkedPfis.length === 0 ? (
@@ -960,7 +966,7 @@ export function CreateOperationDialog({ open, onClose, onCreated }: Props) {
               type="submit"
               disabled={mutation.isPending || (opType === "vessel_only" && !watch("source_type"))}
             >
-              {mutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              {mutation.isPending && <Spinner size={16} className="mr-2" />}
               Create Operation
             </Button>
           </DialogFooter>

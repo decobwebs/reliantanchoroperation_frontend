@@ -15,11 +15,11 @@ import {
   Filter,
   Hourglass,
   LayoutGrid,
-  Loader2,
   MoreHorizontal,
   Plus,
   Settings2,
 } from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
 import { api } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
@@ -295,7 +295,7 @@ export default function OperationsPage() {
             }}
           >
             {exporting ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
+              <Spinner size={16} />
             ) : (
               <Download className="h-4 w-4" strokeWidth={2.5} />
             )}

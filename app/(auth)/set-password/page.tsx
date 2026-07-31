@@ -6,7 +6,13 @@ import Image from "next/image";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Loader2, Eye, EyeOff, AlertCircle, CheckCircle2 } from "lucide-react";
+import {
+  Eye,
+  EyeOff,
+  AlertCircle,
+  CheckCircle2,
+} from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
 import { api, getErrorMessage } from "@/lib/api";
 import { completeSession } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
@@ -203,7 +209,7 @@ export default function SetPasswordPage() {
                   >
                     {isSubmitting ? (
                       <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        <Spinner size={16} className="mr-2" />
                         Setting password…
                       </>
                     ) : (

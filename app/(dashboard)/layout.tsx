@@ -8,7 +8,10 @@ import { SidebarProvider } from "@/components/layout/SidebarContext";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { ROLE_LABELS } from "@/lib/auth";
-import { Loader2, UserCog } from "lucide-react";
+import {
+  UserCog,
+} from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
 
 export default function DashboardLayout({
   children,
@@ -41,7 +44,7 @@ export default function DashboardLayout({
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        <Spinner size={32} className="text-primary" />
       </div>
     );
   }
@@ -72,7 +75,7 @@ export default function DashboardLayout({
                   onClick={handleSwitchBack}
                   disabled={clearing}
                 >
-                  {clearing && <Loader2 className="w-3 h-3 mr-1.5 animate-spin" />}
+                  {clearing && <Spinner size={12} className="mr-1.5" />}
                   Switch back to Bunker Manager
                 </Button>
               </div>

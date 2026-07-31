@@ -1,7 +1,8 @@
 "use client";
 
 import type { LucideIcon } from "lucide-react";
-import { Loader2 } from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
+
 import {
   Dialog,
   DialogContent,
@@ -101,7 +102,7 @@ export function ReasonGatedDialog({
             disabled={!reason.trim() || pending || confirmDisabled}
             onClick={onConfirm}
           >
-            {pending && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
+            {pending && <Spinner size={14} className="mr-1.5" />}
             {confirmLabel}
           </Button>
         </DialogFooter>

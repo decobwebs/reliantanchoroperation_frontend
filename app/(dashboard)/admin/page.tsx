@@ -5,7 +5,12 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Users, UserPlus, Loader2, Phone } from "lucide-react";
+import {
+  Users,
+  UserPlus,
+  Phone,
+} from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
 import { toast } from "sonner";
 import { api, getErrorMessage } from "@/lib/api";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
@@ -197,7 +202,7 @@ function CreateUserDialog() {
               Cancel
             </Button>
             <Button type="submit" disabled={mutation.isPending}>
-              {mutation.isPending && <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />}
+              {mutation.isPending && <Spinner size={16} className="mr-1.5" />}
               Create User
             </Button>
           </div>

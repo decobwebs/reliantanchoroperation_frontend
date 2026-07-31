@@ -3,7 +3,11 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { Loader2, Search, X } from "lucide-react";
+import {
+  Search,
+  X,
+} from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
 import { api } from "@/lib/api";
 import { cn, formatDate, OP_TYPE_LABELS } from "@/lib/utils";
 import { StatusBadge } from "@/components/shared/StatusBadge";
@@ -135,7 +139,7 @@ export function GlobalSearch({ className }: { className?: string }) {
 
       <div className="pointer-events-none absolute right-3 top-1/2 flex -translate-y-1/2 items-center gap-1.5">
         {isFetching && term.length >= 2 && (
-          <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+          <Spinner size={14} className="text-muted-foreground" />
         )}
         {value ? (
           <button

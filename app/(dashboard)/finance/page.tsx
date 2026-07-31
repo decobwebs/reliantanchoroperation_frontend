@@ -13,12 +13,12 @@ import {
   Clock,
   TrendingUp,
   ExternalLink,
-  Loader2,
   PlusCircle,
   Receipt,
   UserPlus,
   Phone,
 } from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
 import { toast } from "sonner";
 import { api, getErrorMessage } from "@/lib/api";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
@@ -150,7 +150,7 @@ function CreateClientDialog() {
           <div className="flex justify-end gap-2 pt-2">
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
             <Button type="submit" disabled={mutation.isPending}>
-              {mutation.isPending && <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />}
+              {mutation.isPending && <Spinner size={16} className="mr-1.5" />}
               Create Client
             </Button>
           </div>

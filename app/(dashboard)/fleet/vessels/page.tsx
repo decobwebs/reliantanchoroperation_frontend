@@ -3,7 +3,16 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Ship, MapPin, Gauge, AlertTriangle, CheckCircle2, Anchor, Loader2, PlusCircle } from "lucide-react";
+import {
+  Ship,
+  MapPin,
+  Gauge,
+  AlertTriangle,
+  CheckCircle2,
+  Anchor,
+  PlusCircle,
+} from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -130,7 +139,7 @@ function CreateVesselDialog({
           <div className="flex justify-end gap-2 pt-1">
             <Button type="button" variant="outline" onClick={() => { reset(); onClose(); }}>Cancel</Button>
             <Button type="submit" disabled={mutation.isPending}>
-              {mutation.isPending && <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />}
+              {mutation.isPending && <Spinner size={16} className="mr-1.5" />}
               Register Vessel
             </Button>
           </div>

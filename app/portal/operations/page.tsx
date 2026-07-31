@@ -12,6 +12,7 @@ import { TablePagination } from "@/components/dashboard/TablePagination";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { formatDate, formatRelative, OP_TYPE_LABELS } from "@/lib/utils";
+import { resolveExpectedVolumeMt } from "@/lib/operations";
 import type { ApiResponse, PaginatedData, Operation, OperationStatus } from "@/types";
 
 const STATUS_OPTIONS = [
@@ -88,8 +89,8 @@ export default function PortalOperationsPage() {
                     </div>
                     <p className="mt-1 text-[12px] text-muted-foreground">
                       Created {formatDate(op.created_at)}
-                      {op.expected_volume_mt &&
-                        ` · ${parseFloat(op.expected_volume_mt).toLocaleString()} L`}
+                      {resolveExpectedVolumeMt(op) != null &&
+                        ` · ${resolveExpectedVolumeMt(op)!.toLocaleString()} L`}
                     </p>
                   </div>
                   <div className="flex shrink-0 items-center gap-3">

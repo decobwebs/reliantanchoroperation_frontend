@@ -55,6 +55,7 @@ import {
   OP_TYPE_LABELS,
   OPERATION_COLOR_SWATCHES,
 } from "@/lib/utils";
+import { resolveExpectedVolumeMt } from "@/lib/operations";
 import type {
   ApiResponse,
   PaginatedData,
@@ -155,7 +156,7 @@ async function downloadCSV(
     op.operation_number,
     OP_TYPE_LABELS[op.type] ?? op.type,
     op.status,
-    op.expected_volume_mt ? parseFloat(op.expected_volume_mt).toLocaleString() : "",
+    (() => { const v = resolveExpectedVolumeMt(op); return v != null ? v.toLocaleString() : ""; })(),
     op.currency,
     op.created_at ? new Date(op.created_at).toISOString() : "",
     op.updated_at ? new Date(op.updated_at).toISOString() : "",
@@ -453,9 +454,10 @@ export default function OperationsPage() {
                         {OP_TYPE_LABELS[op.type] ?? op.type}
                       </Badge>
                       <span>
-                        {op.expected_volume_mt
-                          ? `${parseFloat(op.expected_volume_mt).toLocaleString()} L`
-                          : "—"}{" "}
+                        {(() => {
+                          const v = resolveExpectedVolumeMt(op);
+                          return v != null ? `${v.toLocaleString()} L` : "—";
+                        })()}{" "}
                         {op.currency}
                       </span>
                       <span>{formatDateTime(op.created_at)}</span>
@@ -527,9 +529,10 @@ export default function OperationsPage() {
                           )}
                           {visible("volume") && (
                             <td className="whitespace-nowrap px-4 py-3.5 text-[13px] tabular-nums text-foreground/80">
-                              {op.expected_volume_mt
-                                ? parseFloat(op.expected_volume_mt).toLocaleString()
-                                : "—"}
+                              {(() => {
+                                const v = resolveExpectedVolumeMt(op);
+                                return v != null ? v.toLocaleString() : "—";
+                              })()}
                             </td>
                           )}
                           {visible("currency") && (

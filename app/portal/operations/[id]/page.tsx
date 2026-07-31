@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn, formatDate, OP_TYPE_LABELS } from "@/lib/utils";
+import { resolveExpectedVolumeMt } from "@/lib/operations";
 import type {
   ApiResponse,
   Operation,
@@ -108,6 +109,11 @@ export default function PortalOperationDetailPage({
     );
   }
 
+  // expected_volume_mt is the legacy single-product scalar — null on anything
+  // created through the current multi-product flow, where the real per-product
+  // quantities live in `products[]` instead.
+  const expectedVolumeMt = resolveExpectedVolumeMt(op);
+
   return (
     <div className="animate-rise space-y-6">
       <div className="flex flex-wrap items-center gap-3">
@@ -142,9 +148,7 @@ export default function PortalOperationDetailPage({
               <div>
                 <dt className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Expected Volume</dt>
                 <dd className="mt-0.5 text-[13px] font-semibold tabular-nums text-foreground">
-                  {op.expected_volume_mt
-                    ? `${parseFloat(op.expected_volume_mt).toLocaleString()} L`
-                    : "—"}
+                  {expectedVolumeMt != null ? `${expectedVolumeMt.toLocaleString()} L` : "—"}
                 </dd>
               </div>
               <div>

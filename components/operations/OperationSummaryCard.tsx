@@ -2,7 +2,7 @@
 
 import { Anchor, CheckCircle2, Ship, XCircle } from "lucide-react";
 import { cn, OP_TYPE_LABELS } from "@/lib/utils";
-import { operationProgress } from "@/lib/operations";
+import { operationProgress, resolveExpectedVolumeMt } from "@/lib/operations";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import type { Operation, OperationStatus } from "@/types";
 
@@ -26,10 +26,11 @@ export function OperationSummaryCard({ op }: { op: Operation }) {
   const done = op.status === "completed" || op.status === "archived";
   const cancelled = op.status === "cancelled";
 
+  const expected = resolveExpectedVolumeMt(op);
   const volume = op.actual_volume_mt
     ? `${parseFloat(op.actual_volume_mt).toLocaleString()} L`
-    : op.expected_volume_mt
-      ? `${parseFloat(op.expected_volume_mt).toLocaleString()} L expected`
+    : expected != null
+      ? `${expected.toLocaleString()} L expected`
       : "—";
 
   return (

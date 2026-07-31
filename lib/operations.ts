@@ -65,3 +65,21 @@ export function operationProgress(type: string, status: string): number {
   }
   return OFF_PIPELINE_PROGRESS[status as OperationStatus] ?? 0;
 }
+
+/**
+ * `expected_volume_mt` is the legacy single-product scalar — it's null on
+ * every operation created through the current multi-product flow, where the
+ * real per-product quantities live in `products[]` instead. Resolve whichever
+ * one the operation actually has, so pages don't show a blank/dash for
+ * operations that do carry a real expected volume, just under the other field.
+ */
+export function resolveExpectedVolumeMt(op: {
+  expected_volume_mt?: string | null;
+  products?: { quantity_mt: string }[] | null;
+}): number | null {
+  if (op.expected_volume_mt) return parseFloat(op.expected_volume_mt);
+  if (op.products?.length) {
+    return op.products.reduce((sum, p) => sum + (parseFloat(p.quantity_mt) || 0), 0);
+  }
+  return null;
+}

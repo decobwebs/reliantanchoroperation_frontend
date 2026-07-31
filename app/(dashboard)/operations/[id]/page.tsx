@@ -137,7 +137,7 @@ import type {
   RoleStageDurations,
 } from "@/types";
 import { PRODUCT_TYPE_LABELS, LEG_STAGES } from "@/types";
-import { STATUS_PIPELINE, PIPELINE_LABELS } from "@/lib/operations";
+import { STATUS_PIPELINE, PIPELINE_LABELS, resolveExpectedVolumeMt } from "@/lib/operations";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 // STATUS_PIPELINE / PIPELINE_LABELS live in lib/operations so the dashboard can
@@ -3036,6 +3036,11 @@ export default function OperationDetailPage({
   const isReopenable         = isBM && REOPENABLE_STATUSES.includes(op.status);
   // Completion is now triggered from the Truck Reports tab when all stages are done
 
+  // expected_volume_mt is the legacy single-product scalar — null on anything
+  // created through the current multi-product flow, where the real per-product
+  // quantities live in `products[]` instead.
+  const expectedVolumeMt = resolveExpectedVolumeMt(op);
+
   // The barge this operation runs on. The operation itself only carries a
   // vessel_id, so fall back through the sources the page already fetches.
   const opVessel   = allVessels?.find((v) => v.id === op.vessel_id);
@@ -3068,10 +3073,10 @@ export default function OperationDetailPage({
             {op.version > 1 && (
               <MetaChip icon={GitBranch}>v{op.version}</MetaChip>
             )}
-            {op.expected_volume_mt && (
+            {expectedVolumeMt != null && (
               <MetaChip icon={Droplets}>
                 <span className="tabular-nums">
-                  {parseFloat(op.expected_volume_mt).toLocaleString()} L expected
+                  {expectedVolumeMt.toLocaleString()} L expected
                 </span>
               </MetaChip>
             )}
@@ -3582,7 +3587,7 @@ export default function OperationDetailPage({
                     )}
                     <InfoItem
                       label="Expected Volume (L)"
-                      value={op.expected_volume_mt ? parseFloat(op.expected_volume_mt).toLocaleString() : "—"}
+                      value={expectedVolumeMt != null ? expectedVolumeMt.toLocaleString() : "—"}
                       numeric
                     />
                     <InfoItem

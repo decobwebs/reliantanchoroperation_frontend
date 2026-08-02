@@ -7495,6 +7495,33 @@ export default function OperationDetailPage({
                     truckOps.map((to) => {
                       const label = to.truck?.truck_number ?? to.truck_id.slice(0, 8);
                       const cap   = to.truck?.capacity_mt ? `${parseFloat(to.truck.capacity_mt).toLocaleString()} L` : "";
+
+                      // Removed trucks stay visible (traceability — nothing is
+                      // ever silently deleted) but read-only: no waybill/doc/
+                      // stage actions, since they're no longer part of the
+                      // active operation. Distinct from the live-status pill
+                      // above, which only appears on trucks still in play.
+                      if (to.status === "cancelled") {
+                        return (
+                          <Card key={to.id} className="rounded-2xl border border-navy-100 shadow-[0_1px_2px_rgb(16_36_71/0.04)] dark:border-border overflow-hidden opacity-60">
+                            <div className="flex items-center justify-between px-5 py-3.5">
+                              <div className="flex items-center gap-3 min-w-0">
+                                <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                                  <Trash2 className="w-4 h-4 text-muted-foreground" />
+                                </div>
+                                <div>
+                                  <p className="text-sm font-bold font-mono tracking-tight text-muted-foreground line-through">{label}</p>
+                                  {cap && <p className="text-xs text-muted-foreground">{cap}</p>}
+                                </div>
+                              </div>
+                              <span className="text-[11px] font-medium px-2.5 py-0.5 rounded-full bg-muted text-muted-foreground">
+                                Removed from operation
+                              </span>
+                            </div>
+                          </Card>
+                        );
+                      }
+
                       const recording = activeRecording[to.id] ?? "";
 
                       // Determine which stages are done

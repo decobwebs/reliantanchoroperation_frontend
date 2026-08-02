@@ -863,6 +863,9 @@ export interface VesselActivityLeg {
 
   cancelled_at?: string;
   cancelled_reason?: string;
+
+  adhoc_client_email?: string;
+  adhoc_client_name?: string;
 }
 
 export const LEG_STAGES: { value: string; label: string }[] = [

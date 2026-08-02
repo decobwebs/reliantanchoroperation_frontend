@@ -1230,6 +1230,57 @@ export default function OperationDetailPage({
     onError: (err) => toast.error(getErrorMessage(err)),
   });
 
+  // ── Notify Staff — General stream, wholly separate from client
+  // notifications and from the automatic role-scoped notifications.
+  const [showNotifyStaffDialog, setShowNotifyStaffDialog] = useState(false);
+  const [notifyAllStaff, setNotifyAllStaff] = useState(true);
+  const [tickedStaff, setTickedStaff] = useState<Set<string>>(new Set());
+  const [staffNotifTitle, setStaffNotifTitle] = useState("");
+  const [staffNotifMessage, setStaffNotifMessage] = useState("");
+
+  const { data: eligibleStaff } = useQuery({
+    queryKey: ["operation-notification-staff"],
+    queryFn: async () => {
+      const res = await api.get<ApiResponse<{ id: string; full_name: string; role: string }[]>>("/operation-notifications/staff");
+      return res.data.data ?? [];
+    },
+    enabled: showNotifyStaffDialog && isBM,
+  });
+
+  const { data: staffNotificationLog } = useQuery({
+    queryKey: ["operation-notification-log", id],
+    queryFn: async () => {
+      const res = await api.get<ApiResponse<{ id: string; title: string; message: string; sent_at: string; sent_by_name?: string; recipients: { user_name?: string }[] }[]>>(`/operations/${id}/notifications`);
+      return res.data.data ?? [];
+    },
+    enabled: showNotifyStaffDialog && isBM,
+  });
+
+  const resetNotifyStaffDialog = () => {
+    setShowNotifyStaffDialog(false);
+    setNotifyAllStaff(true);
+    setTickedStaff(new Set());
+    setStaffNotifTitle("");
+    setStaffNotifMessage("");
+  };
+
+  const sendStaffNotificationMutation = useMutation({
+    mutationFn: async () => {
+      await api.post(`/operations/${id}/notifications`, {
+        all_staff: notifyAllStaff,
+        recipient_user_ids: notifyAllStaff ? [] : Array.from(tickedStaff),
+        title: staffNotifTitle.trim(),
+        message: staffNotifMessage.trim(),
+      });
+    },
+    onSuccess: () => {
+      toast.success("Notification sent");
+      setStaffNotifTitle(""); setStaffNotifMessage(""); setTickedStaff(new Set());
+      qc.invalidateQueries({ queryKey: ["operation-notification-log", id] });
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
   const submitCompletionMutation = useMutation({
     mutationFn: async () => {
       const res = await api.post(`/operations/${id}/transition`, {
@@ -2429,6 +2480,27 @@ export default function OperationDetailPage({
     onError: (err) => toast.error(getErrorMessage(err)),
   });
 
+  // Ad-hoc client contact — capture only (decision 6), for a receiving
+  // vessel with no registered client account. Only editable once cast off.
+  const [adhocClientFormLegId, setAdhocClientFormLegId] = useState<string | null>(null);
+  const [adhocClientEmail, setAdhocClientEmail] = useState("");
+  const [adhocClientName, setAdhocClientName] = useState("");
+  const openAdhocClientForm = (leg: VesselActivityLeg) => {
+    setAdhocClientFormLegId(leg.id);
+    setAdhocClientEmail(leg.adhoc_client_email ?? "");
+    setAdhocClientName(leg.adhoc_client_name ?? "");
+  };
+  const setLegAdhocClientMutation = useMutation({
+    mutationFn: async (legId: string) => {
+      await api.patch(`/vessel-activity-legs/${legId}/adhoc-client`, {
+        adhoc_client_email: adhocClientEmail.trim(),
+        adhoc_client_name: adhocClientName.trim() || undefined,
+      });
+    },
+    onSuccess: () => { toast.success("Client contact saved"); setAdhocClientFormLegId(null); refetchVesselActivities(); },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
   // Roll a leg back to an earlier stage (blocked once a BDN exists)
   const [rollbackLegId, setRollbackLegId] = useState<string | null>(null);
   const [rollbackStage, setRollbackStage] = useState("");
@@ -3277,6 +3349,11 @@ export default function OperationDetailPage({
                     Operation actions
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
+
+                  <DropdownMenuItem className="text-[13px]" onSelect={() => setShowNotifyStaffDialog(true)}>
+                    <Bell className="mr-2 h-3.5 w-3.5" />
+                    Notify Staff
+                  </DropdownMenuItem>
 
                   {op.type !== "truck_only" && (
                     op.naval_clearance ? (
@@ -7011,6 +7088,34 @@ export default function OperationDetailPage({
                                                         )
                                                       )}
 
+                                                      {/* Ad-hoc client contact — capture only, for a receiving
+                                                           vessel with no registered client account. Only
+                                                           editable once cast off. */}
+                                                      {canAct && legStageIdx >= 0 && (
+                                                        adhocClientFormLegId === leg.id ? (
+                                                          <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+                                                            <Label className="text-[10px] text-muted-foreground">Ad-hoc Client Email</Label>
+                                                            <Input type="email" className="h-8 text-xs" placeholder="client@example.com" value={adhocClientEmail} onChange={(e) => setAdhocClientEmail(e.target.value)} />
+                                                            <Label className="text-[10px] text-muted-foreground">Client Name (optional)</Label>
+                                                            <Input className="h-8 text-xs" value={adhocClientName} onChange={(e) => setAdhocClientName(e.target.value)} />
+                                                            <p className="text-[10px] text-muted-foreground">For a client with no registered account — captured only, not sent anywhere yet.</p>
+                                                            <div className="flex gap-2">
+                                                              <Button size="sm" className="flex-1 text-xs" disabled={!adhocClientEmail.trim() || setLegAdhocClientMutation.isPending} onClick={() => setLegAdhocClientMutation.mutate(leg.id)}>
+                                                                {setLegAdhocClientMutation.isPending ? <Spinner size={14} /> : "Save Client Contact"}
+                                                              </Button>
+                                                              <Button size="sm" variant="ghost" className="text-xs" onClick={() => setAdhocClientFormLegId(null)}>Cancel</Button>
+                                                            </div>
+                                                          </div>
+                                                        ) : leg.adhoc_client_email ? (
+                                                          <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+                                                            <span>Ad-hoc client: <span className="text-foreground">{leg.adhoc_client_name ?? "—"}</span> ({leg.adhoc_client_email})</span>
+                                                            <button className={INLINE_LINK} onClick={() => openAdhocClientForm(leg)}>Edit</button>
+                                                          </div>
+                                                        ) : (
+                                                          <button className={INLINE_LINK} onClick={() => openAdhocClientForm(leg)}>+ Add ad-hoc client contact</button>
+                                                        )
+                                                      )}
+
                                                       {/* HSE — non-blocking, available once cast off.
                                                            BM/OS only, matching the backend's _hse_roles. */}
                                                       {(isBM || isOS) && legStageIdx >= 0 && (
@@ -8908,6 +9013,80 @@ export default function OperationDetailPage({
             <Button disabled={tickedRecipients.size === 0 || sendNotificationMutation.isPending} onClick={() => sendNotificationMutation.mutate()}>
               {sendNotificationMutation.isPending && <Spinner size={14} className="mr-1.5" />}
               Send to {tickedRecipients.size || 0} Recipient(s)
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── BM: Notify Staff — General stream, internal recipient picker ── */}
+      <Dialog open={showNotifyStaffDialog} onOpenChange={(v) => { if (!v) resetNotifyStaffDialog(); else setShowNotifyStaffDialog(true); }}>
+        <DialogContent className="sm:max-w-lg" aria-describedby={undefined}>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><Bell className="w-4 h-4 text-primary" />Notify Staff</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 mt-1 max-h-[65vh] overflow-y-auto pr-1">
+            <p className="text-xs text-muted-foreground">
+              A general update about this operation — separate from the automatic notifications staff already get for their own tasks.
+            </p>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs">Title</Label>
+              <Input className="h-8 text-xs" placeholder="e.g. Operation delayed" value={staffNotifTitle} onChange={(e) => setStaffNotifTitle(e.target.value)} />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs">Message</Label>
+              <Textarea className="text-xs min-h-15 resize-none" placeholder="Details for recipients…" value={staffNotifMessage} onChange={(e) => setStaffNotifMessage(e.target.value)} />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs">Recipients</Label>
+              <label className="flex items-center gap-2 text-xs cursor-pointer">
+                <input type="checkbox" checked={notifyAllStaff} onChange={(e) => setNotifyAllStaff(e.target.checked)} />
+                All active staff
+              </label>
+              {!notifyAllStaff && (
+                <div className="rounded-md border divide-y max-h-48 overflow-y-auto">
+                  {eligibleStaff?.length ? eligibleStaff.map((u) => (
+                    <label key={u.id} className="flex items-center gap-2 px-3 py-1.5 text-xs cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={tickedStaff.has(u.id)}
+                        onChange={(e) => setTickedStaff((prev) => {
+                          const next = new Set(prev);
+                          if (e.target.checked) next.add(u.id); else next.delete(u.id);
+                          return next;
+                        })}
+                      />
+                      <span className="flex-1">{u.full_name}</span>
+                      <span className="text-muted-foreground capitalize">{u.role.replace(/_/g, " ")}</span>
+                    </label>
+                  )) : (
+                    <p className="text-xs text-muted-foreground text-center py-4">No staff found</p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {staffNotificationLog && staffNotificationLog.length > 0 && (
+              <div className="space-y-1">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Previously Sent</p>
+                {staffNotificationLog.map((l) => (
+                  <div key={l.id} className="text-[11px] text-muted-foreground border-l-2 border-muted pl-2">
+                    <span className="font-medium text-foreground">{l.title}</span> — {l.recipients.length} recipient(s) · {formatDateTime(l.sent_at)}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <DialogFooter className="mt-4">
+            <Button variant="outline" onClick={resetNotifyStaffDialog}>Cancel</Button>
+            <Button
+              disabled={!staffNotifTitle.trim() || !staffNotifMessage.trim() || (!notifyAllStaff && tickedStaff.size === 0) || sendStaffNotificationMutation.isPending}
+              onClick={() => sendStaffNotificationMutation.mutate()}
+            >
+              {sendStaffNotificationMutation.isPending && <Spinner size={14} className="mr-1.5" />}
+              Send
             </Button>
           </DialogFooter>
         </DialogContent>

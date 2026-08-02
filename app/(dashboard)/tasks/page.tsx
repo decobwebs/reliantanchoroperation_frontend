@@ -259,7 +259,7 @@ function SubmitReadinessDialog({
   );
 }
 
-// ─── Marine Manager "Mark Vessel Ready" Dialog ────────────────────────────────
+// ─── Cargo Superintendent "Mark Vessel Ready" Dialog ──────────────────────────
 
 const vesselReadySchema = z.object({
   notes: z.string().min(10, "Please describe the vessel readiness (min 10 chars)"),
@@ -347,7 +347,7 @@ export default function TasksPage() {
   const [vesselReadyTask, setVesselReadyTask] = useState<Task | null>(null);
 
   const isLO = effectiveRole === "logistics_officer";
-  const isMM = effectiveRole === "marine_manager";
+  const isMM = effectiveRole === "cargo_superintendent";
 
   const { data: tasks, isLoading } = useQuery({
     queryKey: ["my-tasks"],

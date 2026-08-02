@@ -34,7 +34,7 @@ const PRODUCT_TYPES = Object.keys(PRODUCT_TYPE_LABELS);
 export default function BflPage() {
   const { effectiveRole } = useAuth();
   const qc = useQueryClient();
-  const canAdd = effectiveRole === "marine_manager" || effectiveRole === "bunker_manager";
+  const canAdd = effectiveRole === "cargo_superintendent" || effectiveRole === "bunker_manager" || effectiveRole === "marine_operator";
   const canView = canAdd;
 
   const { data: bfls, isLoading } = useQuery({

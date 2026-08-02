@@ -16,12 +16,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-// The 4 roles a Bunker Manager may temporarily act as.
+// The 5 roles a Bunker Manager may temporarily act as.
 const ACT_AS_ROLES: { value: string; label: string }[] = [
   { value: "ops_supervisor", label: "Ops Supervisor" },
   { value: "logistics_officer", label: "Logistics Officer" },
-  { value: "marine_manager", label: "Marine Manager" },
+  { value: "cargo_superintendent", label: "Cargo Superintendent" },
   { value: "finance_manager", label: "Finance Manager" },
+  { value: "marine_operator", label: "Marine Operator" },
 ];
 
 /**

@@ -40,7 +40,7 @@ export const NAV_ITEMS: NavItem[] = [
     href: "/",
     label: "Dashboard",
     icon: LayoutDashboard,
-    roles: ["bunker_manager", "ops_supervisor", "logistics_officer", "marine_manager", "finance_manager"],
+    roles: ["bunker_manager", "ops_supervisor", "logistics_officer", "cargo_superintendent", "finance_manager", "marine_operator"],
   },
 
   // ── Operations management ────────────────────────────────────────────────
@@ -48,7 +48,7 @@ export const NAV_ITEMS: NavItem[] = [
     href: "/operations",
     label: "Operations",
     icon: ClipboardList,
-    roles: ["bunker_manager", "ops_supervisor", "logistics_officer", "marine_manager", "finance_manager"],
+    roles: ["bunker_manager", "ops_supervisor", "logistics_officer", "cargo_superintendent", "finance_manager", "marine_operator"],
   },
 
   // ── Task management ──────────────────────────────────────────────────────
@@ -56,8 +56,9 @@ export const NAV_ITEMS: NavItem[] = [
     href: "/tasks",
     label: "My Tasks",
     icon: CheckSquare,
-    // finance_manager is never directly assigned tasks — they're auto-notified
-    roles: ["ops_supervisor", "logistics_officer", "marine_manager"],
+    // finance_manager and marine_operator are never directly assigned tasks —
+    // marine_operator's work (BFL/NC/PPDL/waivers) isn't task-scoped.
+    roles: ["ops_supervisor", "logistics_officer", "cargo_superintendent"],
   },
 
   // ── Fleet ────────────────────────────────────────────────────────────────
@@ -71,13 +72,13 @@ export const NAV_ITEMS: NavItem[] = [
     href: "/fleet/waivers",
     label: "Waivers",
     icon: BadgeCheck,
-    roles: ["bunker_manager", "ops_supervisor", "logistics_officer"],
+    roles: ["bunker_manager", "ops_supervisor", "logistics_officer", "marine_operator"],
   },
   {
     href: "/fleet/vessels",
     label: "Vessels",
     icon: Ship,
-    roles: ["bunker_manager", "ops_supervisor", "marine_manager"],
+    roles: ["bunker_manager", "ops_supervisor", "cargo_superintendent"],
   },
 
   // ── Licences ─────────────────────────────────────────────────────────────
@@ -85,19 +86,19 @@ export const NAV_ITEMS: NavItem[] = [
     href: "/licences/ppdl",
     label: "PPDL",
     icon: FileBadge2,
-    roles: ["bunker_manager", "marine_manager"],
+    roles: ["bunker_manager", "cargo_superintendent", "marine_operator"],
   },
   {
     href: "/licences/bfl",
     label: "BFL",
     icon: FileBadge2,
-    roles: ["bunker_manager", "marine_manager"],
+    roles: ["bunker_manager", "cargo_superintendent", "marine_operator"],
   },
   {
     href: "/licences/naval-clearances",
     label: "Naval Clearances",
     icon: Anchor,
-    roles: ["bunker_manager", "marine_manager"],
+    roles: ["bunker_manager", "cargo_superintendent", "marine_operator"],
   },
 
   // ── Finance ──────────────────────────────────────────────────────────────

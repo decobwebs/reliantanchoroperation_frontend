@@ -31,7 +31,7 @@ import type { ApiResponse, TruckWaiver } from "@/types";
 export default function WaiversPage() {
   const { effectiveRole } = useAuth();
   const qc = useQueryClient();
-  const canAdd = effectiveRole === "bunker_manager";
+  const canAdd = effectiveRole === "bunker_manager" || effectiveRole === "marine_operator";
   const [bulkText, setBulkText] = useState("");
 
   const { data: waivers, isLoading } = useQuery({

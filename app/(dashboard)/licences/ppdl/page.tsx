@@ -39,7 +39,7 @@ const emptyProductRow = (): ProductRow => ({ product_type: "", quantity_litres: 
 export default function PpdlPage() {
   const { effectiveRole } = useAuth();
   const qc = useQueryClient();
-  const canAdd = effectiveRole === "marine_manager" || effectiveRole === "bunker_manager";
+  const canAdd = effectiveRole === "cargo_superintendent" || effectiveRole === "bunker_manager" || effectiveRole === "marine_operator";
   const canView = canAdd;
 
   const { data: ppdls, isLoading } = useQuery({

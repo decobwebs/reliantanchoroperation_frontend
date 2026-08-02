@@ -113,12 +113,13 @@ function entityBadge(et: string) {
 }
 
 const ROLE_LABELS: Record<string, string> = {
-  bunker_manager:    "BM",
-  ops_supervisor:    "Ops",
-  logistics_officer: "Logistics",
-  marine_manager:    "Marine",
-  finance_manager:   "Finance",
-  client:            "Client",
+  bunker_manager:       "BM",
+  ops_supervisor:       "Ops",
+  logistics_officer:    "Logistics",
+  cargo_superintendent: "Cargo Supt",
+  finance_manager:      "Finance",
+  client:               "Client",
+  marine_operator:      "Marine Op",
 };
 
 function EntityIcon({ type }: { type: string }) {

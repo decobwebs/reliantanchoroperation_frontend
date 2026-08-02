@@ -27,7 +27,7 @@ export default function DashboardPage() {
       return <OpsSupervisorDashboard />;
     case "logistics_officer":
       return <LogisticsOfficerDashboard />;
-    case "marine_manager":
+    case "cargo_superintendent":
       return <MarineManagerDashboard />;
     case "finance_manager":
       return <FinanceManagerDashboard />;

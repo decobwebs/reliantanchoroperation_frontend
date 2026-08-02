@@ -4,9 +4,10 @@ export type UserRole =
   | "bunker_manager"
   | "ops_supervisor"
   | "logistics_officer"
-  | "marine_manager"
+  | "cargo_superintendent"
   | "finance_manager"
-  | "client";
+  | "client"
+  | "marine_operator";
 
 export interface User {
   id: string;

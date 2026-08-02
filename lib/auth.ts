@@ -64,9 +64,10 @@ export const ROLE_LABELS: Record<string, string> = {
   bunker_manager: "Bunker Manager",
   ops_supervisor: "Ops Supervisor",
   logistics_officer: "Logistics Officer",
-  marine_manager: "Marine Manager",
+  cargo_superintendent: "Cargo Superintendent",
   finance_manager: "Finance Manager",
   client: "Client",
+  marine_operator: "Marine Operator",
 };
 
 export function isStaff(role: string): boolean {

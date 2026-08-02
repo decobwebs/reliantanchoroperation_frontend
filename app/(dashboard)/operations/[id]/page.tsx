@@ -145,10 +145,10 @@ import { STATUS_PIPELINE, PIPELINE_LABELS, resolveExpectedVolumeMt } from "@/lib
 // derive per-operation progress from the same source of truth.
 
 const ROLE_LABELS: Record<string, string> = {
-  ops_supervisor:    "Ops Supervisor",
-  logistics_officer: "Logistics Officer",
-  marine_manager:    "Marine Manager",
-  finance_manager:   "Finance Manager",
+  ops_supervisor:       "Ops Supervisor",
+  logistics_officer:    "Logistics Officer",
+  cargo_superintendent: "Cargo Superintendent",
+  finance_manager:      "Finance Manager",
 };
 
 const PRIORITY_OPTIONS = [
@@ -160,8 +160,8 @@ const PRIORITY_OPTIONS = [
 
 const ELIGIBLE_ROLES: Record<string, string[]> = {
   truck_only:     ["ops_supervisor", "logistics_officer"],
-  vessel_only:    ["ops_supervisor", "marine_manager"],
-  full_operation: ["ops_supervisor", "logistics_officer", "marine_manager"],
+  vessel_only:    ["ops_supervisor", "cargo_superintendent"],
+  full_operation: ["ops_supervisor", "logistics_officer", "cargo_superintendent"],
 };
 
 // The small underlined text actions that sit inside marine panels — Edit,
@@ -615,7 +615,7 @@ export default function OperationDetailPage({
   const isBM = isRealBM || effectiveRole === "bunker_manager";
   const isFM = isRealBM || effectiveRole === "finance_manager";
   const isLO = isRealBM || effectiveRole === "logistics_officer";
-  const isMM = isRealBM || effectiveRole === "marine_manager";
+  const isMM = isRealBM || effectiveRole === "cargo_superintendent";
   const isOS = isRealBM || effectiveRole === "ops_supervisor";
 
   const canSeeTasks            = isBM || isOS || isLO || isMM;
@@ -841,7 +841,7 @@ export default function OperationDetailPage({
     queryFn: async () => {
       const res = await api.get<ApiResponse<{ items: User[] }>>("/admin/users?per_page=100");
       const items = (res.data.data as { items: User[] }).items ?? [];
-      return items.filter((u) => u.is_active && u.role === "marine_manager");
+      return items.filter((u) => u.is_active && u.role === "cargo_superintendent");
     },
     enabled: isBM,
   });
@@ -3302,7 +3302,7 @@ export default function OperationDetailPage({
                   <p className="text-xs text-amber-700/80 mt-1.5">
                     {op.type === "vessel_only" ? (
                       <>
-                        Awaiting the Ops Supervisor / Marine Manager to submit a Vessel BDN for each
+                        Awaiting the Ops Supervisor / Cargo Superintendent to submit a Vessel BDN for each
                         receiving vessel (Vessel BDN tab) — the operation completes once every one is approved.
                       </>
                     ) : op.type === "truck_only" ? (
@@ -5347,7 +5347,7 @@ export default function OperationDetailPage({
                               </Select>
                             </div>
                             <div className="space-y-1.5">
-                              <Label className="text-xs">Marine Manager *</Label>
+                              <Label className="text-xs">Cargo Superintendent *</Label>
                               <Select value={actAssignedTo} onValueChange={setActAssignedTo}>
                                 <SelectTrigger className="h-8 text-xs">
                                   <SelectValue placeholder="Select manager…" />
@@ -5465,7 +5465,7 @@ export default function OperationDetailPage({
                         // a real Bunker Manager or Ops Supervisor always retains action authority
                         // here even while previewing the app as another role.
                         // Mirrors the backend's _assert_authorized: the
-                        // assigned Marine Manager, any Ops Supervisor, or the
+                        // assigned Cargo Superintendent, any Ops Supervisor, or the
                         // Bunker Manager (who is never assignee-gated).
                         const canAct       = isAssignee || isBM || isOS;
                         const hasReceipt   = !!activity.vessel_received_mt;
@@ -5880,7 +5880,7 @@ export default function OperationDetailPage({
                                       <div className="rounded-lg bg-muted/40 border border-border p-4 flex items-center gap-3 text-muted-foreground">
                                         <Loader2 className="w-4 h-4 animate-pulse shrink-0" />
                                         <div>
-                                          <p className="text-sm font-medium">Waiting for Marine Manager</p>
+                                          <p className="text-sm font-medium">Waiting for Cargo Superintendent</p>
                                           <p className="text-xs mt-0.5">
                                             The assigned supervisor will start this session when on-site.
                                           </p>
@@ -6251,7 +6251,7 @@ export default function OperationDetailPage({
 
                                     {/* HSE checklist — available any time once commenced, non-blocking.
                                          Gated on BM/OS to match the backend's _hse_roles; the assigned
-                                         Marine Manager would otherwise see a button that 403s. */}
+                                         Cargo Superintendent would otherwise see a button that 403s. */}
                                     {(isBM || isOS) && (
                                       <div>
                                         {activity.hse_result && correctHseTarget?.id !== activity.id ? (

@@ -42,8 +42,8 @@ import { VESSEL_SOURCE_TYPE_LABELS } from "@/lib/utils";
 
 const ELIGIBLE_ROLES: Record<OperationType, string[]> = {
   truck_only:     ["ops_supervisor", "logistics_officer"],
-  vessel_only:    ["ops_supervisor", "marine_manager"],
-  full_operation: ["ops_supervisor", "logistics_officer", "marine_manager"],
+  vessel_only:    ["ops_supervisor", "cargo_superintendent"],
+  full_operation: ["ops_supervisor", "logistics_officer", "cargo_superintendent"],
 };
 
 const ELIGIBLE_TASK_TYPES: Record<OperationType, { value: string; label: string }[]> = {
@@ -62,10 +62,10 @@ const ELIGIBLE_TASK_TYPES: Record<OperationType, { value: string; label: string 
 };
 
 const ROLE_LABELS: Record<string, string> = {
-  ops_supervisor:    "Ops Supervisor",
-  logistics_officer: "Logistics Officer",
-  marine_manager:    "Marine Manager",
-  finance_manager:   "Finance Manager",
+  ops_supervisor:       "Ops Supervisor",
+  logistics_officer:    "Logistics Officer",
+  cargo_superintendent: "Cargo Superintendent",
+  finance_manager:      "Finance Manager",
 };
 
 const PRIORITY_OPTIONS = [

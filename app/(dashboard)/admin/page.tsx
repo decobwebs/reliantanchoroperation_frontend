@@ -42,15 +42,16 @@ import { QueryError } from "@/components/shared/QueryError";
 import type { ApiResponse, User } from "@/types";
 
 // One distinct colour per role, all drawn from the shared tones.ts palette —
-// `slate` (added for this page) is the neutral sixth alongside the five
-// meaning-carrying tones, since a role isn't inherently good/bad/pending.
+// `slate`/`teal` (added for this page) are neutral identity colours alongside
+// the five meaning-carrying tones, since a role isn't inherently good/bad/pending.
 const ROLE_COLOR: Record<string, string> = {
-  bunker_manager:     "bg-navy-100 text-navy-800 dark:bg-navy-500/20 dark:text-navy-200",
-  finance_manager:    "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300",
-  ops_supervisor:     "bg-brand-100 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300",
-  logistics_officer:  "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300",
-  marine_manager:     "bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300",
-  client:             "bg-slate-100 text-slate-700 dark:bg-slate-500/15 dark:text-slate-300",
+  bunker_manager:       "bg-navy-100 text-navy-800 dark:bg-navy-500/20 dark:text-navy-200",
+  finance_manager:      "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300",
+  ops_supervisor:       "bg-brand-100 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300",
+  logistics_officer:    "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300",
+  cargo_superintendent: "bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300",
+  marine_operator:      "bg-teal-100 text-teal-700 dark:bg-teal-500/15 dark:text-teal-300",
+  client:               "bg-slate-100 text-slate-700 dark:bg-slate-500/15 dark:text-slate-300",
 };
 
 const STAFF_ROLES = [
@@ -58,7 +59,8 @@ const STAFF_ROLES = [
   "finance_manager",
   "ops_supervisor",
   "logistics_officer",
-  "marine_manager",
+  "cargo_superintendent",
+  "marine_operator",
   "client",
 ] as const;
 

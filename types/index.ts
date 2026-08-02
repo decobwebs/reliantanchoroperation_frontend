@@ -125,10 +125,23 @@ export interface Operation {
   version_notes?: string;
   completion_notes?: string;
   completed_at?: string;
+  closed_at?: string;
+  expected_rob_mt?: string;
+  actual_rob_mt?: string;
+  rob_closed_by?: string;
   created_at: string;
   updated_at: string;
   client?: User;
   creator?: User;
+}
+
+export interface OperationTotals {
+  total_loaded_mt: string;
+  total_discharged_mt: string;
+  total_received_mt: string;
+  vessels_received: number;
+  tts_variance_mt: string;
+  sts_variance_mt: string;
 }
 
 export interface InlineTaskAssignment {

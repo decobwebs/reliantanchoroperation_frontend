@@ -136,6 +136,7 @@ import type {
   VesselBdn,
   TerminalLoadingReceipt,
   QuantitySummary,
+  OperationTotals,
   ClientNotificationRecipient,
   ClientNotificationLog,
   OperationKpi,
@@ -757,6 +758,16 @@ export default function OperationDetailPage({
     staleTime: 0,
   });
 
+  const { data: operationTotals } = useQuery({
+    queryKey: ["operation-totals", id],
+    queryFn: async () => {
+      const res = await api.get<ApiResponse<OperationTotals>>(`/operations/${id}/totals`);
+      return res.data.data;
+    },
+    enabled: canSeeMarine,
+    staleTime: 0,
+  });
+
   const { data: terminalReceipts, refetch: refetchTerminalReceipts } = useQuery({
     queryKey: ["operation-terminal-receipts", id],
     queryFn: async () => {
@@ -1038,6 +1049,37 @@ export default function OperationDetailPage({
       setShowTransitionConfirm(null);
       qc.invalidateQueries({ queryKey: ["operation", id] });
       qc.invalidateQueries({ queryKey: ["operation-timeline", id] });
+      qc.invalidateQueries({ queryKey: ["operations"] });
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  // ── Close Operation — completes with an optional ROB close-out
+  // (Expected read off the vessel, Actual BM-entered; kept side by side,
+  // never reconciled). Replaces the generic transition dialog specifically
+  // for the "Complete Operation" step.
+  const [showCloseDialog, setShowCloseDialog] = useState(false);
+  const [closeActualRob, setCloseActualRob] = useState("");
+  const [closeCompletionNotes, setCloseCompletionNotes] = useState("");
+  const [closeReason, setCloseReason] = useState("");
+  const resetCloseDialog = () => {
+    setShowCloseDialog(false);
+    setCloseActualRob(""); setCloseCompletionNotes(""); setCloseReason("");
+  };
+  const closeOperationMutation = useMutation({
+    mutationFn: async () => {
+      await api.post(`/operations/${id}/close`, {
+        actual_rob_mt: closeActualRob.trim() ? parseFloat(closeActualRob) : undefined,
+        completion_notes: closeCompletionNotes.trim() || undefined,
+        reason: closeReason.trim(),
+      });
+    },
+    onSuccess: () => {
+      toast.success("Operation closed");
+      resetCloseDialog();
+      qc.invalidateQueries({ queryKey: ["operation", id] });
+      qc.invalidateQueries({ queryKey: ["operation-timeline", id] });
+      qc.invalidateQueries({ queryKey: ["operation-totals", id] });
       qc.invalidateQueries({ queryKey: ["operations"] });
     },
     onError: (err) => toast.error(getErrorMessage(err)),
@@ -3550,7 +3592,7 @@ export default function OperationDetailPage({
                     size="sm"
                     variant={t.destructive ? "destructive" : "default"}
                     disabled={transitionMutation.isPending}
-                    onClick={() => setShowTransitionConfirm(t)}
+                    onClick={() => (t.to === "completed" ? setShowCloseDialog(true) : setShowTransitionConfirm(t))}
                   >
                     {transitionMutation.isPending
                       ? <Spinner size={14} className="mr-1.5" />
@@ -5285,6 +5327,43 @@ export default function OperationDetailPage({
                         label="Total Loaded Quantity"
                         value={quantitySummary ? `${parseFloat(quantitySummary.total_loaded_mt).toLocaleString(undefined, { minimumFractionDigits: 2 })} MT` : "—"}
                         detail={quantitySummary ? `Trucks ${parseFloat(quantitySummary.truck_loaded_mt).toLocaleString()} MT · Terminal ${parseFloat(quantitySummary.terminal_loaded_mt).toLocaleString()} MT` : undefined}
+                      />
+                    </StatTileRow>
+
+                    <StatTileRow className="border-t border-border/70">
+                      <StatTile
+                        icon={Droplets}
+                        tone="emerald"
+                        label="Total Discharged"
+                        value={operationTotals ? `${parseFloat(operationTotals.total_discharged_mt).toLocaleString(undefined, { minimumFractionDigits: 2 })} MT` : "—"}
+                        detail="Approved Vessel BDNs"
+                      />
+                      <StatTile
+                        icon={Anchor}
+                        tone="violet"
+                        label="Total Received"
+                        value={operationTotals ? `${parseFloat(operationTotals.total_received_mt).toLocaleString(undefined, { minimumFractionDigits: 2 })} MT` : "—"}
+                        detail="Receiving vessel's own readings"
+                      />
+                      <StatTile
+                        icon={Ship}
+                        tone="sky"
+                        label="Vessels Received"
+                        value={operationTotals ? String(operationTotals.vessels_received) : "—"}
+                      />
+                      <StatTile
+                        icon={TrendingDown}
+                        tone={operationTotals && parseFloat(operationTotals.tts_variance_mt) !== 0 ? "amber" : undefined}
+                        label="TTS Variance"
+                        value={operationTotals ? `${parseFloat(operationTotals.tts_variance_mt).toLocaleString(undefined, { minimumFractionDigits: 3 })} MT` : "—"}
+                        detail="Truck-to-ship, from truck deliveries"
+                      />
+                      <StatTile
+                        icon={TrendingDown}
+                        tone={operationTotals && parseFloat(operationTotals.sts_variance_mt) !== 0 ? "amber" : undefined}
+                        label="STS Variance"
+                        value={operationTotals ? `${parseFloat(operationTotals.sts_variance_mt).toLocaleString(undefined, { minimumFractionDigits: 3 })} MT` : "—"}
+                        detail="Ship-to-ship, discharge vs received"
                       />
                     </StatTileRow>
 
@@ -8125,6 +8204,56 @@ export default function OperationDetailPage({
             >
               {transitionMutation.isPending && <Spinner size={14} className="mr-1.5" />}
               Confirm
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Close Operation dialog — Expected vs Actual ROB, kept separate */}
+      <Dialog open={showCloseDialog} onOpenChange={(v) => !v && resetCloseDialog()}>
+        <DialogContent className="sm:max-w-sm" aria-describedby={undefined}>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-primary" />Close Operation
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 mt-2">
+            <p className="text-sm text-muted-foreground">
+              This completes the operation. {op?.vessel_id ? "Record the vessel's Actual ROB if it's available — both figures are kept, never reconciled." : ""}
+            </p>
+
+            {op?.vessel_id && (
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Expected ROB (MT)</Label>
+                  <div className="flex items-center h-9 px-3 rounded-md border bg-muted/50 text-sm text-muted-foreground tabular-nums">
+                    {opVessel?.current_rob_mt ? parseFloat(opVessel.current_rob_mt).toLocaleString(undefined, { minimumFractionDigits: 3 }) : "—"}
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Actual ROB (MT)</Label>
+                  <Input type="number" step="0.001" className="h-9 text-sm" placeholder="Optional" value={closeActualRob} onChange={(e) => setCloseActualRob(e.target.value)} />
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-1.5">
+              <Label className="text-xs">Completion Notes (optional)</Label>
+              <Textarea rows={2} className="resize-none text-sm" placeholder="Add final completion notes…" value={closeCompletionNotes} onChange={(e) => setCloseCompletionNotes(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Reason <span className="text-destructive">*</span></Label>
+              <Textarea rows={2} className="resize-none text-sm" placeholder="Why is this operation being closed now…" value={closeReason} onChange={(e) => setCloseReason(e.target.value)} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={resetCloseDialog}>Cancel</Button>
+            <Button
+              disabled={!closeReason.trim() || closeOperationMutation.isPending}
+              onClick={() => closeOperationMutation.mutate()}
+            >
+              {closeOperationMutation.isPending && <Spinner size={14} className="mr-1.5" />}
+              Close Operation
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -57,6 +57,7 @@ import { api, getErrorMessage, extractData } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { ReasonGatedDialog } from "@/components/shared/ReasonGatedDialog";
+import { CreateNavalClearanceDialog } from "@/components/operations/CreateNavalClearanceDialog";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { PanelCard } from "@/components/dashboard/PanelCard";
 import { DetailHeader, MetaChip } from "@/components/operations/DetailHeader";
@@ -1021,6 +1022,24 @@ export default function OperationDetailPage({
       toast.success("Naval Clearance linked");
       setShowLinkNc(false);
       setLinkNcId("");
+      qc.invalidateQueries({ queryKey: ["operation", id] });
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  // 31 Jul 2026 decision: "Link BFL / Naval Clearance" from More Actions is a
+  // friendlier entry point onto the existing NC→drawdown→BFL chain, not a new
+  // relationship — create one here and it links to this operation immediately.
+  // Takes the new NC's id as a mutate() argument rather than reading it off
+  // shared state, since setState+mutate in the same handler would otherwise
+  // risk the mutation closing over a stale id.
+  const [showCreateNc, setShowCreateNc] = useState(false);
+  const createAndLinkNcMutation = useMutation({
+    mutationFn: async (navalClearanceId: string) => {
+      await api.post(`/operations/${id}/link-naval-clearance`, { naval_clearance_id: navalClearanceId });
+    },
+    onSuccess: () => {
+      toast.success("Naval Clearance created and linked to this operation");
       qc.invalidateQueries({ queryKey: ["operation", id] });
     },
     onError: (err) => toast.error(getErrorMessage(err)),
@@ -3168,10 +3187,16 @@ export default function OperationDetailPage({
                         </DropdownMenuItem>
                       </>
                     ) : (
-                      <DropdownMenuItem className="text-[13px]" onSelect={() => setShowLinkNc(true)}>
-                        <Anchor className="mr-2 h-3.5 w-3.5" />
-                        Link Naval Clearance
-                      </DropdownMenuItem>
+                      <>
+                        <DropdownMenuItem className="text-[13px]" onSelect={() => setShowLinkNc(true)}>
+                          <Anchor className="mr-2 h-3.5 w-3.5" />
+                          Link Naval Clearance
+                        </DropdownMenuItem>
+                        <DropdownMenuItem className="text-[13px]" onSelect={() => setShowCreateNc(true)}>
+                          <PlusCircle className="mr-2 h-3.5 w-3.5" />
+                          Create &amp; Link BFL / Naval Clearance
+                        </DropdownMenuItem>
+                      </>
                     )
                   )}
 
@@ -8142,6 +8167,13 @@ export default function OperationDetailPage({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ── BM: Create & Link BFL / Naval Clearance (More Actions shortcut) ── */}
+      <CreateNavalClearanceDialog
+        open={showCreateNc}
+        onOpenChange={setShowCreateNc}
+        onCreated={(nc) => createAndLinkNcMutation.mutate(nc.id)}
+      />
 
       {/* ── BM: Remove Truck dialog ── */}
       <ReasonGatedDialog

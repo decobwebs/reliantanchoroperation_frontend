@@ -58,6 +58,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { ReasonGatedDialog } from "@/components/shared/ReasonGatedDialog";
 import { CreateNavalClearanceDialog } from "@/components/operations/CreateNavalClearanceDialog";
+import { EditOperationDialog } from "../EditOperationDialog";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { PanelCard } from "@/components/dashboard/PanelCard";
 import { DetailHeader, MetaChip } from "@/components/operations/DetailHeader";
@@ -1096,6 +1097,7 @@ export default function OperationDetailPage({
     onError: (err) => toast.error(getErrorMessage(err)),
   });
 
+  const [showEditOperation, setShowEditOperation] = useState(false);
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showLinkNc, setShowLinkNc] = useState(false);
   const [linkNcId, setLinkNcId] = useState("");
@@ -3324,6 +3326,17 @@ export default function OperationDetailPage({
         }
         actions={
           <>
+            {isBM && (
+              <Button
+                variant="outline"
+                className="h-10.5 gap-2 text-[13px] font-semibold"
+                onClick={() => setShowEditOperation(true)}
+              >
+                <Pencil className="h-4 w-4" strokeWidth={2.2} />
+                Edit
+              </Button>
+            )}
+
             {isBM && (
               <Button
                 variant="outline"
@@ -8556,6 +8569,13 @@ export default function OperationDetailPage({
         open={showCreateNc}
         onOpenChange={setShowCreateNc}
         onCreated={(nc) => createAndLinkNcMutation.mutate(nc.id)}
+      />
+
+      {/* ── BM: Edit Operation — editable at any phase, no status restriction ── */}
+      <EditOperationDialog
+        open={showEditOperation}
+        onOpenChange={setShowEditOperation}
+        operation={op}
       />
 
       {/* ── BM: Remove Truck dialog ── */}

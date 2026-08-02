@@ -134,6 +134,8 @@ import type {
   TruckWaiver,
   NavalClearance,
   VesselBdn,
+  TerminalLoadingReceipt,
+  QuantitySummary,
   ClientNotificationRecipient,
   ClientNotificationLog,
   OperationKpi,
@@ -743,6 +745,55 @@ export default function OperationDetailPage({
     },
     enabled: (canSeeVesselBdn || isFM) && op?.type !== "truck_only",
     staleTime: 0,
+  });
+
+  const { data: quantitySummary } = useQuery({
+    queryKey: ["operation-quantity-summary", id],
+    queryFn: async () => {
+      const res = await api.get<ApiResponse<QuantitySummary>>(`/operations/${id}/quantity-summary`);
+      return res.data.data;
+    },
+    enabled: canSeeMarine,
+    staleTime: 0,
+  });
+
+  const { data: terminalReceipts, refetch: refetchTerminalReceipts } = useQuery({
+    queryKey: ["operation-terminal-receipts", id],
+    queryFn: async () => {
+      const res = await api.get<ApiResponse<TerminalLoadingReceipt[]>>(`/operations/${id}/terminal-receipts`);
+      return res.data.data;
+    },
+    enabled: canSeeMarine && op?.source_type === "terminal",
+    staleTime: 0,
+  });
+
+  const [showTerminalReceiptForm, setShowTerminalReceiptForm] = useState(false);
+  const [termQtyLitres, setTermQtyLitres] = useState("");
+  const [termGov, setTermGov] = useState("");
+  const [termGsv, setTermGsv] = useState("");
+  const [termMtVacuum, setTermMtVacuum] = useState("");
+  const [termDescription, setTermDescription] = useState("");
+  const resetTerminalReceiptForm = () => {
+    setShowTerminalReceiptForm(false);
+    setTermQtyLitres(""); setTermGov(""); setTermGsv(""); setTermMtVacuum(""); setTermDescription("");
+  };
+  const createTerminalReceiptMutation = useMutation({
+    mutationFn: async () => {
+      await api.post(`/operations/${id}/terminal-receipts`, {
+        quantity_litres: parseFloat(termQtyLitres),
+        gov: termGov.trim() ? parseFloat(termGov) : undefined,
+        gsv: termGsv.trim() ? parseFloat(termGsv) : undefined,
+        mt_vacuum: termMtVacuum.trim() ? parseFloat(termMtVacuum) : undefined,
+        description: termDescription.trim() || undefined,
+      });
+    },
+    onSuccess: () => {
+      toast.success("Terminal loading receipt recorded");
+      resetTerminalReceiptForm();
+      refetchTerminalReceipts();
+      qc.invalidateQueries({ queryKey: ["operation-quantity-summary", id] });
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
   });
 
   const { data: truckOps } = useQuery({
@@ -1420,8 +1471,8 @@ export default function OperationDetailPage({
     "company_name", "product_type", "discharge_location", "receiving_vessel",
     "quantity_loaded_litres", "quantity_discharged_litres",
     "density", "temperature_before_loading", "temperature_after_loading",
-    "vcf", "gov", "gsv", "mt_vacuum",
-    "discharge_commenced_at", "discharge_completed_at", "discharge_completion_date",
+    "vcf", "discharge_gov", "discharge_gsv", "discharge_mt_vacuum",
+    "discharge_completed_at", "discharge_completion_date",
   ] as const;
 
   const [vesselBdnFormActivityId, setVesselBdnFormActivityId] = useState<string | null>(null);
@@ -1440,13 +1491,21 @@ export default function OperationDetailPage({
   // parse to a number greater than zero, not just be a non-empty string.
   const VESSEL_BDN_POSITIVE_FIELDS = [
     "quantity_loaded_litres", "quantity_discharged_litres", "density",
-    "vcf", "gov", "gsv", "mt_vacuum",
+    "vcf", "discharge_gov", "discharge_gsv", "discharge_mt_vacuum",
   ] as const;
+  // Received-side readings are optional — if given, still must be positive.
+  const VESSEL_BDN_OPTIONAL_POSITIVE_FIELDS = ["received_gov", "received_gsv", "received_mt_vacuum"] as const;
 
   const vesselBdnFormComplete =
     VESSEL_BDN_REQUIRED_FIELDS.every((k) => (vesselBdnForm[k] ?? "").trim() !== "") &&
     VESSEL_BDN_POSITIVE_FIELDS.every((k) => {
       const n = parseFloat(vesselBdnForm[k] ?? "");
+      return Number.isFinite(n) && n > 0;
+    }) &&
+    VESSEL_BDN_OPTIONAL_POSITIVE_FIELDS.every((k) => {
+      const raw = (vesselBdnForm[k] ?? "").trim();
+      if (raw === "") return true;
+      const n = parseFloat(raw);
       return Number.isFinite(n) && n > 0;
     });
 
@@ -1467,12 +1526,14 @@ export default function OperationDetailPage({
         temperature_before_loading: parseFloat(vesselBdnForm.temperature_before_loading),
         temperature_after_loading:  parseFloat(vesselBdnForm.temperature_after_loading),
         vcf:                        parseFloat(vesselBdnForm.vcf),
-        gov:                        parseFloat(vesselBdnForm.gov),
-        gsv:                        parseFloat(vesselBdnForm.gsv),
-        mt_vacuum:                  parseFloat(vesselBdnForm.mt_vacuum),
-        discharge_commenced_at:     new Date(vesselBdnForm.discharge_commenced_at).toISOString(),
+        discharge_gov:              parseFloat(vesselBdnForm.discharge_gov),
+        discharge_gsv:              parseFloat(vesselBdnForm.discharge_gsv),
+        discharge_mt_vacuum:        parseFloat(vesselBdnForm.discharge_mt_vacuum),
         discharge_completed_at:     new Date(vesselBdnForm.discharge_completed_at).toISOString(),
         discharge_completion_date:  vesselBdnForm.discharge_completion_date,
+        received_gov:               vesselBdnForm.received_gov?.trim() ? parseFloat(vesselBdnForm.received_gov) : undefined,
+        received_gsv:               vesselBdnForm.received_gsv?.trim() ? parseFloat(vesselBdnForm.received_gsv) : undefined,
+        received_mt_vacuum:         vesselBdnForm.received_mt_vacuum?.trim() ? parseFloat(vesselBdnForm.received_mt_vacuum) : undefined,
         notes:                      vesselBdnForm.notes?.trim() || undefined,
       });
     },
@@ -1531,12 +1592,14 @@ export default function OperationDetailPage({
       temperature_before_loading: vb.temperature_before_loading,
       temperature_after_loading:  vb.temperature_after_loading,
       vcf:                        vb.vcf,
-      gov:                        vb.gov,
-      gsv:                        vb.gsv,
-      mt_vacuum:                  vb.mt_vacuum,
-      discharge_commenced_at:     vb.discharge_commenced_at ? vb.discharge_commenced_at.slice(0, 16) : "",
+      discharge_gov:              vb.discharge_gov,
+      discharge_gsv:              vb.discharge_gsv,
+      discharge_mt_vacuum:        vb.discharge_mt_vacuum,
       discharge_completed_at:     vb.discharge_completed_at ? vb.discharge_completed_at.slice(0, 16) : "",
       discharge_completion_date:  vb.discharge_completion_date ?? "",
+      received_gov:               vb.received_gov ?? "",
+      received_gsv:               vb.received_gsv ?? "",
+      received_mt_vacuum:         vb.received_mt_vacuum ?? "",
       notes:                      vb.notes ?? "",
     });
     setEditVesselBdnReason("");
@@ -1556,12 +1619,14 @@ export default function OperationDetailPage({
         temperature_before_loading: editVesselBdnForm.temperature_before_loading ? parseFloat(editVesselBdnForm.temperature_before_loading) : undefined,
         temperature_after_loading:  editVesselBdnForm.temperature_after_loading ? parseFloat(editVesselBdnForm.temperature_after_loading) : undefined,
         vcf:                        editVesselBdnForm.vcf ? parseFloat(editVesselBdnForm.vcf) : undefined,
-        gov:                        editVesselBdnForm.gov ? parseFloat(editVesselBdnForm.gov) : undefined,
-        gsv:                        editVesselBdnForm.gsv ? parseFloat(editVesselBdnForm.gsv) : undefined,
-        mt_vacuum:                  editVesselBdnForm.mt_vacuum ? parseFloat(editVesselBdnForm.mt_vacuum) : undefined,
-        discharge_commenced_at:     editVesselBdnForm.discharge_commenced_at ? new Date(editVesselBdnForm.discharge_commenced_at).toISOString() : undefined,
+        discharge_gov:              editVesselBdnForm.discharge_gov ? parseFloat(editVesselBdnForm.discharge_gov) : undefined,
+        discharge_gsv:              editVesselBdnForm.discharge_gsv ? parseFloat(editVesselBdnForm.discharge_gsv) : undefined,
+        discharge_mt_vacuum:        editVesselBdnForm.discharge_mt_vacuum ? parseFloat(editVesselBdnForm.discharge_mt_vacuum) : undefined,
         discharge_completed_at:     editVesselBdnForm.discharge_completed_at ? new Date(editVesselBdnForm.discharge_completed_at).toISOString() : undefined,
         discharge_completion_date:  editVesselBdnForm.discharge_completion_date || undefined,
+        received_gov:               editVesselBdnForm.received_gov ? parseFloat(editVesselBdnForm.received_gov) : undefined,
+        received_gsv:               editVesselBdnForm.received_gsv ? parseFloat(editVesselBdnForm.received_gsv) : undefined,
+        received_mt_vacuum:         editVesselBdnForm.received_mt_vacuum ? parseFloat(editVesselBdnForm.received_mt_vacuum) : undefined,
         notes:                      editVesselBdnForm.notes || undefined,
         reason:                     editVesselBdnReason.trim(),
       });
@@ -3572,13 +3637,6 @@ export default function OperationDetailPage({
                   </TabsTrigger>
                 )}
 
-                {canSeeVesselBdn && op.type !== "truck_only" && (
-                  <TabsTrigger value="vessel-bdns">
-                    Vessel BDN
-                    <TabCount value={vesselBdns?.length} />
-                  </TabsTrigger>
-                )}
-
                 {canSeeMarine && (
                   <TabsTrigger value="marine">
                     Marine
@@ -3586,6 +3644,13 @@ export default function OperationDetailPage({
                       value={vesselActivities?.length}
                       accent={vesselActivities?.some((a) => a.status === "active")}
                     />
+                  </TabsTrigger>
+                )}
+
+                {canSeeVesselBdn && op.type !== "truck_only" && (
+                  <TabsTrigger value="vessel-bdns">
+                    Vessel Received Quantity
+                    <TabCount value={vesselBdns?.length} />
                   </TabsTrigger>
                 )}
 
@@ -4313,7 +4378,7 @@ export default function OperationDetailPage({
                               </Select>
                             </div>
                             <div className="space-y-1.5">
-                              <Label className="text-xs">Quantity Delivered (L) <span className="text-destructive">*</span></Label>
+                              <Label className="text-xs">Quantity Loaded (L) <span className="text-destructive">*</span></Label>
                               <Input
                                 type="number" step="0.001" min="0"
                                 className="h-8 text-xs" placeholder="0.000"
@@ -4323,7 +4388,7 @@ export default function OperationDetailPage({
                           </div>
                           <div className="grid grid-cols-2 gap-3">
                             <div className="space-y-1.5">
-                              <Label className="text-xs">Delivery Date <span className="text-destructive">*</span></Label>
+                              <Label className="text-xs">Loading Date <span className="text-destructive">*</span></Label>
                               <Input
                                 type="date" className="h-8 text-xs"
                                 value={bdnDeliveryDate} onChange={(e) => setBdnDeliveryDate(e.target.value)}
@@ -4951,9 +5016,9 @@ export default function OperationDetailPage({
                             </div>
                           </div>
 
-                          <div className="space-y-3">
-                            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Quantities</p>
-                            <div className="grid grid-cols-2 gap-3">
+                          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                            <div className="space-y-4 rounded-lg border p-3">
+                              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Discharge Quantity — as read by the discharging vessel</p>
                               <div className="space-y-1.5">
                                 <Label className="text-xs">Quantity Loaded (L) <span className="text-destructive">*</span></Label>
                                 <Input type="number" step="0.01" min="0" className="h-8 text-xs" value={vesselBdnForm.quantity_loaded_litres ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, quantity_loaded_litres: e.target.value }))} />
@@ -4962,63 +5027,68 @@ export default function OperationDetailPage({
                                 <Label className="text-xs">Quantity Discharged (L) <span className="text-destructive">*</span></Label>
                                 <Input type="number" step="0.01" min="0" className="h-8 text-xs" value={vesselBdnForm.quantity_discharged_litres ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, quantity_discharged_litres: e.target.value }))} />
                               </div>
+                              <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-1.5">
+                                  <Label className="text-xs">Density (kg/m³) <span className="text-destructive">*</span></Label>
+                                  <Input type="number" step="0.0001" min="0" className="h-8 text-xs" value={vesselBdnForm.density ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, density: e.target.value }))} />
+                                </div>
+                                <div className="space-y-1.5">
+                                  <Label className="text-xs">VCF <span className="text-destructive">*</span></Label>
+                                  <Input type="number" step="0.0001" min="0" className="h-8 text-xs" value={vesselBdnForm.vcf ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, vcf: e.target.value }))} />
+                                </div>
+                                <div className="space-y-1.5">
+                                  <Label className="text-xs">Temp. Before Loading (°C) <span className="text-destructive">*</span></Label>
+                                  <Input type="number" step="0.1" className="h-8 text-xs" value={vesselBdnForm.temperature_before_loading ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, temperature_before_loading: e.target.value }))} />
+                                </div>
+                                <div className="space-y-1.5">
+                                  <Label className="text-xs">Temp. After Loading (°C) <span className="text-destructive">*</span></Label>
+                                  <Input type="number" step="0.1" className="h-8 text-xs" value={vesselBdnForm.temperature_after_loading ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, temperature_after_loading: e.target.value }))} />
+                                </div>
+                              </div>
+                              <div className="grid grid-cols-3 gap-3">
+                                <div className="space-y-1.5">
+                                  <Label className="text-xs">GOV (L) <span className="text-destructive">*</span></Label>
+                                  <Input type="number" step="0.01" min="0" className="h-8 text-xs" value={vesselBdnForm.discharge_gov ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, discharge_gov: e.target.value }))} />
+                                </div>
+                                <div className="space-y-1.5">
+                                  <Label className="text-xs">GSV (L) <span className="text-destructive">*</span></Label>
+                                  <Input type="number" step="0.01" min="0" className="h-8 text-xs" value={vesselBdnForm.discharge_gsv ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, discharge_gsv: e.target.value }))} />
+                                </div>
+                                <div className="space-y-1.5">
+                                  <Label className="text-xs">MTvac <span className="text-destructive">*</span></Label>
+                                  <Input type="number" step="0.001" min="0" className="h-8 text-xs" value={vesselBdnForm.discharge_mt_vacuum ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, discharge_mt_vacuum: e.target.value }))} />
+                                </div>
+                              </div>
+                              <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-1.5">
+                                  <Label className="text-xs">Completed Discharge <span className="text-destructive">*</span></Label>
+                                  <Input type="datetime-local" className="h-8 text-xs" value={vesselBdnForm.discharge_completed_at ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, discharge_completed_at: e.target.value }))} />
+                                </div>
+                                <div className="space-y-1.5">
+                                  <Label className="text-xs">Date of Discharge Completion <span className="text-destructive">*</span></Label>
+                                  <Input type="date" className="h-8 text-xs" value={vesselBdnForm.discharge_completion_date ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, discharge_completion_date: e.target.value }))} />
+                                </div>
+                              </div>
                             </div>
-                          </div>
 
-                          <div className="space-y-3">
-                            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Product Quality</p>
-                            <div className="grid grid-cols-3 gap-3">
-                              <div className="space-y-1.5">
-                                <Label className="text-xs">Density (kg/m³) <span className="text-destructive">*</span></Label>
-                                <Input type="number" step="0.0001" min="0" className="h-8 text-xs" value={vesselBdnForm.density ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, density: e.target.value }))} />
-                              </div>
-                              <div className="space-y-1.5">
-                                <Label className="text-xs">Temp. Before Loading (°C) <span className="text-destructive">*</span></Label>
-                                <Input type="number" step="0.1" className="h-8 text-xs" value={vesselBdnForm.temperature_before_loading ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, temperature_before_loading: e.target.value }))} />
-                              </div>
-                              <div className="space-y-1.5">
-                                <Label className="text-xs">Temp. After Loading (°C) <span className="text-destructive">*</span></Label>
-                                <Input type="number" step="0.1" className="h-8 text-xs" value={vesselBdnForm.temperature_after_loading ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, temperature_after_loading: e.target.value }))} />
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="space-y-3">
-                            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Delivery Quantity / Method</p>
-                            <div className="grid grid-cols-4 gap-3">
-                              <div className="space-y-1.5">
-                                <Label className="text-xs">VCF <span className="text-destructive">*</span></Label>
-                                <Input type="number" step="0.0001" min="0" className="h-8 text-xs" value={vesselBdnForm.vcf ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, vcf: e.target.value }))} />
-                              </div>
-                              <div className="space-y-1.5">
-                                <Label className="text-xs">GOV (L) <span className="text-destructive">*</span></Label>
-                                <Input type="number" step="0.01" min="0" className="h-8 text-xs" value={vesselBdnForm.gov ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, gov: e.target.value }))} />
-                              </div>
-                              <div className="space-y-1.5">
-                                <Label className="text-xs">GSV (L) <span className="text-destructive">*</span></Label>
-                                <Input type="number" step="0.01" min="0" className="h-8 text-xs" value={vesselBdnForm.gsv ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, gsv: e.target.value }))} />
-                              </div>
-                              <div className="space-y-1.5">
-                                <Label className="text-xs">MTvac <span className="text-destructive">*</span></Label>
-                                <Input type="number" step="0.001" min="0" className="h-8 text-xs" value={vesselBdnForm.mt_vacuum ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, mt_vacuum: e.target.value }))} />
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="space-y-3">
-                            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Timing</p>
-                            <div className="grid grid-cols-3 gap-3">
-                              <div className="space-y-1.5">
-                                <Label className="text-xs">Commenced Discharge <span className="text-destructive">*</span></Label>
-                                <Input type="datetime-local" className="h-8 text-xs" value={vesselBdnForm.discharge_commenced_at ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, discharge_commenced_at: e.target.value }))} />
-                              </div>
-                              <div className="space-y-1.5">
-                                <Label className="text-xs">Completed Discharge <span className="text-destructive">*</span></Label>
-                                <Input type="datetime-local" className="h-8 text-xs" value={vesselBdnForm.discharge_completed_at ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, discharge_completed_at: e.target.value }))} />
-                              </div>
-                              <div className="space-y-1.5">
-                                <Label className="text-xs">Date of Discharge Completion <span className="text-destructive">*</span></Label>
-                                <Input type="date" className="h-8 text-xs" value={vesselBdnForm.discharge_completion_date ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, discharge_completion_date: e.target.value }))} />
+                            <div className="space-y-4 rounded-lg border p-3">
+                              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Received Quantity — as independently read by the receiving vessel (optional)</p>
+                              <p className="text-[11px] text-muted-foreground">
+                                Fill in if the receiving vessel took its own readings — lets the Bunker Manager compare against the discharge figures above. Leave blank if not available yet.
+                              </p>
+                              <div className="grid grid-cols-3 gap-3">
+                                <div className="space-y-1.5">
+                                  <Label className="text-xs">GOV (L)</Label>
+                                  <Input type="number" step="0.01" min="0" className="h-8 text-xs" value={vesselBdnForm.received_gov ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, received_gov: e.target.value }))} />
+                                </div>
+                                <div className="space-y-1.5">
+                                  <Label className="text-xs">GSV (L)</Label>
+                                  <Input type="number" step="0.01" min="0" className="h-8 text-xs" value={vesselBdnForm.received_gsv ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, received_gsv: e.target.value }))} />
+                                </div>
+                                <div className="space-y-1.5">
+                                  <Label className="text-xs">MTvac</Label>
+                                  <Input type="number" step="0.001" min="0" className="h-8 text-xs" value={vesselBdnForm.received_mt_vacuum ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, received_mt_vacuum: e.target.value }))} />
+                                </div>
                               </div>
                             </div>
                           </div>
@@ -5066,12 +5136,6 @@ export default function OperationDetailPage({
                                 system: vb.system_quantity_discharged_litres ? `${parseFloat(vb.system_quantity_discharged_litres).toLocaleString(undefined, { minimumFractionDigits: 2 })} L` : "—",
                                 submitted: `${parseFloat(vb.quantity_discharged_litres).toLocaleString(undefined, { minimumFractionDigits: 2 })} L`,
                                 mismatch: vb.system_quantity_discharged_litres !== undefined && parseFloat(vb.system_quantity_discharged_litres ?? "0") !== parseFloat(vb.quantity_discharged_litres),
-                              },
-                              {
-                                label: "Commenced Discharge",
-                                system: vb.system_discharge_commenced_at ? formatDateTime(vb.system_discharge_commenced_at) : "—",
-                                submitted: formatDateTime(vb.discharge_commenced_at),
-                                mismatch: vb.system_discharge_commenced_at !== undefined && vb.system_discharge_commenced_at !== vb.discharge_commenced_at,
                               },
                               {
                                 label: "Completed Discharge",
@@ -5132,12 +5196,26 @@ export default function OperationDetailPage({
                                 <span>Temp Before: {parseFloat(vb.temperature_before_loading).toFixed(1)}°C</span>
                                 <span>Temp After: {parseFloat(vb.temperature_after_loading).toFixed(1)}°C</span>
                                 <span>VCF: {parseFloat(vb.vcf).toLocaleString(undefined, { minimumFractionDigits: 4 })}</span>
-                                <span>GOV: {parseFloat(vb.gov).toLocaleString(undefined, { minimumFractionDigits: 2 })} L</span>
-                                <span>GSV: {parseFloat(vb.gsv).toLocaleString(undefined, { minimumFractionDigits: 2 })} L</span>
-                                <span>MTvac: {parseFloat(vb.mt_vacuum).toLocaleString(undefined, { minimumFractionDigits: 3 })}</span>
+                                <span>Discharge GOV: {parseFloat(vb.discharge_gov).toLocaleString(undefined, { minimumFractionDigits: 2 })} L</span>
+                                <span>Discharge GSV: {parseFloat(vb.discharge_gsv).toLocaleString(undefined, { minimumFractionDigits: 2 })} L</span>
+                                <span>Discharge MTvac: {parseFloat(vb.discharge_mt_vacuum).toLocaleString(undefined, { minimumFractionDigits: 3 })}</span>
                                 {vb.variance_litres && <span>Variance: {parseFloat(vb.variance_litres).toLocaleString(undefined, { minimumFractionDigits: 2 })} L</span>}
                                 <span>Completion Date: {formatDate(vb.discharge_completion_date)}</span>
                               </div>
+
+                              {(vb.received_gov || vb.received_gsv || vb.received_mt_vacuum) && (
+                                <div className="grid grid-cols-3 gap-x-4 gap-y-1 text-[11px] rounded-md p-2.5 bg-sky-50 text-sky-800 dark:bg-sky-500/10 dark:text-sky-300">
+                                  <span className="col-span-3 text-[10px] font-semibold uppercase tracking-wide">Received Quantity — receiving vessel&apos;s own readings</span>
+                                  {vb.received_gov && <span>Received GOV: {parseFloat(vb.received_gov).toLocaleString(undefined, { minimumFractionDigits: 2 })} L</span>}
+                                  {vb.received_gsv && <span>Received GSV: {parseFloat(vb.received_gsv).toLocaleString(undefined, { minimumFractionDigits: 2 })} L</span>}
+                                  {vb.received_mt_vacuum && <span>Received MTvac: {parseFloat(vb.received_mt_vacuum).toLocaleString(undefined, { minimumFractionDigits: 3 })}</span>}
+                                  {vb.received_mt_vacuum && (
+                                    <span className="col-span-3 font-semibold">
+                                      Variance vs Discharge MTvac: {(parseFloat(vb.discharge_mt_vacuum) - parseFloat(vb.received_mt_vacuum)).toLocaleString(undefined, { minimumFractionDigits: 3 })}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
                               {vb.notes && <p className="text-xs text-foreground/80">{vb.notes}</p>}
 
                               {isBM && vb.status === "pending" && (
@@ -5199,6 +5277,77 @@ export default function OperationDetailPage({
                         Track marine activities and receiving vessel progress
                       </p>
                     </div>
+
+                    <StatTileRow className="border-t border-border/70">
+                      <StatTile
+                        icon={Gauge}
+                        tone="blue"
+                        label="Total Loaded Quantity"
+                        value={quantitySummary ? `${parseFloat(quantitySummary.total_loaded_mt).toLocaleString(undefined, { minimumFractionDigits: 2 })} MT` : "—"}
+                        detail={quantitySummary ? `Trucks ${parseFloat(quantitySummary.truck_loaded_mt).toLocaleString()} MT · Terminal ${parseFloat(quantitySummary.terminal_loaded_mt).toLocaleString()} MT` : undefined}
+                      />
+                    </StatTileRow>
+
+                    {op.source_type === "terminal" && (
+                      <div className="border-t border-border/70 px-4 py-4 lg:px-5 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <p className="text-[13px] font-bold tracking-tight text-foreground">Terminal Loading Receipts</p>
+                          {(isBM || isOS || isMM) && !showTerminalReceiptForm && (
+                            <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5" onClick={() => setShowTerminalReceiptForm(true)}>
+                              <PlusCircle className="w-3.5 h-3.5" />Record Receipt
+                            </Button>
+                          )}
+                        </div>
+
+                        {showTerminalReceiptForm && (
+                          <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+                            <div className="grid grid-cols-2 gap-2">
+                              <div className="space-y-1">
+                                <Label className="text-[10px] text-muted-foreground">Quantity (L) <span className="text-destructive">*</span></Label>
+                                <Input type="number" step="0.01" min="0" className="h-8 text-xs" value={termQtyLitres} onChange={(e) => setTermQtyLitres(e.target.value)} />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-[10px] text-muted-foreground">GOV (L)</Label>
+                                <Input type="number" step="0.01" min="0" className="h-8 text-xs" value={termGov} onChange={(e) => setTermGov(e.target.value)} />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-[10px] text-muted-foreground">GSV (L)</Label>
+                                <Input type="number" step="0.01" min="0" className="h-8 text-xs" value={termGsv} onChange={(e) => setTermGsv(e.target.value)} />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-[10px] text-muted-foreground">MT Vacuum</Label>
+                                <Input type="number" step="0.001" min="0" className="h-8 text-xs" value={termMtVacuum} onChange={(e) => setTermMtVacuum(e.target.value)} />
+                              </div>
+                            </div>
+                            <Textarea className="text-xs min-h-12.5 resize-none" placeholder="Description (optional)…" value={termDescription} onChange={(e) => setTermDescription(e.target.value)} />
+                            <div className="flex gap-2">
+                              <Button size="sm" className="flex-1 text-xs" disabled={!termQtyLitres || createTerminalReceiptMutation.isPending} onClick={() => createTerminalReceiptMutation.mutate()}>
+                                {createTerminalReceiptMutation.isPending ? <Spinner size={14} /> : "Save Receipt"}
+                              </Button>
+                              <Button size="sm" variant="ghost" className="text-xs" onClick={resetTerminalReceiptForm}>Cancel</Button>
+                            </div>
+                          </div>
+                        )}
+
+                        {terminalReceipts?.length ? (
+                          <div className="space-y-1.5">
+                            {terminalReceipts.map((r) => (
+                              <QuantityReadout
+                                key={r.id}
+                                columns={[
+                                  ["Quantity", `${parseFloat(r.quantity_litres).toLocaleString()} L`],
+                                  ["MTVC", r.mt_vacuum ? parseFloat(r.mt_vacuum).toLocaleString() : "—"],
+                                  ["Recorded", formatDateTime(r.recorded_at)],
+                                ]}
+                                note={r.description}
+                              />
+                            ))}
+                          </div>
+                        ) : !showTerminalReceiptForm ? (
+                          <p className="text-xs text-muted-foreground">No terminal loading receipts recorded yet</p>
+                        ) : null}
+                      </div>
+                    )}
 
                     {op.type === "vessel_only" && (() => {
                       const acts = (vesselActivities ?? []).filter((a) => a.status !== "cancelled");
@@ -8858,30 +9007,41 @@ export default function OperationDetailPage({
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs">GOV</Label>
-                <Input type="number" step="0.01" value={editVesselBdnForm.gov ?? ""} onChange={(e) => setEditVesselBdnForm((f) => ({ ...f, gov: e.target.value }))} />
+                <Input type="number" step="0.01" value={editVesselBdnForm.discharge_gov ?? ""} onChange={(e) => setEditVesselBdnForm((f) => ({ ...f, discharge_gov: e.target.value }))} />
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs">GSV</Label>
-                <Input type="number" step="0.01" value={editVesselBdnForm.gsv ?? ""} onChange={(e) => setEditVesselBdnForm((f) => ({ ...f, gsv: e.target.value }))} />
+                <Input type="number" step="0.01" value={editVesselBdnForm.discharge_gsv ?? ""} onChange={(e) => setEditVesselBdnForm((f) => ({ ...f, discharge_gsv: e.target.value }))} />
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs">MTvac</Label>
-                <Input type="number" step="0.001" value={editVesselBdnForm.mt_vacuum ?? ""} onChange={(e) => setEditVesselBdnForm((f) => ({ ...f, mt_vacuum: e.target.value }))} />
+                <Input type="number" step="0.001" value={editVesselBdnForm.discharge_mt_vacuum ?? ""} onChange={(e) => setEditVesselBdnForm((f) => ({ ...f, discharge_mt_vacuum: e.target.value }))} />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs">Commenced Discharge</Label>
-                <Input type="datetime-local" value={editVesselBdnForm.discharge_commenced_at ?? ""} onChange={(e) => setEditVesselBdnForm((f) => ({ ...f, discharge_commenced_at: e.target.value }))} />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs">Completed Discharge</Label>
-                <Input type="datetime-local" value={editVesselBdnForm.discharge_completed_at ?? ""} onChange={(e) => setEditVesselBdnForm((f) => ({ ...f, discharge_completed_at: e.target.value }))} />
-              </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Completed Discharge</Label>
+              <Input type="datetime-local" value={editVesselBdnForm.discharge_completed_at ?? ""} onChange={(e) => setEditVesselBdnForm((f) => ({ ...f, discharge_completed_at: e.target.value }))} />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">Date of Discharge Completion</Label>
               <Input type="date" value={editVesselBdnForm.discharge_completion_date ?? ""} onChange={(e) => setEditVesselBdnForm((f) => ({ ...f, discharge_completion_date: e.target.value }))} />
+            </div>
+            <div className="space-y-2 rounded-lg border p-2.5">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Received Quantity (receiving vessel&apos;s own readings)</p>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">GOV</Label>
+                  <Input type="number" step="0.01" value={editVesselBdnForm.received_gov ?? ""} onChange={(e) => setEditVesselBdnForm((f) => ({ ...f, received_gov: e.target.value }))} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">GSV</Label>
+                  <Input type="number" step="0.01" value={editVesselBdnForm.received_gsv ?? ""} onChange={(e) => setEditVesselBdnForm((f) => ({ ...f, received_gsv: e.target.value }))} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">MTvac</Label>
+                  <Input type="number" step="0.001" value={editVesselBdnForm.received_mt_vacuum ?? ""} onChange={(e) => setEditVesselBdnForm((f) => ({ ...f, received_mt_vacuum: e.target.value }))} />
+                </div>
+              </div>
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">Notes</Label>

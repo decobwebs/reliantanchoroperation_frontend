@@ -939,12 +939,15 @@ export interface VesselBdn {
   temperature_before_loading: string;
   temperature_after_loading: string;
   vcf: string;
-  gov: string;
-  gsv: string;
-  mt_vacuum: string;
-  discharge_commenced_at: string;
+  discharge_gov: string;
+  discharge_gsv: string;
+  discharge_mt_vacuum: string;
+  discharge_commenced_at?: string;
   discharge_completed_at: string;
   discharge_completion_date: string;
+  received_gov?: string;
+  received_gsv?: string;
+  received_mt_vacuum?: string;
   system_product_type?: string;
   system_discharge_location?: string;
   system_quantity_loaded_litres?: string;
@@ -955,6 +958,25 @@ export interface VesselBdn {
   approved_at?: string;
   notes?: string;
   created_at: string;
+}
+
+export interface TerminalLoadingReceipt {
+  id: string;
+  operation_id: string;
+  quantity_litres: string;
+  gov?: string;
+  gsv?: string;
+  mt_vacuum?: string;
+  description?: string;
+  recorded_by: string;
+  recorded_by_name?: string;
+  recorded_at: string;
+}
+
+export interface QuantitySummary {
+  truck_loaded_mt: string;
+  terminal_loaded_mt: string;
+  total_loaded_mt: string;
 }
 
 // ─── Documents ───────────────────────────────────────────────────────────────

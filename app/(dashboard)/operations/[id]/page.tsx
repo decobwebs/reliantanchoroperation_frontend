@@ -56,6 +56,7 @@ import { z } from "zod";
 import { api, getErrorMessage, extractData } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { StatusBadge } from "@/components/shared/StatusBadge";
+import { ReasonGatedDialog } from "@/components/shared/ReasonGatedDialog";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { PanelCard } from "@/components/dashboard/PanelCard";
 import { DetailHeader, MetaChip } from "@/components/operations/DetailHeader";
@@ -2421,6 +2422,10 @@ export default function OperationDetailPage({
   const docFileRef = useRef<HTMLInputElement>(null);
   const [docFile, setDocFile] = useState<File | null>(null);
 
+  // BM: remove a truck from the operation — at any phase, reason required
+  const [removeTruckTarget, setRemoveTruckTarget] = useState<TruckOperation | null>(null);
+  const [removeTruckReason, setRemoveTruckReason] = useState("");
+
   // ── Discharge vessel selector state (per truck op, discharge_end_at stage)
   // "system" = dropdown, "other" = free-text
   const [dischargeVesselMode, setDischargeVesselMode] = useState<Record<string, "system" | "other">>({});
@@ -2849,6 +2854,22 @@ export default function OperationDetailPage({
       setWaybillDialogTruckOpId(null);
       qc.invalidateQueries({ queryKey: ["operation-trucks", id] });
       qc.invalidateQueries({ queryKey: ["truck-waivers"] });
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const removeTruckMutation = useMutation({
+    mutationFn: async () => {
+      if (!removeTruckTarget) return;
+      await api.delete(`/operations/${id}/trucks/${removeTruckTarget.id}`, {
+        data: { reason: removeTruckReason.trim() },
+      });
+    },
+    onSuccess: () => {
+      toast.success("Truck removed from operation");
+      setRemoveTruckTarget(null);
+      setRemoveTruckReason("");
+      qc.invalidateQueries({ queryKey: ["operation-trucks", id] });
     },
     onError: (err) => toast.error(getErrorMessage(err)),
   });
@@ -7167,6 +7188,23 @@ export default function OperationDetailPage({
                                   Upload Doc
                                 </Button>
                               )}
+                              {/* BM: remove a nominated-but-unused truck, at any phase — blocked
+                                   once it already has recorded delivery/discharge data (the
+                                   backend is the source of truth; this just avoids offering an
+                                   action that would only come back as a 422). */}
+                              {isBM && !to.quantity_discharged_mt && !to.discharge_end_at
+                                && to.status !== "discharging" && to.status !== "completed"
+                                && to.status !== "cancelled" && (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-7 text-xs gap-1.5 text-destructive hover:text-destructive"
+                                  onClick={() => { setRemoveTruckTarget(to); setRemoveTruckReason(""); }}
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                  Remove
+                                </Button>
+                              )}
                             </div>
                           </div>
 
@@ -8102,6 +8140,26 @@ export default function OperationDetailPage({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ── BM: Remove Truck dialog ── */}
+      <ReasonGatedDialog
+        open={!!removeTruckTarget}
+        onOpenChange={(v) => { if (!v) { setRemoveTruckTarget(null); setRemoveTruckReason(""); } }}
+        title="Remove Truck from Operation"
+        icon={Trash2}
+        description={
+          removeTruckTarget
+            ? `${removeTruckTarget.truck?.truck_number ?? "This truck"} will be removed from the operation. This can't be undone.`
+            : undefined
+        }
+        reason={removeTruckReason}
+        onReasonChange={setRemoveTruckReason}
+        reasonPlaceholder="Why is this truck being removed…"
+        confirmLabel="Remove Truck"
+        destructive
+        pending={removeTruckMutation.isPending}
+        onConfirm={() => removeTruckMutation.mutate()}
+      />
 
       {/* ── LO: Link Waybill dialog (waiver number + plate + driver, at waybill time) */}
       <Dialog open={!!waybillDialogTruckOpId} onOpenChange={(v) => { if (!v) setWaybillDialogTruckOpId(null); }}>

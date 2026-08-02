@@ -2818,10 +2818,12 @@ export default function OperationDetailPage({
   const [waybillDocNumber, setWaybillDocNumber] = useState("");
   const [waybillNumber,    setWaybillNumber]    = useState("");
 
+  // 31 Jul 2026 decision: one waiver can cover multiple trucks at once, so the
+  // dropdown offers every waiver, not just ones with zero existing links.
   const { data: availableWaivers } = useQuery({
-    queryKey: ["truck-waivers", "available"],
+    queryKey: ["truck-waivers"],
     queryFn: async () => {
-      const res = await api.get<ApiResponse<TruckWaiver[]>>("/trucks/waivers", { params: { status: "available" } });
+      const res = await api.get<ApiResponse<TruckWaiver[]>>("/trucks/waivers");
       return res.data.data ?? [];
     },
     enabled: !!waybillDialogTruckOpId,
@@ -8174,10 +8176,14 @@ export default function OperationDetailPage({
             <div className="space-y-1.5">
               <Label className="text-xs">Truck Waybill Number <span className="text-destructive">*</span></Label>
               <Select value={waybillWaiverId} onValueChange={setWaybillWaiverId}>
-                <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select an available waiver number…" /></SelectTrigger>
+                <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select a waiver number…" /></SelectTrigger>
                 <SelectContent>
                   {availableWaivers?.map((w) => (
-                    <SelectItem key={w.id} value={w.id}>{w.waybill_truck_number}</SelectItem>
+                    <SelectItem key={w.id} value={w.id}>
+                      {w.waybill_truck_number}
+                      {/* A waiver can cover multiple trucks — surface that it's already in use, not hide it. */}
+                      {w.linked_trucks.length > 0 && ` (already on ${w.linked_trucks.length} truck${w.linked_trucks.length === 1 ? "" : "s"})`}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>

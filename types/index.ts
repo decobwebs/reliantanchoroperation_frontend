@@ -459,17 +459,23 @@ export interface Truck {
 
 export type TruckWaiverStatus = "available" | "linked";
 
+/** One truck currently linked to a waiver — a waiver can cover more than one at once. */
+export interface LinkedTruckSummary {
+  truck_number: string;
+  operation_id: string;
+  operation_number: string;
+  driver_name?: string;
+  linked_at?: string;
+}
+
 export interface TruckWaiver {
   id: string;
   waybill_truck_number: string;
+  /** Derived live from active links, not a stored gate — "linked" just means linked_trucks.length > 0. */
   status: TruckWaiverStatus;
   added_by: string;
   created_at: string;
-  linked_truck_number?: string;
-  linked_operation_id?: string;
-  linked_operation_number?: string;
-  linked_driver_name?: string;
-  linked_at?: string;
+  linked_trucks: LinkedTruckSummary[];
 }
 
 export interface TruckEvent {

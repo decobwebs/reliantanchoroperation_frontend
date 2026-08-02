@@ -186,7 +186,7 @@ export default function WaiversPage() {
                           >
                             <Pencil className="h-3.5 w-3.5" />
                           </Button>
-                          {w.status === "available" && (
+                          {w.linked_trucks.length === 0 && (
                             <Button
                               size="icon" variant="ghost"
                               aria-label="Remove waiver number"
@@ -200,23 +200,24 @@ export default function WaiversPage() {
                       )}
                     </div>
                   </div>
-                  {w.status === "linked" && (
-                    <p className="text-[12px] text-muted-foreground">
-                      Linked to truck <span className="font-mono font-medium text-foreground">{w.linked_truck_number ?? "—"}</span>
-                      {w.linked_driver_name && <> · Driver: {w.linked_driver_name}</>}
-                      {w.linked_operation_id && (
-                        <>
+                  {w.linked_trucks.length > 0 && (
+                    <div className="space-y-1">
+                      {/* One waiver can now cover multiple trucks at once. */}
+                      {w.linked_trucks.map((lt, i) => (
+                        <p key={`${lt.operation_id}-${lt.truck_number}-${i}`} className="text-[12px] text-muted-foreground">
+                          Linked to truck <span className="font-mono font-medium text-foreground">{lt.truck_number}</span>
+                          {lt.driver_name && <> · Driver: {lt.driver_name}</>}
                           {" · "}
                           <Link
-                            href={`/operations/${w.linked_operation_id}`}
+                            href={`/operations/${lt.operation_id}`}
                             className="rounded font-semibold text-brand-600 underline underline-offset-2 hover:text-brand-700"
                           >
-                            {w.linked_operation_number ?? "Operation"}
+                            {lt.operation_number}
                           </Link>
-                        </>
-                      )}
-                      {w.linked_at && <> · {formatDateTime(w.linked_at)}</>}
-                    </p>
+                          {lt.linked_at && <> · {formatDateTime(lt.linked_at)}</>}
+                        </p>
+                      ))}
+                    </div>
                   )}
                 </div>
               ))}

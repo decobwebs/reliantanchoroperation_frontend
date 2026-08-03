@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState, useRef } from "react";
+import { use, useState, useRef, useMemo } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
@@ -1011,6 +1011,58 @@ export default function OperationDetailPage({
       vendorName: truckOp?.vendor_name || driverInfo?.vendor_name || null,
     };
   };
+
+  // Every truck the BM has approved, across ALL approved feedback rounds.
+  //
+  // The LO may submit readiness more than once — e.g. one truck at 12:42, then
+  // eight more at 12:58 — and the BM approves each round separately. The list
+  // endpoint returns feedback newest-first, so reading a single approved row
+  // silently dropped every truck nominated in an earlier round. Union them.
+  const approvedNominations = useMemo(() => {
+    const approved = (feedbacks ?? []).filter((f) => f.status === "approved");
+    // Oldest round first, so trucks initialize in the order they were nominated.
+    const ordered = [...approved].sort((a, b) =>
+      (a.submitted_at ?? "").localeCompare(b.submitted_at ?? "")
+    );
+
+    const truckIds: string[] = [];
+    const seen = new Set<string>();
+    const driverInfo: Record<
+      string,
+      { driver_name?: string; driver_phone?: string; vendor_name?: string }
+    > = {};
+
+    for (const fb of ordered) {
+      for (const tid of fb.truck_ids ?? []) {
+        if (seen.has(tid)) continue;
+        seen.add(tid);
+        truckIds.push(tid);
+      }
+      // A later round re-nominating the same truck carries corrected driver
+      // details, so let it win.
+      const info = (
+        fb.truck_details as {
+          driverInfo?: Record<
+            string,
+            { driver_name?: string; driver_phone?: string; vendor_name?: string }
+          >;
+        } | undefined
+      )?.driverInfo;
+      if (info) Object.assign(driverInfo, info);
+    }
+
+    return { truckIds, driverInfo };
+  }, [feedbacks]);
+
+  // Approved trucks with no TruckOperation row yet. A removed truck keeps its
+  // row (status `cancelled`), so it is never re-offered here.
+  const uninitializedTruckIds = useMemo(
+    () =>
+      approvedNominations.truckIds.filter(
+        (tid) => !truckOps?.some((to) => to.truck_id === tid)
+      ),
+    [approvedNominations, truckOps]
+  );
 
   // BM-only: live activity log (poll every 20 s)
   const { data: activityLog, refetch: refetchActivity } = useQuery({
@@ -4243,7 +4295,7 @@ export default function OperationDetailPage({
                                 <p className="text-sm">{fb.readiness_summary}</p>
                                 {Array.isArray(fb.truck_ids) && fb.truck_ids.length > 0 && (
                                   <div className="flex flex-wrap gap-1.5">
-                                    {(fb.truck_ids as string[]).map((tid) => {
+                                    {(fb.truck_ids as string[]).map((tid, i) => {
                                       const t = resolveTruckDisplay(tid, fb);
                                       return (
                                         <span
@@ -4251,6 +4303,9 @@ export default function OperationDetailPage({
                                           className="text-[11px] bg-background border px-2 py-0.5 rounded font-mono"
                                           title={[t.driverName, t.driverPhone, t.vendorName].filter(Boolean).join(" · ") || undefined}
                                         >
+                                          <span className="mr-1 font-sans font-semibold tabular-nums text-muted-foreground">
+                                            {i + 1}.
+                                          </span>
                                           {t.truckNumber ?? `${tid.slice(0, 8)}…`}
                                         </span>
                                       );
@@ -4363,7 +4418,7 @@ export default function OperationDetailPage({
                                 Trucks ({fb.truck_ids.length})
                               </p>
                               <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-                                {(fb.truck_ids as string[]).map((tid) => {
+                                {(fb.truck_ids as string[]).map((tid, i) => {
                                   const t = resolveTruckDisplay(tid, fb);
                                   return (
                                     <Link
@@ -4371,8 +4426,13 @@ export default function OperationDetailPage({
                                       href={`/fleet/${tid}`}
                                       className="flex items-center justify-between gap-2 text-xs bg-background hover:bg-primary/5 border px-2.5 py-1.5 rounded-md transition-colors"
                                     >
-                                      <span className="font-mono font-semibold text-primary">
-                                        {t.truckNumber ?? `${tid.slice(0, 8)}…`}
+                                      <span className="flex min-w-0 items-center gap-1.5">
+                                        <span className="w-4 shrink-0 text-right font-semibold tabular-nums text-muted-foreground">
+                                          {i + 1}.
+                                        </span>
+                                        <span className="truncate font-mono font-semibold text-primary">
+                                          {t.truckNumber ?? `${tid.slice(0, 8)}…`}
+                                        </span>
                                       </span>
                                       <span className="text-muted-foreground truncate text-[11px]">
                                         {[t.driverName, t.driverPhone, t.vendorName].filter(Boolean).join(" · ") || (t.capacityMt ? `${parseFloat(t.capacityMt).toLocaleString()} L` : "")}
@@ -7456,45 +7516,69 @@ export default function OperationDetailPage({
                       <CardContent className="flex flex-col items-center py-14 text-muted-foreground gap-1">
                         <Truck className="w-10 h-10 mb-2 opacity-30" />
                         <p className="text-sm font-medium">No trucks initialized for reporting</p>
-                        {(() => {
-                          const approvedFb = feedbacks?.find((f) => f.status === "approved");
-                          const fbTruckIds: string[] = approvedFb
-                            ? (approvedFb.truck_ids as string[]) ?? []
-                            : [];
-                          if (fbTruckIds.length > 0 && isLO) {
-                            return (
-                              <div className="mt-2 text-center space-y-2">
-                                <p className="text-xs text-muted-foreground max-w-xs">
-                                  {fbTruckIds.length} truck{fbTruckIds.length > 1 ? "s" : ""} from the approved feedback are ready to be initialized for progress reporting.
-                                </p>
-                                <Button
-                                  size="sm"
-                                  disabled={initTrucksMutation.isPending}
-                                  onClick={() => initTrucksMutation.mutate({
-                                    truckIds: fbTruckIds,
-                                    driverInfo: (approvedFb?.truck_details as { driverInfo?: Record<string, { driver_name?: string; driver_phone?: string; vendor_name?: string }> } | undefined)?.driverInfo,
-                                  })}
-                                >
-                                  {initTrucksMutation.isPending
-                                    ? <Spinner size={14} className="mr-1.5" />
-                                    : <PlusCircle className="w-3.5 h-3.5 mr-1.5" />}
-                                  Initialize {fbTruckIds.length} Truck{fbTruckIds.length > 1 ? "s" : ""} for Reporting
-                                </Button>
-                              </div>
-                            );
-                          }
-                          return (
-                            <p className="text-xs mt-1 text-center max-w-xs opacity-70">
-                              Trucks must be added to this operation before reporting can begin.
+                        {uninitializedTruckIds.length > 0 && isLO ? (
+                          <div className="mt-2 text-center space-y-2">
+                            <p className="text-xs text-muted-foreground max-w-xs">
+                              {uninitializedTruckIds.length} truck{uninitializedTruckIds.length > 1 ? "s" : ""} from approved feedback {uninitializedTruckIds.length > 1 ? "are" : "is"} ready to be initialized for progress reporting.
                             </p>
-                          );
-                        })()}
+                            <Button
+                              size="sm"
+                              disabled={initTrucksMutation.isPending}
+                              onClick={() => initTrucksMutation.mutate({
+                                truckIds: uninitializedTruckIds,
+                                driverInfo: approvedNominations.driverInfo,
+                              })}
+                            >
+                              {initTrucksMutation.isPending
+                                ? <Spinner size={14} className="mr-1.5" />
+                                : <PlusCircle className="w-3.5 h-3.5 mr-1.5" />}
+                              Initialize {uninitializedTruckIds.length} Truck{uninitializedTruckIds.length > 1 ? "s" : ""} for Reporting
+                            </Button>
+                          </div>
+                        ) : (
+                          <p className="text-xs mt-1 text-center max-w-xs opacity-70">
+                            Trucks must be added to this operation before reporting can begin.
+                          </p>
+                        )}
                       </CardContent>
                     </Card>
                   ) : (
-                    truckOps.map((to) => {
+                    <>
+                    {/* Feedback approved after the first batch was initialized
+                        would otherwise have no route into this list — the
+                        initialize action used to live only in the empty state. */}
+                    {uninitializedTruckIds.length > 0 && isLO && (
+                      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50/70 px-4 py-3 dark:border-amber-500/25 dark:bg-amber-500/10">
+                        <div className="min-w-0">
+                          <p className="text-[13px] font-bold text-amber-800 dark:text-amber-300">
+                            {uninitializedTruckIds.length} approved truck{uninitializedTruckIds.length > 1 ? "s" : ""} not yet initialized
+                          </p>
+                          <p className="text-[11px] text-muted-foreground">
+                            Nominated in an earlier or later feedback round. Initialize to start recording progress.
+                          </p>
+                        </div>
+                        <Button
+                          size="sm"
+                          className="shrink-0"
+                          disabled={initTrucksMutation.isPending}
+                          onClick={() => initTrucksMutation.mutate({
+                            truckIds: uninitializedTruckIds,
+                            driverInfo: approvedNominations.driverInfo,
+                          })}
+                        >
+                          {initTrucksMutation.isPending
+                            ? <Spinner size={14} className="mr-1.5" />
+                            : <PlusCircle className="w-3.5 h-3.5 mr-1.5" />}
+                          Initialize {uninitializedTruckIds.length} Truck{uninitializedTruckIds.length > 1 ? "s" : ""}
+                        </Button>
+                      </div>
+                    )}
+                    {truckOps.map((to, truckIndex) => {
                       const label = to.truck?.truck_number ?? to.truck_id.slice(0, 8);
                       const cap   = to.truck?.capacity_mt ? `${parseFloat(to.truck.capacity_mt).toLocaleString()} L` : "";
+                      // 1-based position in the list, so "truck 6 of 9" is
+                      // sayable over the radio without counting cards.
+                      const seq   = truckIndex + 1;
 
                       // Removed trucks stay visible (traceability — nothing is
                       // ever silently deleted) but read-only: no waybill/doc/
@@ -7506,6 +7590,9 @@ export default function OperationDetailPage({
                           <Card key={to.id} className="rounded-2xl border border-navy-100 shadow-[0_1px_2px_rgb(16_36_71/0.04)] dark:border-border overflow-hidden opacity-60">
                             <div className="flex items-center justify-between px-5 py-3.5">
                               <div className="flex items-center gap-3 min-w-0">
+                                <span className="w-6 shrink-0 text-right text-sm font-bold tabular-nums text-muted-foreground/60">
+                                  {seq}.
+                                </span>
                                 <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center shrink-0">
                                   <Trash2 className="w-4 h-4 text-muted-foreground" />
                                 </div>
@@ -7546,6 +7633,9 @@ export default function OperationDetailPage({
                           {/* Truck header */}
                           <div className="flex items-center justify-between px-5 py-3.5 border-b bg-muted/20">
                             <div className="flex items-center gap-3 min-w-0">
+                              <span className="w-6 shrink-0 text-right text-sm font-bold tabular-nums text-muted-foreground">
+                                {seq}.
+                              </span>
                               <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
                                 <Truck className="w-4 h-4 text-primary" />
                               </div>
@@ -8061,7 +8151,8 @@ export default function OperationDetailPage({
                           )}
                         </Card>
                       );
-                    })
+                    })}
+                    </>
                   )}
                 </TabsContent>
               )}

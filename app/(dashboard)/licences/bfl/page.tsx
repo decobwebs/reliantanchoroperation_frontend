@@ -111,7 +111,7 @@ export default function BflPage() {
       await api.delete(`/bfls/${id}`, { data: { reason: deactivateReason.trim() } });
     },
     onSuccess: () => {
-      toast.success("BFL deactivated");
+      toast.success("BFL deleted");
       setDeactivateId(null); setDeactivateReason("");
       qc.invalidateQueries({ queryKey: ["bfls"] });
     },
@@ -156,19 +156,24 @@ export default function BflPage() {
                           <Badge variant="secondary" className="rounded-md text-[10px]">Inactive</Badge>
                         )}
                       </div>
-                      {canAdd && b.is_active && (
+                      {canAdd && (
                         <div className="flex shrink-0 items-center gap-1">
+                          {b.is_active && (
+                            <Button
+                              size="icon" variant="ghost"
+                              aria-label="Edit BFL"
+                              className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                              onClick={() => openEdit(b)}
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
+                          {/* Delete stays available on an inactive BFL so rows
+                              left behind by the old soft-delete can be cleared
+                              out of the registry. */}
                           <Button
                             size="icon" variant="ghost"
-                            aria-label="Edit BFL"
-                            className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                            onClick={() => openEdit(b)}
-                          >
-                            <Pencil className="h-3.5 w-3.5" />
-                          </Button>
-                          <Button
-                            size="icon" variant="ghost"
-                            aria-label="Deactivate BFL"
+                            aria-label="Delete BFL"
                             className="h-7 w-7 text-destructive hover:text-destructive"
                             onClick={() => { setDeactivateId(b.id); setDeactivateReason(""); }}
                           >
@@ -273,13 +278,13 @@ export default function BflPage() {
       <ReasonGatedDialog
         open={!!deactivateId}
         onOpenChange={(v) => !v && setDeactivateId(null)}
-        title="Deactivate BFL"
+        title="Delete BFL"
         icon={Trash2}
-        description={deactivatingBfl ? `${deactivatingBfl.bfl_number} will no longer be usable for drawdowns.` : undefined}
+        description={deactivatingBfl ? `${deactivatingBfl.bfl_number} will be removed permanently. Its litres return to the PPDL allowance and the number becomes available again.` : undefined}
         destructive
         reason={deactivateReason}
         onReasonChange={setDeactivateReason}
-        reasonLabel="Reason for deactivating"
+        reasonLabel="Reason for deleting"
         confirmLabel="Deactivate"
         pending={deactivateMutation.isPending}
         onConfirm={() => deactivateId && deactivateMutation.mutate(deactivateId)}

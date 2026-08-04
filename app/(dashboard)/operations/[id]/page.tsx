@@ -1027,6 +1027,9 @@ export default function OperationDetailPage({
 
     const truckIds: string[] = [];
     const seen = new Set<string>();
+    // When each truck was most recently approved — used to decide whether a
+    // removed truck has since been re-nominated.
+    const approvedAt: Record<string, string> = {};
     const driverInfo: Record<
       string,
       { driver_name?: string; driver_phone?: string; vendor_name?: string }
@@ -1034,6 +1037,7 @@ export default function OperationDetailPage({
 
     for (const fb of ordered) {
       for (const tid of fb.truck_ids ?? []) {
+        approvedAt[tid] = fb.submitted_at;
         if (seen.has(tid)) continue;
         seen.add(tid);
         truckIds.push(tid);
@@ -1051,16 +1055,35 @@ export default function OperationDetailPage({
       if (info) Object.assign(driverInfo, info);
     }
 
-    return { truckIds, driverInfo };
+    return { truckIds, driverInfo, approvedAt };
   }, [feedbacks]);
 
-  // Approved trucks with no TruckOperation row yet. A removed truck keeps its
-  // row (status `cancelled`), so it is never re-offered here.
+  // Approved trucks with no *live* TruckOperation row.
+  //
+  // A removed truck keeps its row for traceability with status `cancelled`.
+  // That row must not suppress re-initialisation: a truck can legitimately be
+  // removed and then nominated again in a later feedback round, and the API
+  // allows it (add_truck_to_operation only rejects a duplicate that is
+  // non-cancelled). Matching that rule here is what lets a re-approved truck
+  // come back — keying off "has any row at all" stranded it permanently.
+  // A truck already removed on purpose only comes back if a later feedback
+  // round re-nominated it — otherwise every truck ever removed would be
+  // offered up again on the round that originally approved it.
   const uninitializedTruckIds = useMemo(
     () =>
-      approvedNominations.truckIds.filter(
-        (tid) => !truckOps?.some((to) => to.truck_id === tid)
-      ),
+      approvedNominations.truckIds.filter((tid) => {
+        const rows = (truckOps ?? []).filter((to) => to.truck_id === tid);
+        if (rows.some((to) => to.status !== "cancelled")) return false; // already live
+        if (rows.length === 0) return true; // never initialised
+
+        // Removed. Only re-offer if approved again after the last removal.
+        const lastRemoved = rows.reduce(
+          (max, to) => (to.updated_at > max ? to.updated_at : max),
+          ""
+        );
+        const lastApproved = approvedNominations.approvedAt[tid] ?? "";
+        return lastApproved > lastRemoved;
+      }),
     [approvedNominations, truckOps]
   );
 
@@ -3042,7 +3065,11 @@ export default function OperationDetailPage({
   // the driver/vendor info the LO captured at nomination time (see truck_details.driverInfo).
   const initTrucksMutation = useMutation({
     mutationFn: async ({ truckIds, driverInfo }: { truckIds: string[]; driverInfo?: Record<string, { driver_name?: string; driver_phone?: string; vendor_name?: string }> }) => {
-      const alreadyInitialized = new Set(truckOps?.map((to) => to.truck_id) ?? []);
+      // Cancelled rows don't count as initialised — a removed truck that has
+      // been re-approved must be POSTed again to get a fresh live row.
+      const alreadyInitialized = new Set(
+        (truckOps ?? []).filter((to) => to.status !== "cancelled").map((to) => to.truck_id)
+      );
       const newIds = truckIds.filter((tid) => !alreadyInitialized.has(tid));
       for (const truck_id of newIds) {
         const info = driverInfo?.[truck_id];

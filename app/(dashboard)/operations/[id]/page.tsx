@@ -1027,9 +1027,6 @@ export default function OperationDetailPage({
 
     const truckIds: string[] = [];
     const seen = new Set<string>();
-    // When each truck was most recently approved — used to decide whether a
-    // removed truck has since been re-nominated.
-    const approvedAt: Record<string, string> = {};
     const driverInfo: Record<
       string,
       { driver_name?: string; driver_phone?: string; vendor_name?: string }
@@ -1037,7 +1034,6 @@ export default function OperationDetailPage({
 
     for (const fb of ordered) {
       for (const tid of fb.truck_ids ?? []) {
-        approvedAt[tid] = fb.submitted_at;
         if (seen.has(tid)) continue;
         seen.add(tid);
         truckIds.push(tid);
@@ -1055,7 +1051,7 @@ export default function OperationDetailPage({
       if (info) Object.assign(driverInfo, info);
     }
 
-    return { truckIds, driverInfo, approvedAt };
+    return { truckIds, driverInfo };
   }, [feedbacks]);
 
   // Approved trucks with no *live* TruckOperation row.
@@ -1066,25 +1062,27 @@ export default function OperationDetailPage({
   // allows it (add_truck_to_operation only rejects a duplicate that is
   // non-cancelled). Matching that rule here is what lets a re-approved truck
   // come back — keying off "has any row at all" stranded it permanently.
-  // A truck already removed on purpose only comes back if a later feedback
-  // round re-nominated it — otherwise every truck ever removed would be
-  // offered up again on the round that originally approved it.
-  const uninitializedTruckIds = useMemo(
-    () =>
-      approvedNominations.truckIds.filter((tid) => {
-        const rows = (truckOps ?? []).filter((to) => to.truck_id === tid);
-        if (rows.some((to) => to.status !== "cancelled")) return false; // already live
-        if (rows.length === 0) return true; // never initialised
+  // Which approved trucks can still be added is decided server-side, by the
+  // same code that guards the add itself (truck_service.addable_truck_ids).
+  // Deriving it here instead is what made trucks vanish from Truck Reports
+  // twice — the UI's rule drifted from the API's. Do not reintroduce it.
+  const { data: addableTrucks } = useQuery({
+    // Nested under the truck-ops key so every existing
+    // invalidateQueries(["operation-trucks", id]) refreshes this too — react
+    // query matches key prefixes, so add/remove keeps the banner honest.
+    queryKey: ["operation-trucks", id, "addable"],
+    queryFn: async () => {
+      const res = await api.get<ApiResponse<{ id: string; truck_number: string }[]>>(
+        `/operations/${id}/trucks/addable`
+      );
+      return res.data.data ?? [];
+    },
+    enabled: canSeeTruckOps,
+  });
 
-        // Removed. Only re-offer if approved again after the last removal.
-        const lastRemoved = rows.reduce(
-          (max, to) => (to.updated_at > max ? to.updated_at : max),
-          ""
-        );
-        const lastApproved = approvedNominations.approvedAt[tid] ?? "";
-        return lastApproved > lastRemoved;
-      }),
-    [approvedNominations, truckOps]
+  const uninitializedTruckIds = useMemo(
+    () => (addableTrucks ?? []).map((t) => t.id),
+    [addableTrucks]
   );
 
   // BM-only: live activity log (poll every 20 s)
@@ -1391,6 +1389,8 @@ export default function OperationDetailPage({
       refetchFeedbacks();
       qc.invalidateQueries({ queryKey: ["operation", id] });
       qc.invalidateQueries({ queryKey: ["operation-timeline", id] });
+      // Approving a round changes which trucks are addable.
+      qc.invalidateQueries({ queryKey: ["operation-trucks", id] });
     },
     onError: (err) => toast.error(getErrorMessage(err)),
   });

@@ -358,13 +358,17 @@ export function BunkerManagerDashboard() {
             caption={`${trucks?.in_transit ?? 0} in transit`}
             note={`${pctOf(trucks?.available ?? 0, trucks?.total_trucks ?? 0)}% fleet ready`}
           />
+          {/* `total_pfis` counts every PFI on file, not PFIs attached to an
+              operation — so neither "Linked" nor a percentage of the operation
+              count means anything here. It read "48 · 960% of all operations"
+              before this. */}
           <KpiCard
             tone="sky"
             icon={TrendingUp}
-            title="PFIs Linked"
+            title="Pro-forma Invoices"
             value={ops?.total_pfis ?? 0}
-            caption="Pro-forma invoices"
-            note={`${pctOf(ops?.total_pfis ?? 0, totalOps)}% of all operations`}
+            caption="On file, all clients"
+            note="Raised independently of operations"
             noteTrend="flat"
           />
         </section>

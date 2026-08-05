@@ -497,6 +497,13 @@ export default function VesselProfilePage({
   const threshold  = vessel.rob_threshold_mt ? parseFloat(vessel.rob_threshold_mt) : 0;
   const belowThreshold = threshold > 0 && currentRob <= threshold;
 
+  // A physically impossible ROB means the running total is wrong, not that the
+  // vessel is genuinely empty or overfull — it comes from a units or
+  // decimal-point slip when a quantity was recorded. Surface it plainly rather
+  // than rendering a -34,756% gauge and letting someone act on the number.
+  const robOutOfRange =
+    currentRob < 0 || (capacity > 0 && currentRob > capacity);
+
   const bdns          = bdnData?.bdns ?? [];
   const totalDelivered = bdnData?.total_delivered_mt ?? "0";
   const totalCount     = bdnData?.total_count ?? 0;
@@ -545,6 +552,28 @@ export default function VesselProfilePage({
           )}
         </div>
       </header>
+
+      {robOutOfRange && (
+        <section
+          role="alert"
+          className="animate-rise flex flex-wrap items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50/70 px-4 py-3.5 dark:border-rose-500/25 dark:bg-rose-500/10"
+        >
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-rose-600 dark:text-rose-400" strokeWidth={2.5} />
+          <div className="min-w-0">
+            <p className="text-[13px] font-bold text-rose-800 dark:text-rose-300">
+              Remaining on Board is out of range — treat this figure as unreliable
+            </p>
+            <p className="mt-0.5 text-[12px] leading-relaxed text-rose-900/70 dark:text-rose-200/70">
+              {currentRob < 0
+                ? `The running total is negative (${formatNumber(currentRob)} L). More has been recorded as discharged than was ever loaded.`
+                : `The running total (${formatNumber(currentRob)} L) exceeds the vessel's ${formatNumber(capacity)} L capacity.`}{" "}
+              This is almost always a units or decimal-point error on a recorded quantity.
+              Check the Cargo Ledger below, correct the offending entry, and the total will
+              recalculate. Do not plan a bunker against this number.
+            </p>
+          </div>
+        </section>
+      )}
 
       <div className="flex flex-col gap-4 lg:flex-row">
         {capacity > 0 && (

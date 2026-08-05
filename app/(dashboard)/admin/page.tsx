@@ -9,12 +9,14 @@ import {
   Users,
   UserPlus,
   Phone,
+  Trash2,
 } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "sonner";
 import { api, getErrorMessage } from "@/lib/api";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { PanelCard } from "@/components/dashboard/PanelCard";
+import { ReasonGatedDialog } from "@/components/shared/ReasonGatedDialog";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -216,6 +218,7 @@ function CreateUserDialog() {
 
 export default function AdminPage() {
   const { user, effectiveRole } = useAuth();
+  const qc = useQueryClient();
   const isBM = effectiveRole === "bunker_manager";
 
   const { data: users, isLoading, isError, error, refetch } = useQuery({
@@ -226,6 +229,29 @@ export default function AdminPage() {
       const d = res.data.data;
       return Array.isArray(d) ? d : (d as { items: User[] }).items ?? [];
     },
+  });
+
+  // ── Delete ──
+  const [deleteUser, setDeleteUser] = useState<User | null>(null);
+  const [deleteReason, setDeleteReason] = useState("");
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await api.delete<ApiResponse<{ deleted: boolean }>>(
+        `/admin/users/${id}`,
+        { data: { reason: deleteReason.trim() } }
+      );
+      return res.data;
+    },
+    onSuccess: (res) => {
+      // The API removes the row outright only when the account has no
+      // operational history; otherwise it deactivates and says so.
+      toast.success(res.message ?? "User deleted");
+      setDeleteUser(null);
+      setDeleteReason("");
+      qc.invalidateQueries({ queryKey: ["admin-users"] });
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
   });
 
   if (user && !isBM) {
@@ -287,6 +313,20 @@ export default function AdminPage() {
                   >
                     {u.is_active ? "Active" : "Inactive"}
                   </Badge>
+
+                  {/* Deleting yourself would drop your own admin access, and
+                      the API rejects it — don't offer it. */}
+                  {u.id !== user?.id && (
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      aria-label={`Delete ${u.full_name}`}
+                      className="h-7 w-7 shrink-0 text-destructive hover:text-destructive"
+                      onClick={() => { setDeleteUser(u); setDeleteReason(""); }}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
                 </div>
               ))}
             </div>
@@ -298,6 +338,25 @@ export default function AdminPage() {
           )}
         </PanelCard>
       )}
+
+      <ReasonGatedDialog
+        open={!!deleteUser}
+        onOpenChange={(o) => { if (!o) { setDeleteUser(null); setDeleteReason(""); } }}
+        title="Delete user"
+        icon={Trash2}
+        description={
+          deleteUser
+            ? `${deleteUser.full_name} (${deleteUser.email}) will lose access immediately. If the account has operational history it is deactivated rather than erased, so records stay attributable.`
+            : undefined
+        }
+        reason={deleteReason}
+        onReasonChange={setDeleteReason}
+        reasonLabel="Reason for deleting"
+        confirmLabel="Delete user"
+        destructive
+        pending={deleteMutation.isPending}
+        onConfirm={() => deleteUser && deleteMutation.mutate(deleteUser.id)}
+      />
     </DashboardShell>
   );
 }

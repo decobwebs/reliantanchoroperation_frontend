@@ -25,12 +25,6 @@ import {
   Banknote,
   FolderOpen,
 } from "lucide-react";
-import {
-  RadialBarChart,
-  RadialBar,
-  ResponsiveContainer,
-  Tooltip,
-} from "recharts";
 import { api } from "@/lib/api";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { PanelCard } from "@/components/dashboard/PanelCard";
@@ -174,61 +168,97 @@ function RobGauge({
   capacity: number;
   threshold: number;
 }) {
-  const pct = capacity > 0 ? Math.min(100, (currentRob / capacity) * 100) : 0;
-  const belowThreshold = currentRob <= threshold && threshold > 0;
+  // Hand-rolled SVG rather than a RadialBarChart: this draws one number, and
+  // the chart version needed a 160px canvas clipped into an 80px box plus an
+  // absolutely-positioned overlay, which stacked the percentage, the tooltip
+  // and the litres figure on top of each other.
+  const ratio = capacity > 0 ? currentRob / capacity : 0;
+  const pct = ratio * 100;
+  // The arc can only draw 0–100%; the readout below still shows the true value.
+  const drawnPct = Math.max(0, Math.min(100, pct));
+  const outOfRange = currentRob < 0 || (capacity > 0 && currentRob > capacity);
+  const belowThreshold = threshold > 0 && currentRob <= threshold;
 
-  // Same emerald/amber/rose values already used for meaning elsewhere (see
-  // KpiCard's spark colours) — reused here rather than introducing new hex.
-  const fillColor = belowThreshold
+  const stroke = outOfRange || belowThreshold
     ? "rgb(244 63 94)"
     : pct > 50
-    ? "rgb(16 185 129)"
-    : "rgb(245 158 11)";
+      ? "rgb(16 185 129)"
+      : "rgb(245 158 11)";
 
-  const chartData = [{ name: "ROB", value: pct, fill: fillColor }];
+  // Semicircle from 180° to 0°: radius 64 about (80, 80), so the arc length
+  // is π·r and stroke-dasharray can express the fill directly as a fraction.
+  const R = 64;
+  const LEN = Math.PI * R;
+  const arc = `M 16 80 A ${R} ${R} 0 0 1 144 80`;
 
   return (
-    <div className="flex flex-col items-center">
-      <div className="relative h-20 w-40 overflow-hidden">
-        <ResponsiveContainer width="100%" height={160}>
-          <RadialBarChart
-            cx="50%"
-            cy="50%"
-            innerRadius="60%"
-            outerRadius="100%"
-            startAngle={180}
-            endAngle={0}
-            data={chartData}
-          >
-            <RadialBar
-              background={{ fill: "var(--muted)" }}
-              dataKey="value"
-              cornerRadius={6}
-            />
-            <Tooltip
-              formatter={(v) => [`${Number(v ?? 0).toFixed(1)}%`, "ROB Level"]}
-            />
-          </RadialBarChart>
-        </ResponsiveContainer>
-        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-end pb-1">
-          <span className={cn("text-xl font-bold tabular-nums", belowThreshold ? "text-rose-500" : "text-foreground")}>
-            {pct.toFixed(0)}%
-          </span>
-        </div>
-      </div>
-      <div className="mt-1 text-center">
-        <p className={cn("text-[13px] font-semibold tabular-nums", belowThreshold ? "text-rose-500" : "text-foreground")}>
-          {formatNumber(currentRob)} L
-        </p>
-        <p className="text-[11px] text-muted-foreground">
-          of {formatNumber(capacity)} L capacity
-        </p>
-        {belowThreshold && (
-          <Badge variant="destructive" className="mt-1 rounded-md text-[10px]">
-            Below Threshold ({formatNumber(threshold)} L)
-          </Badge>
+    <div className="flex w-full flex-col items-center">
+      <svg
+        viewBox="0 0 160 96"
+        className="w-full max-w-[190px]"
+        role="img"
+        aria-label={`Remaining on board ${formatNumber(currentRob)} litres of ${formatNumber(capacity)} litres capacity`}
+      >
+        <path
+          d={arc}
+          fill="none"
+          strokeWidth={13}
+          strokeLinecap="round"
+          className="stroke-muted"
+        />
+        {drawnPct > 0 && (
+          <path
+            d={arc}
+            fill="none"
+            stroke={stroke}
+            strokeWidth={13}
+            strokeLinecap="round"
+            strokeDasharray={`${(drawnPct / 100) * LEN} ${LEN}`}
+            style={{ transition: "stroke-dasharray 700ms cubic-bezier(0.22,1,0.36,1)" }}
+          />
         )}
-      </div>
+        <text
+          x="80"
+          y="72"
+          textAnchor="middle"
+          className={cn(
+            "fill-foreground text-[26px] font-bold tabular-nums",
+            (outOfRange || belowThreshold) && "fill-rose-500"
+          )}
+          style={{ fontSize: 26, fontWeight: 700 }}
+        >
+          {outOfRange ? "!" : `${Math.round(pct)}%`}
+        </text>
+      </svg>
+
+      <p
+        className={cn(
+          "-mt-1 text-[15px] font-bold tabular-nums",
+          outOfRange || belowThreshold ? "text-rose-600 dark:text-rose-400" : "text-foreground"
+        )}
+      >
+        {formatNumber(currentRob)} L
+      </p>
+      <p className="text-[11px] text-muted-foreground">
+        of {formatNumber(capacity)} L capacity
+      </p>
+
+      {outOfRange ? (
+        <Badge variant="destructive" className="mt-2 rounded-md text-[10px]">
+          Out of range
+        </Badge>
+      ) : belowThreshold ? (
+        <Badge variant="destructive" className="mt-2 rounded-md text-[10px]">
+          Below threshold ({formatNumber(threshold)} L)
+        </Badge>
+      ) : (
+        <Badge
+          variant="secondary"
+          className="mt-2 rounded-md bg-emerald-50 text-[10px] text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300"
+        >
+          Above threshold
+        </Badge>
+      )}
     </div>
   );
 }

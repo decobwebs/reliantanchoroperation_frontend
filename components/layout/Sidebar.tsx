@@ -142,9 +142,27 @@ export const NAV_ITEMS: NavItem[] = [
   },
 ];
 
-/** Shared active-route test — `/` must match exactly, everything else by prefix. */
-export function isNavItemActive(href: string, pathname: string): boolean {
-  return href === "/" ? pathname === "/" : pathname.startsWith(href);
+/**
+ * Which nav item the current route belongs to.
+ *
+ * A plain `pathname.startsWith(href)` lights up every ancestor: `/fleet`
+ * (Trucks) matched `/fleet/vessels` and `/fleet/waivers`, so two rows appeared
+ * active at once. Matching has to respect segment boundaries — `/fleet` must
+ * not match `/fleetsomething` — and where several items still match, the
+ * longest (most specific) one wins.
+ *
+ * Returns the winning href, or null when nothing matches.
+ */
+export function activeNavHref(pathname: string, hrefs: string[]): string | null {
+  let best: string | null = null;
+  for (const href of hrefs) {
+    const matches =
+      href === "/"
+        ? pathname === "/"
+        : pathname === href || pathname.startsWith(`${href}/`);
+    if (matches && (best === null || href.length > best.length)) best = href;
+  }
+  return best;
 }
 
 /** Nav row styling, shared with the mobile drawer so both stay in lockstep. */
@@ -169,6 +187,8 @@ export function Sidebar() {
   const visibleItems = NAV_ITEMS.filter((item) =>
     item.roles.includes((effectiveRole ?? user.role) as UserRole)
   );
+  // Resolved once per render — every row compares against the same winner.
+  const activeHref = activeNavHref(pathname, visibleItems.map((i) => i.href));
 
   return (
     <aside
@@ -209,7 +229,7 @@ export function Sidebar() {
       >
         {visibleItems.map((item) => {
           const Icon = item.icon;
-          const active = isNavItemActive(item.href, pathname);
+          const active = item.href === activeHref;
 
           const link = (
             <Link

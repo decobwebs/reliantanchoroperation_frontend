@@ -7,7 +7,7 @@ import { Menu, LogOut, Bell } from "lucide-react";
 import { cn, getInitials } from "@/lib/utils";
 import { ROLE_LABELS } from "@/lib/auth";
 import { useAuth } from "@/hooks/useAuth";
-import { NAV_ITEMS, isNavItemActive, navRowClasses } from "@/components/layout/Sidebar";
+import { NAV_ITEMS, activeNavHref, navRowClasses } from "@/components/layout/Sidebar";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle, SheetClose } from "@/components/ui/sheet";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -28,6 +28,7 @@ export function MobileNav({ className }: { className?: string }) {
   const visibleItems = NAV_ITEMS.filter((item) =>
     item.roles.includes((effectiveRole ?? user.role) as UserRole)
   );
+  const activeHref = activeNavHref(pathname, visibleItems.map((i) => i.href));
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
@@ -69,7 +70,7 @@ export function MobileNav({ className }: { className?: string }) {
         >
           {visibleItems.map((item) => {
             const Icon = item.icon;
-            const active = isNavItemActive(item.href, pathname);
+            const active = item.href === activeHref;
             return (
               <SheetClose asChild key={item.href}>
                 <Link

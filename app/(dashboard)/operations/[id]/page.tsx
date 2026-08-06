@@ -1504,13 +1504,29 @@ export default function OperationDetailPage({
   const TRUCK_BDN_REQUIRED_FIELDS = [
     "company_name", "product_type", "discharge_location",
     "quantity_loaded_mt", "quantity_discharged_mt",
-    "density", "temperature_before_loading", "temperature_after_loading",
-    "vcf", "gov", "gsv", "mt_vacuum",
+    "receiving_vessel",
+    "density", "temperature",
+    "vcf", "gov",
     "discharge_commenced_at", "discharge_completed_at", "discharge_completion_date",
   ] as const;
 
   const [showTruckBdnForm,     setShowTruckBdnForm]     = useState(false);
   const [truckBdnForm,         setTruckBdnForm]         = useState<Record<string, string>>({});
+
+  // GSV = GOV x VCF, MTvac = GSV x density — the same two identities the API
+  // applies on submit. Shown live so the submitter sees what will be stored;
+  // the server recomputes them regardless, so this is display only.
+  const truckBdnComputed = (() => {
+    const gov = parseFloat(truckBdnForm.gov ?? "");
+    const vcf = parseFloat(truckBdnForm.vcf ?? "");
+    const density = parseFloat(truckBdnForm.density ?? "");
+    const gsv = Number.isFinite(gov) && Number.isFinite(vcf) ? gov * vcf : null;
+    const mtVacuum = gsv !== null && Number.isFinite(density) ? gsv * density : null;
+    return {
+      gsv: gsv === null ? null : gsv.toLocaleString(undefined, { maximumFractionDigits: 2 }),
+      mtVacuum: mtVacuum === null ? null : mtVacuum.toLocaleString(undefined, { maximumFractionDigits: 3 }),
+    };
+  })();
   const [rejectTruckBdnId,     setRejectTruckBdnId]     = useState<string | null>(null);
   const [rejectTruckBdnReason, setRejectTruckBdnReason] = useState("");
   const [editTruckBdnId,       setEditTruckBdnId]       = useState<string | null>(null);
@@ -1532,13 +1548,13 @@ export default function OperationDetailPage({
         discharge_location:         truckBdnForm.discharge_location?.trim(),
         quantity_loaded_mt:         parseFloat(truckBdnForm.quantity_loaded_mt),
         quantity_discharged_mt:     parseFloat(truckBdnForm.quantity_discharged_mt),
+        receiving_vessel:           truckBdnForm.receiving_vessel?.trim(),
         density:                    parseFloat(truckBdnForm.density),
-        temperature_before_loading: parseFloat(truckBdnForm.temperature_before_loading),
-        temperature_after_loading:  parseFloat(truckBdnForm.temperature_after_loading),
+        temperature:                parseFloat(truckBdnForm.temperature),
         vcf:                        parseFloat(truckBdnForm.vcf),
         gov:                        parseFloat(truckBdnForm.gov),
-        gsv:                        parseFloat(truckBdnForm.gsv),
-        mt_vacuum:                  parseFloat(truckBdnForm.mt_vacuum),
+        // gsv and mt_vacuum are deliberately not sent — the API derives both
+        // from gov/vcf/density so a mistyped figure can't reach a client document.
         discharge_commenced_at:     new Date(truckBdnForm.discharge_commenced_at).toISOString(),
         discharge_completed_at:     new Date(truckBdnForm.discharge_completed_at).toISOString(),
         discharge_completion_date:  truckBdnForm.discharge_completion_date,
@@ -4801,6 +4817,23 @@ export default function OperationDetailPage({
                                 />
                               </div>
                               <div className="space-y-1.5">
+                                <Label className="text-xs">Receiving Vessel <span className="text-destructive">*</span></Label>
+                                {/* Both ways on purpose: pick a registered vessel, or
+                                    type one that isn't in the system yet. */}
+                                <Input
+                                  list="truck-bdn-vessels"
+                                  className="h-8 text-xs"
+                                  placeholder="Select or type the receiving vessel…"
+                                  value={truckBdnForm.receiving_vessel ?? ""}
+                                  onChange={(e) => setTruckBdnForm((f) => ({ ...f, receiving_vessel: e.target.value }))}
+                                />
+                                <datalist id="truck-bdn-vessels">
+                                  {(allVessels ?? []).map((v) => (
+                                    <option key={v.id} value={v.vessel_name} />
+                                  ))}
+                                </datalist>
+                              </div>
+                              <div className="space-y-1.5">
                                 <Label className="text-xs">Discharge Location <span className="text-destructive">*</span></Label>
                                 <Input
                                   className="h-8 text-xs"
@@ -4845,19 +4878,11 @@ export default function OperationDetailPage({
                                 />
                               </div>
                               <div className="space-y-1.5">
-                                <Label className="text-xs">Temp. Before Loading (°C) <span className="text-destructive">*</span></Label>
+                                <Label className="text-xs">Temperature (°C) <span className="text-destructive">*</span></Label>
                                 <Input
                                   type="number" step="0.1" className="h-8 text-xs"
-                                  value={truckBdnForm.temperature_before_loading ?? ""}
-                                  onChange={(e) => setTruckBdnForm((f) => ({ ...f, temperature_before_loading: e.target.value }))}
-                                />
-                              </div>
-                              <div className="space-y-1.5">
-                                <Label className="text-xs">Temp. After Loading (°C) <span className="text-destructive">*</span></Label>
-                                <Input
-                                  type="number" step="0.1" className="h-8 text-xs"
-                                  value={truckBdnForm.temperature_after_loading ?? ""}
-                                  onChange={(e) => setTruckBdnForm((f) => ({ ...f, temperature_after_loading: e.target.value }))}
+                                  value={truckBdnForm.temperature ?? ""}
+                                  onChange={(e) => setTruckBdnForm((f) => ({ ...f, temperature: e.target.value }))}
                                 />
                               </div>
                             </div>
@@ -4882,21 +4907,20 @@ export default function OperationDetailPage({
                                   onChange={(e) => setTruckBdnForm((f) => ({ ...f, gov: e.target.value }))}
                                 />
                               </div>
+                              {/* Worked out from GOV x VCF x density, exactly as the
+                                  vessel side does — typing them by hand was how a
+                                  mistyped figure reached a client document. */}
                               <div className="space-y-1.5">
-                                <Label className="text-xs">GSV (L) <span className="text-destructive">*</span></Label>
-                                <Input
-                                  type="number" step="0.01" min="0" className="h-8 text-xs"
-                                  value={truckBdnForm.gsv ?? ""}
-                                  onChange={(e) => setTruckBdnForm((f) => ({ ...f, gsv: e.target.value }))}
-                                />
+                                <Label className="text-xs text-muted-foreground">GSV (L) — calculated</Label>
+                                <div className="flex h-8 items-center rounded-md border border-dashed border-navy-100 bg-muted/40 px-2.5 text-xs font-semibold tabular-nums dark:border-border">
+                                  {truckBdnComputed.gsv ?? <span className="font-normal text-muted-foreground">GOV x VCF</span>}
+                                </div>
                               </div>
                               <div className="space-y-1.5">
-                                <Label className="text-xs">MTvac <span className="text-destructive">*</span></Label>
-                                <Input
-                                  type="number" step="0.001" min="0" className="h-8 text-xs"
-                                  value={truckBdnForm.mt_vacuum ?? ""}
-                                  onChange={(e) => setTruckBdnForm((f) => ({ ...f, mt_vacuum: e.target.value }))}
-                                />
+                                <Label className="text-xs text-muted-foreground">MTvac — calculated</Label>
+                                <div className="flex h-8 items-center rounded-md border border-dashed border-navy-100 bg-muted/40 px-2.5 text-xs font-semibold tabular-nums dark:border-border">
+                                  {truckBdnComputed.mtVacuum ?? <span className="font-normal text-muted-foreground">GSV x density</span>}
+                                </div>
                               </div>
                             </div>
                           </div>

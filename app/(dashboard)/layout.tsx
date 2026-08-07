@@ -12,6 +12,7 @@ import {
   UserCog,
 } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
+import { SessionGuard } from "@/components/SessionGuard";
 
 export default function DashboardLayout({
   children,
@@ -53,6 +54,7 @@ export default function DashboardLayout({
 
   return (
     <TooltipProvider>
+      <SessionGuard />
       <SidebarProvider>
         <div className="flex h-screen overflow-hidden bg-shell">
           <Sidebar />

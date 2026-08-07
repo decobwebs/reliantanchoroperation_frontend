@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Image from "next/image";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -31,6 +31,25 @@ export default function LoginPage() {
   const { login } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
+  // Read straight off the URL rather than useSearchParams(), which forces the
+  // whole page behind a Suspense boundary just for one optional flag.
+  const [expired, setExpired] = useState<string | null>(null);
+  useEffect(() => {
+    const fromUrl = new URLSearchParams(window.location.search).get("expired");
+    const fromCookie = document.cookie
+      .split("; ")
+      .find((c) => c.startsWith("ra_session_ended="))
+      ?.split("=")[1];
+    if (fromCookie) {
+      // Show it once, then clear — a stale banner on a later sign-in would be
+      // confusing.
+      document.cookie = "ra_session_ended=; Max-Age=0; path=/";
+    }
+    // Keep the first non-empty reading. In development React invokes effects
+    // twice, and the second pass would otherwise read the cookie we just
+    // cleared and blank the banner out again.
+    setExpired((prev) => prev ?? fromUrl ?? fromCookie ?? null);
+  }, []);
   const [shake, setShake] = useState(false);
 
   const {
@@ -95,6 +114,17 @@ export default function LoginPage() {
             </p>
 
             <form onSubmit={handleSubmit(onSubmit)} className="mt-10 space-y-6">
+              {expired && !loginError && (
+                <div className="flex items-start gap-2.5 rounded-lg border border-amber-300 bg-amber-50 px-3.5 py-3 text-sm text-amber-800">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span>
+                    {expired === "idle"
+                      ? "You were signed out after an hour of inactivity. Please sign in again."
+                      : "Your session reached its 12-hour limit. Please sign in again."}
+                  </span>
+                </div>
+              )}
+
               {loginError && (
                 <div className="flex items-start gap-2.5 rounded-lg border border-destructive/40 bg-destructive/10 px-3.5 py-3 text-sm text-destructive">
                   <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />

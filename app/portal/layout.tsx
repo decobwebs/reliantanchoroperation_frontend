@@ -14,6 +14,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { SessionGuard } from "@/components/SessionGuard";
 
 const NAV = [
   { href: "/portal", label: "Dashboard" },
@@ -46,6 +47,7 @@ export default function PortalLayout({
 
   return (
     <TooltipProvider>
+      <SessionGuard />
       <div className="min-h-screen bg-muted/30">
         {/* Top nav bar for clients — deliberately a lighter, simpler chrome
             than the internal Sidebar/DashboardShell, just recoloured to the

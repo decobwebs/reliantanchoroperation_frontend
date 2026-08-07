@@ -36,6 +36,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         const res = await fetch("/api/auth/session");
         if (res.ok) {
+          // An expired session comes back with access_token: null; the route
+          // handler has already cleared the cookie and left the reason behind
+          // for the login screen to show.
           const { access_token } = await res.json();
           if (access_token) {
             setAccessToken(access_token);

@@ -7551,8 +7551,12 @@ export default function OperationDetailPage({
               {(isLO || isBM || isOS) && op.type !== "vessel_only" && (
                 <TabsContent value="truck-reports" className="mt-4 space-y-3">
 
-                  {/* BM hidden file input for doc upload */}
-                  {isBM && (
+                  {/* Hidden file input backing the per-truck Upload Doc control.
+                      Must be rendered for every role that gets the button and the
+                      panel below (BM and LO) — gating it to BM alone left the LO
+                      with a working button whose click found a null ref and did
+                      nothing at all. */}
+                  {(isBM || isLO) && (
                     <input
                       ref={docFileRef}
                       type="file"
@@ -7769,7 +7773,16 @@ export default function OperationDetailPage({
                               <button
                                 type="button"
                                 className="flex-1 min-w-0 flex items-center gap-2 text-xs text-muted-foreground border border-dashed border-border rounded-md px-3 py-2 hover:border-primary hover:text-primary transition-colors"
-                                onClick={() => docFileRef.current?.click()}
+                                onClick={() => {
+                                  // No optional-chain here on purpose: a missing
+                                  // input is a bug, and silently doing nothing is
+                                  // exactly what hid it last time.
+                                  if (!docFileRef.current) {
+                                    toast.error("File picker unavailable — please reload the page");
+                                    return;
+                                  }
+                                  docFileRef.current.click();
+                                }}
                               >
                                 <UploadCloud className="w-3.5 h-3.5 shrink-0" />
                                 {docFile ? docFile.name : "Click to select file (PDF, image, DOCX…)"}

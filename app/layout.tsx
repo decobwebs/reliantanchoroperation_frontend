@@ -14,9 +14,9 @@ export const metadata: Metadata = {
   title: "Reliant Anchor — Operations Management",
   description: "RAOMS — Maritime bunker operations management system",
   icons: {
-    icon: "/logo-mark.png",
-    shortcut: "/logo-mark.png",
-    apple: "/logo-mark.png",
+    icon: "/favicon.png",
+    shortcut: "/favicon.png",
+    apple: "/favicon.png",
   },
 };
 

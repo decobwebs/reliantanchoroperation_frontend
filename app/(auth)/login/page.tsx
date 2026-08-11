@@ -88,7 +88,7 @@ export default function LoginPage() {
             <div className="mb-12 flex items-center gap-4">
               <div className="h-14 w-14 shrink-0 overflow-hidden">
                 <Image
-                  src="/logo-mark.png"
+                  src="/logo-mark-sm.png"
                   alt=""
                   width={160}
                   height={160}
@@ -220,7 +220,7 @@ export default function LoginPage() {
       {/* ── Illustration column ─────────────────────────────────────── */}
       <div className="relative hidden lg:block">
         <Image
-          src="/auth-panel.png"
+          src="/auth-panel.webp"
           alt=""
           fill
           priority

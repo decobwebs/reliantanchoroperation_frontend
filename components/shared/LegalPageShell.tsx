@@ -34,7 +34,7 @@ export function LegalPageShell({
         <div className="mx-auto flex max-w-5xl items-center gap-3 px-6 py-3">
           <div className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-lg bg-white ring-1 ring-black/10">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/logo-mark.png" alt="Reliant Anchor" className="h-full w-full object-contain" />
+            <img src="/logo-mark-sm.png" alt="Reliant Anchor" className="h-full w-full object-contain" />
           </div>
           <Link href="/login" className="text-sm font-bold text-foreground">Reliant Anchor</Link>
           <span className="text-muted-foreground">/</span>

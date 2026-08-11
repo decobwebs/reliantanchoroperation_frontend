@@ -57,7 +57,7 @@ export default function PortalLayout({
             <div className="flex min-w-0 items-center gap-2 md:gap-3">
               <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white ring-1 ring-white/20">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/logo-mark.png" alt="Reliant Anchor" className="h-full w-full object-contain" />
+                <img src="/logo-mark-sm.png" alt="Reliant Anchor" className="h-full w-full object-contain" />
               </div>
               <span className="truncate text-[13px] font-bold tracking-tight">
                 Reliant Anchor

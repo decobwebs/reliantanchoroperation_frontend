@@ -51,7 +51,7 @@ export function MobileNav({ className }: { className?: string }) {
         <div className="flex items-center gap-3 px-4 py-5">
           <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white ring-2 ring-white/15">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/logo-mark.png" alt="" className="h-full w-full object-contain" />
+            <img src="/logo-mark-sm.png" alt="" className="h-full w-full object-contain" />
           </span>
           <div className="min-w-0">
             <SheetTitle className="truncate text-[15px] font-bold leading-tight tracking-tight text-white">

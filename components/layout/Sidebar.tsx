@@ -205,7 +205,7 @@ export function Sidebar() {
         <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white ring-2 ring-white/15">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src="/logo-mark.png"
+            src="/logo-mark-sm.png"
             alt=""
             className="h-full w-full object-contain"
           />

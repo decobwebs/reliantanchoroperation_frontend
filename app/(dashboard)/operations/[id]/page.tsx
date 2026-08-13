@@ -4669,7 +4669,7 @@ export default function OperationDetailPage({
                               </Select>
                             </div>
                             <div className="space-y-1.5">
-                              <Label className="text-xs">Quantity Loaded (MT) <span className="text-destructive">*</span></Label>
+                              <Label className="text-xs">MT <span className="text-destructive">*</span></Label>
                               <Input
                                 type="number" step="0.001" min="0"
                                 className="h-8 text-xs" placeholder="0.000"

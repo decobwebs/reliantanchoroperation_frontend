@@ -1447,7 +1447,7 @@ export default function OperationDetailPage({
         discharge_gov:         parseFloat(bdnGov),
         discharge_gsv:         parseFloat(bdnGsv),
         delivery_date:         bdnDeliveryDate ? new Date(bdnDeliveryDate).toISOString() : new Date().toISOString(),
-        product_type:          op?.product_type || undefined,
+        product_type:          op?.products?.[0]?.product_type ?? op?.product_type ?? undefined,
         density:               bdnDensity ? parseFloat(bdnDensity) : undefined,
         temperature:           bdnTemp    ? parseFloat(bdnTemp)    : undefined,
         notes:                 bdnNotes.trim() || undefined,
@@ -4705,7 +4705,11 @@ export default function OperationDetailPage({
                             <div className="space-y-1.5">
                               <Label className="text-xs">Product Type</Label>
                               <div className="flex items-center h-8 px-3 rounded-md border bg-muted/50 text-xs text-muted-foreground">
-                                {op.product_type ?? "—"}
+                                {op.products?.length
+                                  ? op.products.map((pr) => PRODUCT_TYPE_LABELS[pr.product_type as keyof typeof PRODUCT_TYPE_LABELS] ?? pr.product_type).join(", ")
+                                  : op.product_type
+                                    ? (PRODUCT_TYPE_LABELS[op.product_type as keyof typeof PRODUCT_TYPE_LABELS] ?? op.product_type)
+                                    : "—"}
                                 <span className="ml-1 text-[10px] opacity-60">(from operation)</span>
                               </div>
                             </div>

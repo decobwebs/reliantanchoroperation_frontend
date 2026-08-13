@@ -756,12 +756,34 @@ export interface VesselActivity {
   stage_commence_discharge_at?: string;
   stage_discharge_completed_at?: string;
 
-  // ── HSE ──
+  // ── HSE — three checks per run (pre / during / post). The unprefixed set is
+  // the PRE check: it predates the split and kept its column names so already
+  // recorded checklists still read back. ──
   hse_checklist: { section?: string; item: string; passed: boolean; notes?: string }[];
   hse_result?: string;
   hse_conducted_by?: string;
   hse_conducted_at?: string;
   hse_notes?: string;
+  hse_safety_officer?: string;
+
+  hse_during_checklist: { section?: string; item: string; passed: boolean; notes?: string }[];
+  hse_during_result?: string;
+  hse_during_conducted_by?: string;
+  hse_during_conducted_at?: string;
+  hse_during_notes?: string;
+  hse_during_safety_officer?: string;
+
+  hse_post_checklist: { section?: string; item: string; passed: boolean; notes?: string }[];
+  hse_post_result?: string;
+  hse_post_conducted_by?: string;
+  hse_post_conducted_at?: string;
+  hse_post_notes?: string;
+  hse_post_safety_officer?: string;
+
+  // ── Cast Off client block ──
+  cast_off_client_name?: string;
+  cast_off_client_vessel_name?: string;
+  cast_off_client_emails: string[];
 
   // ── Discharge arithmetic ──
   gov?: string;

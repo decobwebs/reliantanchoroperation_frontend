@@ -2065,19 +2065,111 @@ export default function OperationDetailPage({
 
   const DEFAULT_HSE_CHECKLIST = blankChecklist(LOADING_HSE_TEMPLATE);
   const DEFAULT_LEG_HSE_CHECKLIST = blankChecklist(LEG_HSE_TEMPLATE);
+
+  /** The three HSE checks per vessel run, each tied to the stage it is done at
+   *  (docs/HSE-CHECKLISTS.md — the BM's own forms).
+   *
+   *  The items are SLICED OUT OF LEG_HSE_TEMPLATE rather than retyped: the
+   *  BM's three lists map exactly onto its existing sections — A is the ten
+   *  Pre-Operation items, B+C are the fourteen During items, D is the nine
+   *  Post items. Deriving them means the two can never drift apart, and the
+   *  wording stays the compliance-form wording it was signed off as.
+   *
+   *  `resultField`/`checklistField` name the columns each phase reads back
+   *  from; "pre" uses the original unprefixed pair, which is why existing
+   *  recorded checklists still display after the split. */
+  const HSE_PHASES = [
+    {
+      phase: "pre" as const,
+      label: "Pre-Operation",
+      atStage: "hse_check",
+      sections: ["A. Pre-Operation"],
+      resultField: "hse_result" as const,
+      checklistField: "hse_checklist" as const,
+    },
+    {
+      phase: "during" as const,
+      label: "During Operation",
+      atStage: "commence_discharge",
+      sections: ["B. Transfer Operation", "C. Mid-Operation Safety"],
+      resultField: "hse_during_result" as const,
+      checklistField: "hse_during_checklist" as const,
+    },
+    {
+      phase: "post" as const,
+      label: "Post-Operation",
+      atStage: "discharge_completed",
+      sections: ["D. Post-Operation"],
+      resultField: "hse_post_result" as const,
+      checklistField: "hse_post_checklist" as const,
+    },
+  ];
+
+  const hsePhaseChecklist = (phase: (typeof HSE_PHASES)[number]) =>
+    blankChecklist(LEG_HSE_TEMPLATE.filter((t) => phase.sections.includes(t.section)));
+
+  /* ── Cast Off client block — who the run is for, and who hears about it.
+     Nothing is sent from here: these addresses only receive mail once the BM
+     has approved it and then explicitly pressed Send. ── */
+  const [castOffFormActivityId, setCastOffFormActivityId] = useState<string | null>(null);
+  const [castOffClient, setCastOffClient] = useState("");
+  const [castOffVessel, setCastOffVessel] = useState("");
+  const [castOffEmails, setCastOffEmails] = useState<string[]>([""]);
+
+  const openCastOffForm = (activity: VesselActivity) => {
+    setCastOffFormActivityId(activity.id);
+    setCastOffClient(activity.cast_off_client_name ?? "");
+    // Prefilled from the vessel already on the run — the BM can overwrite it
+    // when the client's vessel is not the one recorded here.
+    setCastOffVessel(activity.cast_off_client_vessel_name ?? activity.vessel_name ?? "");
+    // Always leave one empty row so there is somewhere to type.
+    setCastOffEmails(activity.cast_off_client_emails?.length ? [...activity.cast_off_client_emails] : [""]);
+  };
+  const closeCastOffForm = () => {
+    setCastOffFormActivityId(null);
+    setCastOffClient("");
+    setCastOffVessel("");
+    setCastOffEmails([""]);
+  };
+
+  const setCastOffContactsMutation = useMutation({
+    mutationFn: async (activityId: string) => {
+      await api.patch(`/vessel-activities/${activityId}/cast-off-contacts`, {
+        client_name: castOffClient.trim() || undefined,
+        client_vessel_name: castOffVessel.trim() || undefined,
+        // Blanks and duplicates are dropped server-side too; trimming here
+        // just avoids a pointless round trip on the empty starter row.
+        emails: castOffEmails.map((e) => e.trim()).filter(Boolean),
+      });
+    },
+    onSuccess: () => {
+      toast.success("Client contacts saved");
+      closeCastOffForm();
+      refetchVesselActivities();
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
   const [hseFormActivityId, setHseFormActivityId] = useState<string | null>(null);
+  const [hseFormPhase, setHseFormPhase] = useState<"pre" | "during" | "post">("pre");
   const [hseChecklist, setHseChecklist] = useState(DEFAULT_HSE_CHECKLIST);
   const [hseNotes, setHseNotes] = useState("");
   const [hseOfficer, setHseOfficer] = useState("");
-  const openHseForm = (activityId: string) => {
+  const openHseForm = (activityId: string, phase?: (typeof HSE_PHASES)[number]) => {
     setHseFormActivityId(activityId);
-    setHseChecklist(DEFAULT_HSE_CHECKLIST);
+    setHseFormPhase(phase?.phase ?? "pre");
+    // No phase passed = the older single-checklist callers (vessel-only legs,
+    // loading), which keep their own template and the "pre" columns.
+    setHseChecklist(phase ? hsePhaseChecklist(phase) : DEFAULT_HSE_CHECKLIST);
     setHseNotes("");
+    setHseOfficer("");
   };
   const closeHseForm = () => {
     setHseFormActivityId(null);
+    setHseFormPhase("pre");
     setHseChecklist(DEFAULT_HSE_CHECKLIST);
     setHseNotes("");
+    setHseOfficer("");
   };
 
   const recordHseMutation = useMutation({
@@ -2087,10 +2179,12 @@ export default function OperationDetailPage({
         result: hseChecklist.every((c) => c.passed) ? "satisfactory" : "not_satisfactory",
         notes: hseNotes.trim() || undefined,
         safety_officer: hseOfficer.trim() || undefined,
+        phase: hseFormPhase,
       });
     },
     onSuccess: () => {
-      toast.success("HSE checklist recorded");
+      const label = HSE_PHASES.find((p) => p.phase === hseFormPhase)?.label ?? "HSE";
+      toast.success(`${label} checklist recorded`);
       closeHseForm();
       refetchVesselActivities();
     },
@@ -6133,38 +6227,127 @@ export default function OperationDetailPage({
                                     )
                                   )}
 
-                                  {/* HSE checklist — available once alongside has been logged, non-blocking */}
-                                  {canAct && stageIdx >= VESSEL_STAGES.findIndex((s) => s.value === "alongside") && (
+                                  {/* Cast Off client block. Shown from Cast Off onwards and
+                                      editable for the rest of the run — a contact remembered
+                                      late is still worth recording, and a wrong address found
+                                      afterwards still needs fixing. */}
+                                  {canAct && stageIdx >= VESSEL_STAGES.findIndex((s) => s.value === "cast_off") && (
                                     <div className="pt-1">
-                                      {activity.hse_result ? (
-                                        <div className={`rounded-md px-3 py-2 text-xs flex items-center gap-2 ${activity.hse_result === "satisfactory" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
-                                          <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
-                                          HSE checklist recorded — {activity.hse_result === "satisfactory" ? "Satisfactory" : "Issues noted (recorded, non-blocking)"}
-                                        </div>
-                                      ) : hseFormActivityId === activity.id ? (
+                                      {castOffFormActivityId === activity.id ? (
                                         <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
-                                          <p className="text-xs font-semibold">HSE Safety Checklist</p>
-                                          {hseChecklist.map((item, i) => (
-                                            <label key={i} className="flex items-center gap-2 text-xs">
-                                              <input type="checkbox" checked={item.passed} onChange={(e) => setHseChecklist((rows) => rows.map((r, idx) => idx === i ? { ...r, passed: e.target.checked } : r))} />
-                                              {item.item}
-                                            </label>
-                                          ))}
-                                          <Textarea className="text-xs min-h-12.5 resize-none" placeholder="Notes…" value={hseNotes} onChange={(e) => setHseNotes(e.target.value)} />
-                                          <div className="flex gap-2">
-                                            <Button size="sm" className="flex-1 text-xs" disabled={recordHseMutation.isPending} onClick={() => recordHseMutation.mutate(activity.id)}>
-                                              {recordHseMutation.isPending ? <Spinner size={14} /> : "Submit HSE Checklist"}
+                                          <p className="text-xs font-semibold">Client Details</p>
+                                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                            <div className="space-y-1">
+                                              <Label className="text-[10px] text-muted-foreground">Client Name</Label>
+                                              <Input className="h-9 sm:h-8 text-xs" value={castOffClient} onChange={(e) => setCastOffClient(e.target.value)} placeholder="Client company…" />
+                                            </div>
+                                            <div className="space-y-1">
+                                              <Label className="text-[10px] text-muted-foreground">Vessel Name</Label>
+                                              <Input className="h-9 sm:h-8 text-xs" value={castOffVessel} onChange={(e) => setCastOffVessel(e.target.value)} placeholder="Receiving vessel…" />
+                                            </div>
+                                          </div>
+                                          <div className="space-y-1">
+                                            <Label className="text-[10px] text-muted-foreground">Email Recipients</Label>
+                                            {castOffEmails.map((em, i) => (
+                                              <div key={i} className="flex gap-2">
+                                                <Input
+                                                  type="email" className="h-9 sm:h-8 text-xs flex-1"
+                                                  placeholder="name@company.com"
+                                                  value={em}
+                                                  onChange={(e) => setCastOffEmails((rows) => rows.map((r, idx) => idx === i ? e.target.value : r))}
+                                                />
+                                                {castOffEmails.length > 1 && (
+                                                  <Button size="sm" variant="ghost" className="h-9 sm:h-8 px-2 text-xs text-muted-foreground"
+                                                    onClick={() => setCastOffEmails((rows) => rows.filter((_, idx) => idx !== i))}>
+                                                    Remove
+                                                  </Button>
+                                                )}
+                                              </div>
+                                            ))}
+                                            <Button size="sm" variant="outline" className="text-xs gap-1.5"
+                                              onClick={() => setCastOffEmails((rows) => [...rows, ""])}>
+                                              <PlusCircle className="w-3.5 h-3.5" />Add Email
                                             </Button>
-                                            <Button size="sm" variant="ghost" className="text-xs" onClick={closeHseForm}>Cancel</Button>
+                                          </div>
+                                          <p className="text-[10px] text-muted-foreground">
+                                            Saving only records these contacts — no email is sent until it is approved and sent.
+                                          </p>
+                                          <div className="flex gap-2">
+                                            <Button size="sm" className="flex-1 text-xs" disabled={setCastOffContactsMutation.isPending}
+                                              onClick={() => setCastOffContactsMutation.mutate(activity.id)}>
+                                              {setCastOffContactsMutation.isPending ? <Spinner size={14} /> : "Save Client Details"}
+                                            </Button>
+                                            <Button size="sm" variant="ghost" className="text-xs" onClick={closeCastOffForm}>Cancel</Button>
                                           </div>
                                         </div>
+                                      ) : activity.cast_off_client_name || activity.cast_off_client_emails?.length ? (
+                                        <div className="rounded-md border px-3 py-2 text-xs space-y-1">
+                                          <div className="flex items-center justify-between gap-2">
+                                            <span className="font-semibold">{activity.cast_off_client_name || "Client"}</span>
+                                            <button className={cn(INLINE_LINK, "shrink-0")} onClick={() => openCastOffForm(activity)}>Edit</button>
+                                          </div>
+                                          {activity.cast_off_client_vessel_name && (
+                                            <p className="text-muted-foreground">Vessel: {activity.cast_off_client_vessel_name}</p>
+                                          )}
+                                          {!!activity.cast_off_client_emails?.length && (
+                                            <p className="text-muted-foreground break-words">
+                                              {activity.cast_off_client_emails.join(", ")}
+                                            </p>
+                                          )}
+                                        </div>
                                       ) : (
-                                        <Button size="sm" variant="outline" className="text-xs gap-1.5" onClick={() => openHseForm(activity.id)}>
-                                          <ShieldCheck className="w-3.5 h-3.5" />Record HSE Checklist
+                                        <Button size="sm" variant="outline" className="text-xs gap-1.5" onClick={() => openCastOffForm(activity)}>
+                                          <PlusCircle className="w-3.5 h-3.5" />Add Client Details
                                         </Button>
                                       )}
                                     </div>
                                   )}
+
+                                  {/* HSE — three checks, each unlocked by its own stage and
+                                      recorded separately. Non-blocking throughout: a failed
+                                      item is recorded, never enforced, and never gates the
+                                      stage it sits under. */}
+                                  {canAct && HSE_PHASES.map((p) => {
+                                    const unlockIdx = VESSEL_STAGES.findIndex((s) => s.value === p.atStage);
+                                    if (stageIdx < unlockIdx) return null;   // stage not reached yet
+                                    const result = activity[p.resultField] as string | undefined;
+                                    const isOpen = hseFormActivityId === activity.id && hseFormPhase === p.phase;
+                                    return (
+                                      <div key={p.phase} className="pt-1">
+                                        {result ? (
+                                          <div className={`rounded-md px-3 py-2 text-xs flex items-center gap-2 ${result === "satisfactory" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
+                                            <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+                                            {p.label} HSE recorded — {result === "satisfactory" ? "Satisfactory" : "Issues noted (recorded, non-blocking)"}
+                                          </div>
+                                        ) : isOpen ? (
+                                          <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+                                            <p className="text-xs font-semibold">{p.label} HSE Checklist</p>
+                                            {hseChecklist.map((item, i) => (
+                                              <label key={i} className="flex items-start gap-2 text-xs">
+                                                <input type="checkbox" className="mt-0.5 shrink-0" checked={item.passed} onChange={(e) => setHseChecklist((rows) => rows.map((r, idx) => idx === i ? { ...r, passed: e.target.checked } : r))} />
+                                                {item.item}
+                                              </label>
+                                            ))}
+                                            <div className="space-y-1">
+                                              <Label className="text-[10px] text-muted-foreground">Safety Officer</Label>
+                                              <Input className="h-9 sm:h-8 text-xs" placeholder="Name of the officer signing off…" value={hseOfficer} onChange={(e) => setHseOfficer(e.target.value)} />
+                                            </div>
+                                            <Textarea className="text-xs min-h-12.5 resize-none" placeholder="Notes…" value={hseNotes} onChange={(e) => setHseNotes(e.target.value)} />
+                                            <div className="flex gap-2">
+                                              <Button size="sm" className="flex-1 text-xs" disabled={recordHseMutation.isPending} onClick={() => recordHseMutation.mutate(activity.id)}>
+                                                {recordHseMutation.isPending ? <Spinner size={14} /> : `Submit ${p.label} Checklist`}
+                                              </Button>
+                                              <Button size="sm" variant="ghost" className="text-xs" onClick={closeHseForm}>Cancel</Button>
+                                            </div>
+                                          </div>
+                                        ) : (
+                                          <Button size="sm" variant="outline" className="text-xs gap-1.5" onClick={() => openHseForm(activity.id, p)}>
+                                            <ShieldCheck className="w-3.5 h-3.5" />Record {p.label} HSE
+                                          </Button>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
 
                                   {/* Discharge quantities — GOV/VCF/density in, GSV/MTvac computed */}
                                   {canAct && stageIdx >= VESSEL_STAGES.findIndex((s) => s.value === "commence_discharge") && (

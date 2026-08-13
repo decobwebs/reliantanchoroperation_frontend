@@ -3925,12 +3925,11 @@ export default function OperationDetailPage({
                   </TabsTrigger>
                 )}
 
-                {/* Full Operation now records GOV/GSV/MT on the BDNs tab itself
-                     (the one actually used) and that tab's approval drives ROB —
-                     this tab would be a pure duplicate there, so it's scoped to
-                     vessel_only, where it's still the only per-receiving-vessel
-                     delivery record that exists. */}
-                {canSeeVesselBdn && op.type === "vessel_only" && (
+                {/* Two distinct BDN records for Full Operation, both real:
+                     "BDNs" is trucks loading onto our own vessel; this one is
+                     our vessel discharging to OTHER (receiving) vessels — one
+                     BDN per vessel-to-vessel discharge. Not a duplicate. */}
+                {canSeeVesselBdn && op.type !== "truck_only" && (
                   <TabsTrigger value="vessel-bdns">
                     Vessel Received Quantity
                     <TabCount value={vesselBdns?.length} />
@@ -5247,9 +5246,11 @@ export default function OperationDetailPage({
                 </TabsContent>
               )}
 
-              {/* ── Vessel BDN tab — vessel_only only (see the trigger's comment above);
-                   one per receiving-vessel leg, gates operation completion until ALL are approved */}
-              {canSeeVesselBdn && op.type === "vessel_only" && (() => {
+              {/* ── Vessel BDN tab — one per vessel run (full_operation) or per
+                   receiving-vessel leg (vessel_only); gates operation completion
+                   until ALL are approved. See the trigger's comment above for why
+                   this is distinct from the BDNs tab, not a duplicate of it. */}
+              {canSeeVesselBdn && op.type !== "truck_only" && (() => {
                 const isVesselOnly = op.type === "vessel_only";
 
                 // vessel_only: one BDN per receiving-vessel LEG (delivery
@@ -5356,7 +5357,7 @@ export default function OperationDetailPage({
                             <div className="space-y-4 rounded-lg border p-3">
                               <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Discharge Quantity — as read by the discharging vessel</p>
                               <div className="space-y-1.5">
-                                <Label className="text-xs">Quantity Loaded (MT) <span className="text-destructive">*</span></Label>
+                                <Label className="text-xs">MT <span className="text-destructive">*</span></Label>
                                 <Input type="number" step="0.01" min="0" className="h-8 text-xs" value={vesselBdnForm.quantity_loaded_litres ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, quantity_loaded_litres: e.target.value }))} />
                               </div>
                               <div className="space-y-1.5">
@@ -5424,6 +5425,23 @@ export default function OperationDetailPage({
                               </div>
                             </div>
 
+                            {/* ── Truck-vs-vessel reconciliation (Full Operation only) — this is
+                                 the leg the BDNs tab doesn't cover: what OUR vessel discharged to
+                                 the receiving vessel, reconciled against what trucks brought in.
+                                 Total Quantity Discharged by Trucks is computed server-side from
+                                 Truck Reports on submit, not entered or previewed here. Approving
+                                 this BDN is what updates the vessel's ROB. ── */}
+                            {op?.type === "full_operation" && (
+                              <div className="space-y-1.5 rounded-lg border p-3">
+                                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Truck ↔ Vessel Reconciliation</p>
+                                <Label className="text-xs">Total Quantity Received by the Vessel (MT) <span className="text-destructive">*</span></Label>
+                                <Input type="number" step="0.001" min="0" className="h-8 text-xs" value={vesselBdnForm.vessel_received_total_mt ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, vessel_received_total_mt: e.target.value }))} />
+                                <p className="text-[11px] text-muted-foreground">
+                                  What the vessel itself measured receiving. Total Quantity Discharged by Trucks and
+                                  Truck Variance are computed from Truck Reports once submitted, and shown on the BDN afterward.
+                                </p>
+                              </div>
+                            )}
                           </div>
 
                           <div className="space-y-1.5">

@@ -5761,32 +5761,24 @@ export default function OperationDetailPage({
                     })()}
                   </section>
 
-                  {/* ── Vessel Receipt Summary: trucks → vessel deliveries (all op types) ── */}
+                  {/* ── Vessel Receipt Summary: the actual Vessel BDN detail, not a
+                       truck-derived guess. A vessel with no submitted BDN yet simply
+                       doesn't appear here — this only ever shows what was manually
+                       recorded and approved, since that (vessel_received_total_mt) is
+                       the figure that became the vessel's ROB. Trucks-discharged stays
+                       visible per BDN purely for reference — it never drives anything. ── */}
                   {(() => {
-                    const delivered = (truckOps ?? []).filter(
-                      (t) => t.status === "completed" && t.destination_vessel_id && t.quantity_discharged_mt
-                    );
-                    if (!delivered.length) return null;
+                    const live = (vesselBdns ?? []).filter((vb) => vb.status !== "rejected");
+                    if (!live.length) return null;
 
-                    const byVessel = new Map<string, { name: string; totalMt: number; count: number; lastDate?: string }>();
-                    delivered.forEach((t) => {
-                      const vid = t.destination_vessel_id!;
-                      const vesselRecord = allVessels?.find((v) => v.id === vid);
-                      const name = vesselRecord?.vessel_name ?? `Vessel ${vid.slice(0, 8)}`;
-                      const mt = parseFloat(t.quantity_discharged_mt ?? "0");
-                      const cur = byVessel.get(vid);
-                      if (cur) {
-                        cur.totalMt += mt;
-                        cur.count += 1;
-                        if (t.discharge_end_at) cur.lastDate = t.discharge_end_at;
-                      } else {
-                        byVessel.set(vid, { name, totalMt: mt, count: 1, lastDate: t.discharge_end_at });
-                      }
+                    const byVessel = new Map<string, VesselBdn[]>();
+                    live.forEach((vb) => {
+                      const list = byVessel.get(vb.vessel_id);
+                      if (list) list.push(vb); else byVessel.set(vb.vessel_id, [vb]);
                     });
+                    byVessel.forEach((list) => list.sort((a, b) => (b.approved_at ?? b.discharge_completed_at).localeCompare(a.approved_at ?? a.discharge_completed_at)));
 
-                    const totalMt = delivered.reduce(
-                      (acc, t) => acc + parseFloat(t.quantity_discharged_mt ?? "0"), 0
-                    );
+                    const totalMt = live.reduce((acc, vb) => acc + parseFloat(vb.vessel_received_total_mt ?? "0"), 0);
 
                     return (
                       <Card className="rounded-2xl border border-navy-100 shadow-[0_1px_2px_rgb(16_36_71/0.04)] dark:border-border">
@@ -5796,32 +5788,45 @@ export default function OperationDetailPage({
                             Vessel Receipt Summary
                           </CardTitle>
                           <p className="text-xs text-muted-foreground">
-                            Completed truck deliveries into vessels on this operation.
+                            Recorded Vessel BDNs for this operation — the figure below is what updated each vessel&apos;s ROB.
                           </p>
                         </CardHeader>
                         <CardContent className="p-0">
                           <div className="divide-y">
-                            {Array.from(byVessel.entries()).map(([vid, row]) => (
-                              <div key={vid} className="flex items-center justify-between px-5 py-3">
-                                <div>
-                                  <p className="text-sm font-semibold">{row.name}</p>
-                                  <p className="text-xs text-muted-foreground">
-                                    {row.count} truck{row.count !== 1 ? "s" : ""}
-                                    {row.lastDate ? ` · Last delivery ${formatDate(row.lastDate)}` : ""}
-                                  </p>
+                            {Array.from(byVessel.entries()).flatMap(([vid, vbList]) => {
+                              const vesselRecord = allVessels?.find((v) => v.id === vid);
+                              const name = vesselRecord?.vessel_name ?? `Vessel ${vid.slice(0, 8)}`;
+                              return vbList.map((vb) => (
+                                <div key={vb.id} className="px-5 py-3 space-y-1.5">
+                                  <div className="flex items-center justify-between gap-3">
+                                    <div className="min-w-0">
+                                      <p className="text-sm font-semibold truncate">{name}</p>
+                                      <p className="text-xs text-muted-foreground font-mono">{vb.bdn_number}</p>
+                                    </div>
+                                    <div className="text-right shrink-0">
+                                      <p className="text-sm font-mono font-semibold text-brand-700">
+                                        {vb.vessel_received_total_mt ? `+${parseFloat(vb.vessel_received_total_mt).toFixed(3)} MT` : "—"}
+                                      </p>
+                                      <p className="text-[10px] text-muted-foreground uppercase tracking-wide">received by vessel</p>
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center justify-between gap-3 text-[11px] text-muted-foreground">
+                                    <span>Discharge MTvac: {parseFloat(vb.discharge_mt_vacuum).toLocaleString(undefined, { minimumFractionDigits: 3 })}</span>
+                                    <Badge variant={vb.status === "approved" ? "default" : "secondary"} className="text-[10px] capitalize shrink-0">{vb.status}</Badge>
+                                  </div>
+                                  {vb.truck_discharged_total_mt != null && (
+                                    <p className="text-[11px] text-muted-foreground">
+                                      Trucks discharged: {parseFloat(vb.truck_discharged_total_mt).toLocaleString(undefined, { minimumFractionDigits: 3 })} MT (for reference)
+                                      {vb.truck_variance_mt != null && ` · Truck Variance: ${parseFloat(vb.truck_variance_mt).toLocaleString(undefined, { minimumFractionDigits: 3 })} MT`}
+                                    </p>
+                                  )}
                                 </div>
-                                <div className="text-right">
-                                  <p className="text-sm font-mono font-semibold text-brand-700">
-                                    +{row.totalMt.toFixed(3)} MT
-                                  </p>
-                                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">received</p>
-                                </div>
-                              </div>
-                            ))}
+                              ));
+                            })}
                           </div>
-                          {byVessel.size > 1 && (
+                          {live.length > 1 && (
                             <div className="px-5 py-2.5 border-t bg-muted/20 flex items-center justify-between">
-                              <p className="text-xs text-muted-foreground">Total across all vessels</p>
+                              <p className="text-xs text-muted-foreground">Total received across all vessels</p>
                               <p className="text-sm font-mono font-semibold">{totalMt.toFixed(3)} MT</p>
                             </div>
                           )}

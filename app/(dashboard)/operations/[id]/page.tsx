@@ -4253,7 +4253,7 @@ export default function OperationDetailPage({
                                             <Trash2 className="w-3.5 h-3.5" />
                                           </button>
                                         </div>
-                                        <div className="grid grid-cols-2 gap-2">
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                           <Input
                                             className="h-8 text-xs" placeholder="Driver name"
                                             value={details.driver_name}
@@ -4596,7 +4596,7 @@ export default function OperationDetailPage({
 
                       {(!bdns?.length || showBdnForm) && (
                         <CardContent className="px-5 pb-5 space-y-3 border-t pt-4">
-                          <div className="grid grid-cols-2 gap-3">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <div className="space-y-1.5">
                               <Label className="text-xs">Vessel <span className="text-destructive">*</span></Label>
                               <Select value={bdnVesselId} onValueChange={setBdnVesselId}>
@@ -4621,11 +4621,11 @@ export default function OperationDetailPage({
                               />
                             </div>
                           </div>
-                          <div className="grid grid-cols-2 gap-3">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <div className="space-y-1.5">
                               <Label className="text-xs">Loading Date <span className="text-destructive">*</span></Label>
                               <Input
-                                type="date" className="h-8 text-xs"
+                                type="date" className="h-9 sm:h-8 text-xs"
                                 value={bdnDeliveryDate} onChange={(e) => setBdnDeliveryDate(e.target.value)}
                               />
                             </div>
@@ -4637,7 +4637,7 @@ export default function OperationDetailPage({
                               </div>
                             </div>
                           </div>
-                          <div className="grid grid-cols-2 gap-3">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <div className="space-y-1.5">
                               <Label className="text-xs">Density (kg/m³)</Label>
                               <Input
@@ -4807,7 +4807,7 @@ export default function OperationDetailPage({
                                 onChange={(e) => setTruckBdnForm((f) => ({ ...f, company_name: e.target.value }))}
                               />
                             </div>
-                            <div className="grid grid-cols-2 gap-3">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                               <div className="space-y-1.5">
                                 <Label className="text-xs">Product Type <span className="text-destructive">*</span></Label>
                                 <Input
@@ -4846,7 +4846,7 @@ export default function OperationDetailPage({
 
                           <div className="space-y-3">
                             <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Quantities</p>
-                            <div className="grid grid-cols-2 gap-3">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                               <div className="space-y-1.5">
                                 <Label className="text-xs">Quantity Loaded (L) <span className="text-destructive">*</span></Label>
                                 <Input
@@ -4868,7 +4868,7 @@ export default function OperationDetailPage({
 
                           <div className="space-y-3">
                             <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Product Quality</p>
-                            <div className="grid grid-cols-3 gap-3">
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                               <div className="space-y-1.5">
                                 <Label className="text-xs">Density (kg/m³) <span className="text-destructive">*</span></Label>
                                 <Input
@@ -4890,7 +4890,7 @@ export default function OperationDetailPage({
 
                           <div className="space-y-3">
                             <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Delivery Quantity / Method</p>
-                            <div className="grid grid-cols-4 gap-3">
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                               <div className="space-y-1.5">
                                 <Label className="text-xs">VCF <span className="text-destructive">*</span></Label>
                                 <Input
@@ -4927,11 +4927,11 @@ export default function OperationDetailPage({
 
                           <div className="space-y-3">
                             <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Timing</p>
-                            <div className="grid grid-cols-3 gap-3">
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                               <div className="space-y-1.5">
                                 <Label className="text-xs">Commenced Discharge <span className="text-destructive">*</span></Label>
                                 <Input
-                                  type="datetime-local" className="h-8 text-xs"
+                                  type="datetime-local" className="h-9 sm:h-8 text-xs"
                                   value={truckBdnForm.discharge_commenced_at ?? ""}
                                   onChange={(e) => setTruckBdnForm((f) => ({ ...f, discharge_commenced_at: e.target.value }))}
                                 />
@@ -4939,7 +4939,7 @@ export default function OperationDetailPage({
                               <div className="space-y-1.5">
                                 <Label className="text-xs">Completed Discharge <span className="text-destructive">*</span></Label>
                                 <Input
-                                  type="datetime-local" className="h-8 text-xs"
+                                  type="datetime-local" className="h-9 sm:h-8 text-xs"
                                   value={truckBdnForm.discharge_completed_at ?? ""}
                                   onChange={(e) => setTruckBdnForm((f) => ({ ...f, discharge_completed_at: e.target.value }))}
                                 />
@@ -4947,7 +4947,7 @@ export default function OperationDetailPage({
                               <div className="space-y-1.5">
                                 <Label className="text-xs">Date of Discharge Completion <span className="text-destructive">*</span></Label>
                                 <Input
-                                  type="date" className="h-8 text-xs"
+                                  type="date" className="h-9 sm:h-8 text-xs"
                                   value={truckBdnForm.discharge_completion_date ?? ""}
                                   onChange={(e) => setTruckBdnForm((f) => ({ ...f, discharge_completion_date: e.target.value }))}
                                 />
@@ -5243,7 +5243,7 @@ export default function OperationDetailPage({
                               <Label className="text-xs">Company Name <span className="text-destructive">*</span></Label>
                               <Input className="h-8 text-xs" placeholder="Client company being supplied to…" value={vesselBdnForm.company_name ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, company_name: e.target.value }))} />
                             </div>
-                            <div className="grid grid-cols-3 gap-3">
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                               <div className="space-y-1.5">
                                 <Label className="text-xs">Product Type <span className="text-destructive">*</span></Label>
                                 <Input className="h-8 text-xs" value={vesselBdnForm.product_type ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, product_type: e.target.value }))} />
@@ -5270,7 +5270,7 @@ export default function OperationDetailPage({
                                 <Label className="text-xs">Quantity Discharged (L) <span className="text-destructive">*</span></Label>
                                 <Input type="number" step="0.01" min="0" className="h-8 text-xs" value={vesselBdnForm.quantity_discharged_litres ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, quantity_discharged_litres: e.target.value }))} />
                               </div>
-                              <div className="grid grid-cols-2 gap-3">
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <div className="space-y-1.5">
                                   <Label className="text-xs">Density (kg/m³) <span className="text-destructive">*</span></Label>
                                   <Input type="number" step="0.0001" min="0" className="h-8 text-xs" value={vesselBdnForm.density ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, density: e.target.value }))} />
@@ -5288,7 +5288,7 @@ export default function OperationDetailPage({
                                   <Input type="number" step="0.1" className="h-8 text-xs" value={vesselBdnForm.temperature_after_loading ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, temperature_after_loading: e.target.value }))} />
                                 </div>
                               </div>
-                              <div className="grid grid-cols-3 gap-3">
+                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                                 <div className="space-y-1.5">
                                   <Label className="text-xs">GOV (L) <span className="text-destructive">*</span></Label>
                                   <Input type="number" step="0.01" min="0" className="h-8 text-xs" value={vesselBdnForm.discharge_gov ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, discharge_gov: e.target.value }))} />
@@ -5302,14 +5302,14 @@ export default function OperationDetailPage({
                                   <Input type="number" step="0.001" min="0" className="h-8 text-xs" value={vesselBdnForm.discharge_mt_vacuum ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, discharge_mt_vacuum: e.target.value }))} />
                                 </div>
                               </div>
-                              <div className="grid grid-cols-2 gap-3">
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <div className="space-y-1.5">
                                   <Label className="text-xs">Completed Discharge <span className="text-destructive">*</span></Label>
-                                  <Input type="datetime-local" className="h-8 text-xs" value={vesselBdnForm.discharge_completed_at ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, discharge_completed_at: e.target.value }))} />
+                                  <Input type="datetime-local" className="h-9 sm:h-8 text-xs" value={vesselBdnForm.discharge_completed_at ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, discharge_completed_at: e.target.value }))} />
                                 </div>
                                 <div className="space-y-1.5">
                                   <Label className="text-xs">Date of Discharge Completion <span className="text-destructive">*</span></Label>
-                                  <Input type="date" className="h-8 text-xs" value={vesselBdnForm.discharge_completion_date ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, discharge_completion_date: e.target.value }))} />
+                                  <Input type="date" className="h-9 sm:h-8 text-xs" value={vesselBdnForm.discharge_completion_date ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, discharge_completion_date: e.target.value }))} />
                                 </div>
                               </div>
                             </div>
@@ -5319,7 +5319,7 @@ export default function OperationDetailPage({
                               <p className="text-[11px] text-muted-foreground">
                                 Fill in if the receiving vessel took its own readings — lets the Bunker Manager compare against the discharge figures above. Leave blank if not available yet.
                               </p>
-                              <div className="grid grid-cols-3 gap-3">
+                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                                 <div className="space-y-1.5">
                                   <Label className="text-xs">GOV (L)</Label>
                                   <Input type="number" step="0.01" min="0" className="h-8 text-xs" value={vesselBdnForm.received_gov ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, received_gov: e.target.value }))} />
@@ -5581,7 +5581,7 @@ export default function OperationDetailPage({
 
                         {showTerminalReceiptForm && (
                           <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
-                            <div className="grid grid-cols-2 gap-2">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                               <div className="space-y-1">
                                 <Label className="text-[10px] text-muted-foreground">Quantity (L) <span className="text-destructive">*</span></Label>
                                 <Input type="number" step="0.01" min="0" className="h-8 text-xs" value={termQtyLitres} onChange={(e) => setTermQtyLitres(e.target.value)} />
@@ -5807,7 +5807,7 @@ export default function OperationDetailPage({
                       {/* Show form: always when empty, or when toggle is open */}
                       {(!vesselActivities?.length || showAssignActivityForm) && (
                         <CardContent className="px-5 pb-5 space-y-3 border-t pt-4">
-                          <div className="grid grid-cols-2 gap-3">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <div className="space-y-1.5">
                               <Label className="text-xs">Vessel *</Label>
                               <Select value={actVesselId} onValueChange={setActVesselId}>
@@ -6175,10 +6175,10 @@ export default function OperationDetailPage({
                                     isFormOpen ? (
                                       <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
                                         <p className="text-xs font-semibold">Log "{nextStage.label}"</p>
-                                        <div className="grid grid-cols-2 gap-2">
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                           <div className="space-y-1">
                                             <Label className="text-[10px] text-muted-foreground">Occurred At</Label>
-                                            <Input type="datetime-local" className="h-8 text-xs" value={stageOccurredAt} onChange={(e) => setStageOccurredAt(e.target.value)} />
+                                            <Input type="datetime-local" className="h-9 sm:h-8 text-xs" value={stageOccurredAt} onChange={(e) => setStageOccurredAt(e.target.value)} />
                                           </div>
                                         </div>
                                         <div className="space-y-1">
@@ -6254,7 +6254,7 @@ export default function OperationDetailPage({
                                       ) : dischargeQtyActivityId === activity.id ? (
                                         <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
                                           <p className="text-xs font-semibold">Discharge Quantities</p>
-                                          <div className="grid grid-cols-3 gap-2">
+                                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                                             <div className="space-y-1">
                                               <Label className="text-[10px] text-muted-foreground">GOV (L)</Label>
                                               <Input type="number" className="h-8 text-xs" value={dqGov} onChange={(e) => setDqGov(e.target.value)} />
@@ -6332,9 +6332,9 @@ export default function OperationDetailPage({
 
                                 <div className="px-5 pb-5 space-y-3">
 
-                                  {/* ── STEP 1: Start (pending) ── MM only */}
+                                  {/* ── STEP 1: Start (pending) ── */}
                                   {activity.status === "pending" && (
-                                    isAssignee ? (
+                                    canAct ? (
                                       <div className="rounded-lg bg-amber-50 border border-amber-200 p-4 flex items-center justify-between gap-4">
                                         <div>
                                           <p className="text-sm font-medium">Ready to begin?</p>
@@ -6400,7 +6400,7 @@ export default function OperationDetailPage({
                                               <span className="font-semibold text-foreground">{op.product_type}</span>
                                             </div>
                                           )}
-                                          <div className="grid grid-cols-3 gap-2">
+                                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                                             <div className="space-y-1">
                                               <Label className="text-[11px]">
                                                 Vessel Received (L)
@@ -6481,14 +6481,14 @@ export default function OperationDetailPage({
                                         </p>
                                       ) : (
                                         <>
-                                          <div className="grid grid-cols-2 gap-2">
+                                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                             <div className="space-y-1">
                                               <Label className="text-[11px]">Bunkering Start</Label>
-                                              <Input className="h-8 text-xs" type="datetime-local" value={actBunkerStart} onChange={(e) => setActBunkerStart(e.target.value)} />
+                                              <Input className="h-9 sm:h-8 text-xs" type="datetime-local" value={actBunkerStart} onChange={(e) => setActBunkerStart(e.target.value)} />
                                             </div>
                                             <div className="space-y-1">
                                               <Label className="text-[11px]">Bunkering End</Label>
-                                              <Input className="h-8 text-xs" type="datetime-local" value={actBunkerEnd} onChange={(e) => setActBunkerEnd(e.target.value)} />
+                                              <Input className="h-9 sm:h-8 text-xs" type="datetime-local" value={actBunkerEnd} onChange={(e) => setActBunkerEnd(e.target.value)} />
                                             </div>
                                           </div>
                                           <div className="flex justify-end">
@@ -6523,18 +6523,18 @@ export default function OperationDetailPage({
                                       </div>
                                       {!hasDischarge && (
                                         <>
-                                          <div className="grid grid-cols-3 gap-2">
+                                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                                             <div className="space-y-1">
                                               <Label className="text-[11px]">Qty Discharged (L) *</Label>
                                               <Input className="h-8 text-xs" type="number" step="0.001" placeholder="0.000" value={actDischQty} onChange={(e) => setActDischQty(e.target.value)} />
                                             </div>
                                             <div className="space-y-1">
                                               <Label className="text-[11px]">Discharge Start</Label>
-                                              <Input className="h-8 text-xs" type="datetime-local" value={actDischStart} onChange={(e) => setActDischStart(e.target.value)} />
+                                              <Input className="h-9 sm:h-8 text-xs" type="datetime-local" value={actDischStart} onChange={(e) => setActDischStart(e.target.value)} />
                                             </div>
                                             <div className="space-y-1">
                                               <Label className="text-[11px]">Discharge End</Label>
-                                              <Input className="h-8 text-xs" type="datetime-local" value={actDischEnd} onChange={(e) => setActDischEnd(e.target.value)} />
+                                              <Input className="h-9 sm:h-8 text-xs" type="datetime-local" value={actDischEnd} onChange={(e) => setActDischEnd(e.target.value)} />
                                             </div>
                                           </div>
                                           <div className="flex justify-end">
@@ -6603,7 +6603,7 @@ export default function OperationDetailPage({
                                       {commenceFormActivityId === activity.id ? (
                                         <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
                                           <Label className="text-[10px] text-muted-foreground">Commenced At</Label>
-                                          <Input type="datetime-local" className="h-8 text-xs" value={commenceUserAt} onChange={(e) => setCommenceUserAt(e.target.value)} />
+                                          <Input type="datetime-local" className="h-9 sm:h-8 text-xs" value={commenceUserAt} onChange={(e) => setCommenceUserAt(e.target.value)} />
                                           <Label className="text-[10px] text-muted-foreground">Description (optional)</Label>
                                           <Textarea className="text-xs min-h-12.5 resize-none" placeholder="Any notes about how the vessel operation is commencing…" value={commenceDescription} onChange={(e) => setCommenceDescription(e.target.value)} />
                                           <div className="flex gap-2">
@@ -6638,22 +6638,22 @@ export default function OperationDetailPage({
                                       {editTimingActivityId === activity.id ? (
                                         <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
                                           <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Correct the loading record</p>
-                                          <div className="grid grid-cols-2 gap-2">
+                                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                             <div className="space-y-1">
                                               <Label className="text-[10px] text-muted-foreground">Commenced — you entered</Label>
-                                              <Input type="datetime-local" className="h-8 text-xs" value={editCommenceUserAt} onChange={(e) => setEditCommenceUserAt(e.target.value)} />
+                                              <Input type="datetime-local" className="h-9 sm:h-8 text-xs" value={editCommenceUserAt} onChange={(e) => setEditCommenceUserAt(e.target.value)} />
                                             </div>
                                             <div className="space-y-1">
                                               <Label className="text-[10px] text-muted-foreground">Commenced — system recorded</Label>
-                                              <Input type="datetime-local" className="h-8 text-xs" value={editCommenceSystemAt} onChange={(e) => setEditCommenceSystemAt(e.target.value)} />
+                                              <Input type="datetime-local" className="h-9 sm:h-8 text-xs" value={editCommenceSystemAt} onChange={(e) => setEditCommenceSystemAt(e.target.value)} />
                                             </div>
                                             <div className="space-y-1">
                                               <Label className="text-[10px] text-muted-foreground">Completed — you entered</Label>
-                                              <Input type="datetime-local" className="h-8 text-xs" value={editCompleteUserAt} onChange={(e) => setEditCompleteUserAt(e.target.value)} disabled={!activity.complete_system_at} />
+                                              <Input type="datetime-local" className="h-9 sm:h-8 text-xs" value={editCompleteUserAt} onChange={(e) => setEditCompleteUserAt(e.target.value)} disabled={!activity.complete_system_at} />
                                             </div>
                                             <div className="space-y-1">
                                               <Label className="text-[10px] text-muted-foreground">Completed — system recorded</Label>
-                                              <Input type="datetime-local" className="h-8 text-xs" value={editCompleteSystemAt} onChange={(e) => setEditCompleteSystemAt(e.target.value)} disabled={!activity.complete_system_at} />
+                                              <Input type="datetime-local" className="h-9 sm:h-8 text-xs" value={editCompleteSystemAt} onChange={(e) => setEditCompleteSystemAt(e.target.value)} disabled={!activity.complete_system_at} />
                                             </div>
                                           </div>
                                           <Label className="text-[10px] text-muted-foreground">Commenced comment</Label>
@@ -6870,7 +6870,7 @@ export default function OperationDetailPage({
                                         {completeFormActivityId === activity.id ? (
                                           <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
                                             <Label className="text-[10px] text-muted-foreground">Completed At</Label>
-                                            <Input type="datetime-local" className="h-8 text-xs" value={completeUserAt} onChange={(e) => setCompleteUserAt(e.target.value)} />
+                                            <Input type="datetime-local" className="h-9 sm:h-8 text-xs" value={completeUserAt} onChange={(e) => setCompleteUserAt(e.target.value)} />
                                             <Label className="text-[10px] text-muted-foreground">Comment (optional)</Label>
                                             <Textarea className="text-xs min-h-12.5 resize-none" placeholder="Any notes on how loading finished — delays, shortfalls, conditions…" value={completeDescription} onChange={(e) => setCompleteDescription(e.target.value)} />
                                             <div className="flex gap-2">
@@ -6901,7 +6901,7 @@ export default function OperationDetailPage({
                                         />
                                         {loadReceiptFormActivityId === activity.id ? (
                                           <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
-                                            <div className="grid grid-cols-2 gap-2">
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                               <div className="space-y-1">
                                                 <Label className="text-[10px] text-muted-foreground">Received Quantity (L)</Label>
                                                 <Input type="number" className="h-8 text-xs" value={loadReceived} onChange={(e) => setLoadReceived(e.target.value)} />
@@ -6997,7 +6997,7 @@ export default function OperationDetailPage({
 
                                         {addLegFormActivityId === activity.id && (
                                           <div className="rounded-lg border bg-muted/30 p-3 space-y-2 mb-2">
-                                            <div className="grid grid-cols-2 gap-2">
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                               <div className="space-y-1">
                                                 <Label className="text-[10px] text-muted-foreground">Receiving Vessel Name</Label>
                                                 <Input className="h-8 text-xs" value={newLegName} onChange={(e) => setNewLegName(e.target.value)} />
@@ -7009,7 +7009,7 @@ export default function OperationDetailPage({
                                             </div>
                                             <div className="space-y-1">
                                               <Label className="text-[10px] text-muted-foreground">ETA (optional)</Label>
-                                              <Input type="datetime-local" className="h-8 text-xs" value={newLegEta} onChange={(e) => setNewLegEta(e.target.value)} />
+                                              <Input type="datetime-local" className="h-9 sm:h-8 text-xs" value={newLegEta} onChange={(e) => setNewLegEta(e.target.value)} />
                                             </div>
                                             <div className="flex gap-2">
                                               <Button size="sm" className="flex-1 text-xs" disabled={!newLegName.trim() || addLegMutation.isPending} onClick={() => addLegMutation.mutate(activity.id)}>
@@ -7062,7 +7062,7 @@ export default function OperationDetailPage({
 
                                                   {editLegId === leg.id && (
                                                     <div className="px-3 py-2 border-t bg-muted/10 space-y-2">
-                                                      <div className="grid grid-cols-2 gap-2">
+                                                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                                         <div className="space-y-1">
                                                           <Label className="text-[10px] text-muted-foreground">Receiving Vessel Name</Label>
                                                           <Input className="h-8 text-xs" value={editLegName} onChange={(e) => setEditLegName(e.target.value)} />
@@ -7074,7 +7074,7 @@ export default function OperationDetailPage({
                                                       </div>
                                                       <div className="space-y-1">
                                                         <Label className="text-[10px] text-muted-foreground">ETA</Label>
-                                                        <Input type="datetime-local" className="h-8 text-xs" value={editLegEta} onChange={(e) => setEditLegEta(e.target.value)} />
+                                                        <Input type="datetime-local" className="h-9 sm:h-8 text-xs" value={editLegEta} onChange={(e) => setEditLegEta(e.target.value)} />
                                                       </div>
                                                       <Textarea className="text-xs min-h-10 resize-none" placeholder="Reason for correction (required)…" value={editLegReason} onChange={(e) => setEditLegReason(e.target.value)} />
                                                       <div className="flex gap-2">
@@ -7136,12 +7136,12 @@ export default function OperationDetailPage({
                                                       {isBM && (
                                                         editLegTimingId === leg.id ? (
                                                           <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
-                                                            <div className="grid grid-cols-2 gap-2">
+                                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                                               {LEG_STAGES.slice(0, legStageIdx + 1).map((s) => (
                                                                 <div key={s.value} className="space-y-1">
                                                                   <Label className="text-[10px] text-muted-foreground">{s.label} (you entered)</Label>
                                                                   <Input
-                                                                    type="datetime-local" className="h-8 text-xs"
+                                                                    type="datetime-local" className="h-9 sm:h-8 text-xs"
                                                                     value={editLegTimingFields[`stage_${s.value}_user_at`] ?? ""}
                                                                     onChange={(e) => setEditLegTimingFields((f) => ({ ...f, [`stage_${s.value}_user_at`]: e.target.value }))}
                                                                   />
@@ -7193,7 +7193,7 @@ export default function OperationDetailPage({
                                                         legStageFormLegId === leg.id ? (
                                                           <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
                                                             <Label className="text-[10px] text-muted-foreground">{nextLegStage.label} — occurred at</Label>
-                                                            <Input type="datetime-local" className="h-8 text-xs" value={legStageOccurredAt} onChange={(e) => setLegStageOccurredAt(e.target.value)} />
+                                                            <Input type="datetime-local" className="h-9 sm:h-8 text-xs" value={legStageOccurredAt} onChange={(e) => setLegStageOccurredAt(e.target.value)} />
                                                             <div className="flex gap-2">
                                                               <Button
                                                                 size="sm" className="flex-1 text-xs"
@@ -7323,7 +7323,7 @@ export default function OperationDetailPage({
                                                           />
                                                           {legQtyFormLegId === leg.id ? (
                                                             <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
-                                                              <div className="grid grid-cols-2 gap-2">
+                                                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                                                 <div className="space-y-1">
                                                                   <Label className="text-[10px] text-muted-foreground">Discharged Quantity (L)</Label>
                                                                   <Input type="number" className="h-8 text-xs" value={legQtyDischarged} onChange={(e) => setLegQtyDischarged(e.target.value)} />
@@ -7685,8 +7685,10 @@ export default function OperationDetailPage({
 
                       return (
                         <Card key={to.id} className="rounded-2xl border border-navy-100 shadow-[0_1px_2px_rgb(16_36_71/0.04)] dark:border-border overflow-hidden">
-                          {/* Truck header */}
-                          <div className="flex items-center justify-between px-5 py-3.5 border-b bg-muted/20">
+                          {/* Truck header — stacks below sm. The action group can
+                              carry up to four buttons; keeping it shrink-0 on a
+                              phone drove it straight over the plate number. */}
+                          <div className="flex flex-col items-stretch gap-2 border-b bg-muted/20 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5 sm:py-3.5">
                             <div className="flex items-center gap-3 min-w-0">
                               <span className="w-6 shrink-0 text-right text-sm font-bold tabular-nums text-muted-foreground">
                                 {seq}.
@@ -7694,12 +7696,12 @@ export default function OperationDetailPage({
                               <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
                                 <Truck className="w-4 h-4 text-primary" />
                               </div>
-                              <div>
-                                <p className="text-sm font-bold font-mono tracking-tight">{label}</p>
-                                {cap && <p className="text-xs text-muted-foreground">{cap}</p>}
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-bold font-mono tracking-tight">{label}</p>
+                                {cap && <p className="truncate text-xs text-muted-foreground">{cap}</p>}
                               </div>
                             </div>
-                            <div className="flex items-center gap-2 shrink-0">
+                            <div className="flex flex-wrap items-center gap-2 sm:shrink-0">
                               {to.status && (
                                 <span className="text-[11px] font-medium px-2.5 py-0.5 rounded-full bg-primary/10 text-primary capitalize">
                                   {to.status.replace(/_/g, " ")}
@@ -7926,14 +7928,14 @@ export default function OperationDetailPage({
                                       {/* Inline recording form */}
                                       {isRecording && (
                                         <div className="mt-2 space-y-2 rounded-md border bg-background p-3">
-                                          <div className="grid grid-cols-2 gap-2">
+                                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                             <div className="space-y-1 col-span-2 sm:col-span-1">
                                               <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                                                 {stage.label} Time <span className="text-destructive">*</span>
                                               </Label>
                                               <Input
                                                 type="datetime-local"
-                                                className="h-8 text-xs"
+                                                className="h-9 sm:h-8 text-xs"
                                                 value={form.ts ?? ""}
                                                 onChange={(e) => setStageField(to.id, stage.key, "ts", e.target.value)}
                                               />
@@ -7963,7 +7965,7 @@ export default function OperationDetailPage({
                                               <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                                                 Delivered To <span className="normal-case font-normal text-muted-foreground/60">(vessel / client)</span>
                                               </Label>
-                                              <div className="grid grid-cols-2 gap-2">
+                                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                                 <div className="space-y-1">
                                                   <Select
                                                     value={dischargeVesselMode[to.id] ?? "system"}
@@ -8240,7 +8242,7 @@ export default function OperationDetailPage({
 
                       {showDocUploadForm && (
                         <CardContent className="px-5 pb-5 border-t pt-4 space-y-3">
-                          <div className="grid grid-cols-2 gap-3">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <div className="space-y-1.5 col-span-2">
                               <Label className="text-xs">File <span className="text-destructive">*</span></Label>
                               <Input
@@ -8523,7 +8525,7 @@ export default function OperationDetailPage({
             </p>
 
             {op?.vessel_id && (
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label className="text-xs">Expected ROB (MT)</Label>
                   <div className="flex items-center h-9 px-3 rounded-md border bg-muted/50 text-sm text-muted-foreground tabular-nums">
@@ -8674,7 +8676,7 @@ export default function OperationDetailPage({
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3 mt-1 max-h-[70vh] overflow-y-auto pr-1">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs">Plate Number <span className="text-destructive">*</span></Label>
                 <Input value={newTruckNumber} onChange={(e) => setNewTruckNumber(e.target.value)} />
@@ -8688,7 +8690,7 @@ export default function OperationDetailPage({
               <Label className="text-xs">Chassis Number <span className="text-muted-foreground font-normal">optional</span></Label>
               <Input value={newTruckChassis} onChange={(e) => setNewTruckChassis(e.target.value)} />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs">Driver Name <span className="text-destructive">*</span></Label>
                 <Input value={newTruckDriver} onChange={(e) => setNewTruckDriver(e.target.value)} />
@@ -8805,7 +8807,7 @@ export default function OperationDetailPage({
                 </SelectContent>
               </Select>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs">Driver Name <span className="text-destructive">*</span></Label>
                 <Input value={waybillDriver} onChange={(e) => setWaybillDriver(e.target.value)} />
@@ -8819,7 +8821,7 @@ export default function OperationDetailPage({
               <Label className="text-xs">Vendor <span className="text-muted-foreground font-normal">optional</span></Label>
               <Input value={waybillVendor} onChange={(e) => setWaybillVendor(e.target.value)} />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs">Waybill No. <span className="text-muted-foreground font-normal">optional</span></Label>
                 <Input placeholder="e.g. WB 25615" value={waybillDocNumber} onChange={(e) => setWaybillDocNumber(e.target.value)} />
@@ -8860,7 +8862,7 @@ export default function OperationDetailPage({
                 All changes will be logged in the audit trail as "Edited by BM". If already approved, ROB entries will be adjusted automatically.
               </p>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs font-semibold">Quantity Discharged (L)</Label>
                 <Input
@@ -8897,7 +8899,7 @@ export default function OperationDetailPage({
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold">Delivered To (Vessel)</Label>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <Select
                   value={editDischVesselMode}
                   onValueChange={(v) => setEditDischVesselMode(v as "system" | "other")}
@@ -9308,7 +9310,7 @@ export default function OperationDetailPage({
                 onChange={(e) => setEditTruckBdnForm((f) => ({ ...f, company_name: e.target.value }))}
               />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs">Product Type</Label>
                 <Input
@@ -9324,7 +9326,7 @@ export default function OperationDetailPage({
                 />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs">Quantity Loaded (L)</Label>
                 <Input
@@ -9342,7 +9344,7 @@ export default function OperationDetailPage({
                 />
               </div>
             </div>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs">Density</Label>
                 <Input
@@ -9368,7 +9370,7 @@ export default function OperationDetailPage({
                 />
               </div>
             </div>
-            <div className="grid grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs">VCF</Label>
                 <Input
@@ -9402,7 +9404,7 @@ export default function OperationDetailPage({
                 />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs">Commenced Discharge</Label>
                 <Input
@@ -9472,7 +9474,7 @@ export default function OperationDetailPage({
               <Label className="text-xs">Company Name</Label>
               <Input value={editVesselBdnForm.company_name ?? ""} onChange={(e) => setEditVesselBdnForm((f) => ({ ...f, company_name: e.target.value }))} />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs">Product Type</Label>
                 <Input value={editVesselBdnForm.product_type ?? ""} onChange={(e) => setEditVesselBdnForm((f) => ({ ...f, product_type: e.target.value }))} />
@@ -9486,7 +9488,7 @@ export default function OperationDetailPage({
               <Label className="text-xs">Receiving Vessel</Label>
               <Input value={editVesselBdnForm.receiving_vessel ?? ""} onChange={(e) => setEditVesselBdnForm((f) => ({ ...f, receiving_vessel: e.target.value }))} />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs">Quantity Loaded (L)</Label>
                 <Input type="number" step="0.01" value={editVesselBdnForm.quantity_loaded_litres ?? ""} onChange={(e) => setEditVesselBdnForm((f) => ({ ...f, quantity_loaded_litres: e.target.value }))} />
@@ -9496,7 +9498,7 @@ export default function OperationDetailPage({
                 <Input type="number" step="0.01" value={editVesselBdnForm.quantity_discharged_litres ?? ""} onChange={(e) => setEditVesselBdnForm((f) => ({ ...f, quantity_discharged_litres: e.target.value }))} />
               </div>
             </div>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs">Density</Label>
                 <Input type="number" step="0.0001" value={editVesselBdnForm.density ?? ""} onChange={(e) => setEditVesselBdnForm((f) => ({ ...f, density: e.target.value }))} />
@@ -9510,7 +9512,7 @@ export default function OperationDetailPage({
                 <Input type="number" step="0.1" value={editVesselBdnForm.temperature_after_loading ?? ""} onChange={(e) => setEditVesselBdnForm((f) => ({ ...f, temperature_after_loading: e.target.value }))} />
               </div>
             </div>
-            <div className="grid grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs">VCF</Label>
                 <Input type="number" step="0.0001" value={editVesselBdnForm.vcf ?? ""} onChange={(e) => setEditVesselBdnForm((f) => ({ ...f, vcf: e.target.value }))} />
@@ -9538,7 +9540,7 @@ export default function OperationDetailPage({
             </div>
             <div className="space-y-2 rounded-lg border p-2.5">
               <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Received Quantity (receiving vessel&apos;s own readings)</p>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="space-y-1.5">
                   <Label className="text-xs">GOV</Label>
                   <Input type="number" step="0.01" value={editVesselBdnForm.received_gov ?? ""} onChange={(e) => setEditVesselBdnForm((f) => ({ ...f, received_gov: e.target.value }))} />

@@ -4603,7 +4603,7 @@ export default function OperationDetailPage({
                                 <div>
                                   <p className="text-sm font-mono font-semibold">{bdn.bdn_number}</p>
                                   <p className="text-xs text-muted-foreground">
-                                    {parseFloat(bdn.quantity_delivered_mt).toLocaleString(undefined, { minimumFractionDigits: 3 })} L
+                                    {parseFloat(bdn.quantity_delivered_mt).toLocaleString(undefined, { minimumFractionDigits: 3 })} MT
                                     {bdn.product_type ? ` · ${bdn.product_type}` : ""}
                                     {" · "}{formatDate(bdn.delivery_date)}
                                   </p>
@@ -5682,7 +5682,7 @@ export default function OperationDetailPage({
                                 </div>
                                 <div className="text-right">
                                   <p className="text-sm font-mono font-semibold text-brand-700">
-                                    +{row.totalMt.toFixed(3)} L
+                                    +{row.totalMt.toFixed(3)} MT
                                   </p>
                                   <p className="text-[10px] text-muted-foreground uppercase tracking-wide">received</p>
                                 </div>
@@ -5692,7 +5692,7 @@ export default function OperationDetailPage({
                           {byVessel.size > 1 && (
                             <div className="px-5 py-2.5 border-t bg-muted/20 flex items-center justify-between">
                               <p className="text-xs text-muted-foreground">Total across all vessels</p>
-                              <p className="text-sm font-mono font-semibold">{totalMt.toFixed(3)} L</p>
+                              <p className="text-sm font-mono font-semibold">{totalMt.toFixed(3)} MT</p>
                             </div>
                           )}
                         </CardContent>
@@ -5755,7 +5755,7 @@ export default function OperationDetailPage({
                                 <SelectContent>
                                   {allVessels?.map((v) => (
                                     <SelectItem key={v.id} value={v.id} className="text-xs">
-                                      {v.vessel_name} — ROB: {parseFloat(v.current_rob_mt).toFixed(1)} L
+                                      {v.vessel_name} — ROB: {parseFloat(v.current_rob_mt).toFixed(1)} MT
                                     </SelectItem>
                                   ))}
                                 </SelectContent>
@@ -5983,7 +5983,7 @@ export default function OperationDetailPage({
                                   ) : (
                                     <span className="text-xs font-mono font-semibold">
                                       {activity.initial_rob_mt
-                                        ? `${parseFloat(activity.initial_rob_mt).toFixed(3)} L`
+                                        ? `${parseFloat(activity.initial_rob_mt).toFixed(3)} MT`
                                         : <span className="text-muted-foreground">—</span>}
                                     </span>
                                   )}

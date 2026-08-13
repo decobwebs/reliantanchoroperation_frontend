@@ -750,10 +750,10 @@ export interface VesselActivity {
   // ── Per-vessel stage flow ──
   stage?: string;
   stage_cast_off_at?: string;
-  stage_outbound_at?: string;
+  stage_approach_at?: string;
   stage_alongside_at?: string;
   stage_hse_check_at?: string;
-  stage_discharging_at?: string;
+  stage_commence_discharge_at?: string;
   stage_discharge_completed_at?: string;
 
   // ── HSE ──

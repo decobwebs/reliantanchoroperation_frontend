@@ -911,8 +911,7 @@ export interface TruckBdn {
   quantity_discharged_mt: string;
   variance_mt?: string;
   density: string;
-  temperature_before_loading: string;
-  temperature_after_loading: string;
+  temperature: string;
   vcf: string;
   gov: string;
   gsv: string;
@@ -952,8 +951,7 @@ export interface VesselBdn {
   quantity_discharged_litres: string;
   variance_litres?: string;
   density: string;
-  temperature_before_loading: string;
-  temperature_after_loading: string;
+  temperature: string;
   vcf: string;
   discharge_gov: string;
   discharge_gsv: string;
@@ -964,6 +962,12 @@ export interface VesselBdn {
   received_gov?: string;
   received_gsv?: string;
   received_mt_vacuum?: string;
+  // Truck-vs-vessel reconciliation (Full Operation only) — truck_discharged_total_mt
+  // is system-computed, never entered; vessel_received_total_mt is the one
+  // manual figure; truck_variance_mt is derived. Null for vessel_only BDNs.
+  truck_discharged_total_mt?: string;
+  vessel_received_total_mt?: string;
+  truck_variance_mt?: string;
   system_product_type?: string;
   system_discharge_location?: string;
   system_quantity_loaded_litres?: string;

@@ -670,22 +670,6 @@ export default function OperationDetailPage({
   const [actAssignedTo, setActAssignedTo] = useState("");
   const [actNotes,      setActNotes]      = useState("");
 
-  // Receipt form
-  const [actTruckMt,      setActTruckMt]      = useState("");
-  const [actVesselMt,     setActVesselMt]     = useState("");
-  const [actSpillage,     setActSpillage]     = useState("");
-  const [actTemp,         setActTemp]         = useState("");
-  const [actDensity,      setActDensity]      = useState("");
-  // Bunkering timing
-  const [actBunkerStart, setActBunkerStart] = useState("");
-  const [actBunkerEnd,   setActBunkerEnd]   = useState("");
-  // Discharge
-  const [actDischQty,    setActDischQty]    = useState("");
-  const [actDischStart,  setActDischStart]  = useState("");
-  const [actDischEnd,    setActDischEnd]    = useState("");
-  // Completion
-  const [actComplNotes,  setActComplNotes]  = useState("");
-
   // BM edit Initial ROB
   const [editingRobActivityId, setEditingRobActivityId] = useState<string | null>(null);
   const [editRobValue,         setEditRobValue]         = useState("");
@@ -1605,8 +1589,7 @@ export default function OperationDetailPage({
       quantity_loaded_mt:         tb.quantity_loaded_mt,
       quantity_discharged_mt:     tb.quantity_discharged_mt,
       density:                    tb.density,
-      temperature_before_loading: tb.temperature_before_loading,
-      temperature_after_loading:  tb.temperature_after_loading,
+      temperature:                tb.temperature,
       vcf:                        tb.vcf,
       gov:                        tb.gov,
       gsv:                        tb.gsv,
@@ -1629,8 +1612,7 @@ export default function OperationDetailPage({
         quantity_loaded_mt:         editTruckBdnForm.quantity_loaded_mt ? parseFloat(editTruckBdnForm.quantity_loaded_mt) : undefined,
         quantity_discharged_mt:     editTruckBdnForm.quantity_discharged_mt ? parseFloat(editTruckBdnForm.quantity_discharged_mt) : undefined,
         density:                    editTruckBdnForm.density ? parseFloat(editTruckBdnForm.density) : undefined,
-        temperature_before_loading: editTruckBdnForm.temperature_before_loading ? parseFloat(editTruckBdnForm.temperature_before_loading) : undefined,
-        temperature_after_loading:  editTruckBdnForm.temperature_after_loading ? parseFloat(editTruckBdnForm.temperature_after_loading) : undefined,
+        temperature:                editTruckBdnForm.temperature ? parseFloat(editTruckBdnForm.temperature) : undefined,
         vcf:                        editTruckBdnForm.vcf ? parseFloat(editTruckBdnForm.vcf) : undefined,
         gov:                        editTruckBdnForm.gov ? parseFloat(editTruckBdnForm.gov) : undefined,
         gsv:                        editTruckBdnForm.gsv ? parseFloat(editTruckBdnForm.gsv) : undefined,
@@ -1656,7 +1638,7 @@ export default function OperationDetailPage({
   const VESSEL_BDN_REQUIRED_FIELDS = [
     "company_name", "product_type", "discharge_location", "receiving_vessel",
     "quantity_loaded_litres", "quantity_discharged_litres",
-    "density", "temperature_before_loading", "temperature_after_loading",
+    "density", "temperature",
     "vcf", "discharge_gov", "discharge_gsv", "discharge_mt_vacuum",
     "discharge_completed_at", "discharge_completion_date",
   ] as const;
@@ -1682,6 +1664,8 @@ export default function OperationDetailPage({
   // Received-side readings are optional — if given, still must be positive.
   const VESSEL_BDN_OPTIONAL_POSITIVE_FIELDS = ["received_gov", "received_gsv", "received_mt_vacuum"] as const;
 
+  // Full Operation only — replaces the retired Start/Receipt/Bunkering/
+  // Discharge/Complete flow's ROB recording. Not required for vessel_only.
   const vesselBdnFormComplete =
     VESSEL_BDN_REQUIRED_FIELDS.every((k) => (vesselBdnForm[k] ?? "").trim() !== "") &&
     VESSEL_BDN_POSITIVE_FIELDS.every((k) => {
@@ -1693,7 +1677,11 @@ export default function OperationDetailPage({
       if (raw === "") return true;
       const n = parseFloat(raw);
       return Number.isFinite(n) && n > 0;
-    });
+    }) &&
+    (op?.type !== "full_operation" || (() => {
+      const n = parseFloat(vesselBdnForm.vessel_received_total_mt ?? "");
+      return Number.isFinite(n) && n > 0;
+    })());
 
   const createVesselBdnMutation = useMutation({
     mutationFn: async () => {
@@ -1709,8 +1697,7 @@ export default function OperationDetailPage({
         quantity_loaded_litres:     parseFloat(vesselBdnForm.quantity_loaded_litres),
         quantity_discharged_litres: parseFloat(vesselBdnForm.quantity_discharged_litres),
         density:                    parseFloat(vesselBdnForm.density),
-        temperature_before_loading: parseFloat(vesselBdnForm.temperature_before_loading),
-        temperature_after_loading:  parseFloat(vesselBdnForm.temperature_after_loading),
+        temperature:                parseFloat(vesselBdnForm.temperature),
         vcf:                        parseFloat(vesselBdnForm.vcf),
         discharge_gov:              parseFloat(vesselBdnForm.discharge_gov),
         discharge_gsv:              parseFloat(vesselBdnForm.discharge_gsv),
@@ -1720,6 +1707,7 @@ export default function OperationDetailPage({
         received_gov:               vesselBdnForm.received_gov?.trim() ? parseFloat(vesselBdnForm.received_gov) : undefined,
         received_gsv:               vesselBdnForm.received_gsv?.trim() ? parseFloat(vesselBdnForm.received_gsv) : undefined,
         received_mt_vacuum:         vesselBdnForm.received_mt_vacuum?.trim() ? parseFloat(vesselBdnForm.received_mt_vacuum) : undefined,
+        vessel_received_total_mt:   vesselBdnForm.vessel_received_total_mt?.trim() ? parseFloat(vesselBdnForm.vessel_received_total_mt) : undefined,
         notes:                      vesselBdnForm.notes?.trim() || undefined,
       });
     },
@@ -1775,8 +1763,7 @@ export default function OperationDetailPage({
       quantity_loaded_litres:     vb.quantity_loaded_litres,
       quantity_discharged_litres: vb.quantity_discharged_litres,
       density:                    vb.density,
-      temperature_before_loading: vb.temperature_before_loading,
-      temperature_after_loading:  vb.temperature_after_loading,
+      temperature:                vb.temperature,
       vcf:                        vb.vcf,
       discharge_gov:              vb.discharge_gov,
       discharge_gsv:              vb.discharge_gsv,
@@ -1786,6 +1773,10 @@ export default function OperationDetailPage({
       received_gov:               vb.received_gov ?? "",
       received_gsv:               vb.received_gsv ?? "",
       received_mt_vacuum:         vb.received_mt_vacuum ?? "",
+      vessel_received_total_mt:   vb.vessel_received_total_mt ?? "",
+      // Display-only — computed server-side, never sent back in the update payload.
+      truck_discharged_total_mt: vb.truck_discharged_total_mt ?? "",
+      truck_variance_mt:         vb.truck_variance_mt ?? "",
       notes:                      vb.notes ?? "",
     });
     setEditVesselBdnReason("");
@@ -1802,8 +1793,7 @@ export default function OperationDetailPage({
         quantity_loaded_litres:     editVesselBdnForm.quantity_loaded_litres ? parseFloat(editVesselBdnForm.quantity_loaded_litres) : undefined,
         quantity_discharged_litres: editVesselBdnForm.quantity_discharged_litres ? parseFloat(editVesselBdnForm.quantity_discharged_litres) : undefined,
         density:                    editVesselBdnForm.density ? parseFloat(editVesselBdnForm.density) : undefined,
-        temperature_before_loading: editVesselBdnForm.temperature_before_loading ? parseFloat(editVesselBdnForm.temperature_before_loading) : undefined,
-        temperature_after_loading:  editVesselBdnForm.temperature_after_loading ? parseFloat(editVesselBdnForm.temperature_after_loading) : undefined,
+        temperature:                editVesselBdnForm.temperature ? parseFloat(editVesselBdnForm.temperature) : undefined,
         vcf:                        editVesselBdnForm.vcf ? parseFloat(editVesselBdnForm.vcf) : undefined,
         discharge_gov:              editVesselBdnForm.discharge_gov ? parseFloat(editVesselBdnForm.discharge_gov) : undefined,
         discharge_gsv:              editVesselBdnForm.discharge_gsv ? parseFloat(editVesselBdnForm.discharge_gsv) : undefined,
@@ -1813,6 +1803,7 @@ export default function OperationDetailPage({
         received_gov:               editVesselBdnForm.received_gov ? parseFloat(editVesselBdnForm.received_gov) : undefined,
         received_gsv:               editVesselBdnForm.received_gsv ? parseFloat(editVesselBdnForm.received_gsv) : undefined,
         received_mt_vacuum:         editVesselBdnForm.received_mt_vacuum ? parseFloat(editVesselBdnForm.received_mt_vacuum) : undefined,
+        vessel_received_total_mt:   editVesselBdnForm.vessel_received_total_mt ? parseFloat(editVesselBdnForm.vessel_received_total_mt) : undefined,
         notes:                      editVesselBdnForm.notes || undefined,
         reason:                     editVesselBdnReason.trim(),
       });
@@ -1864,80 +1855,6 @@ export default function OperationDetailPage({
       toast.success("Marine Supervisor assigned");
       setShowAssignActivityForm(false);
       setActVesselId(""); setActAssignedTo(""); setActNotes("");
-      refetchVesselActivities();
-    },
-    onError: (err) => toast.error(getErrorMessage(err)),
-  });
-
-  const startActivityMutation = useMutation({
-    mutationFn: async (activityId: string) => {
-      await api.post(`/vessel-activities/${activityId}/start`, {});
-    },
-    onSuccess: () => { toast.success("Activity started"); refetchVesselActivities(); },
-    onError: (err) => toast.error(getErrorMessage(err)),
-  });
-
-  const recordReceiptMutation = useMutation({
-    mutationFn: async ({ activityId, previousRob }: { activityId: string; previousRob: number }) => {
-      await api.post(`/vessel-activities/${activityId}/record-receipt`, {
-        vessel_received_mt:  actVesselMt ? parseFloat(actVesselMt) : 0,
-        previous_rob_mt:     previousRob,
-        truck_delivered_mt:  actTruckMt ? parseFloat(actTruckMt) : undefined,
-        product_type:        op?.product_type || undefined,
-        spillage_mt:         actSpillage ? parseFloat(actSpillage) : undefined,
-        temperature_celsius: actTemp    ? parseFloat(actTemp)    : undefined,
-        density:             actDensity ? parseFloat(actDensity) : undefined,
-      });
-    },
-    onSuccess: () => {
-      toast.success("Receipt quantities recorded");
-      setActTruckMt(""); setActVesselMt("");
-      setActSpillage(""); setActTemp(""); setActDensity("");
-      refetchVesselActivities();
-    },
-    onError: (err) => toast.error(getErrorMessage(err)),
-  });
-
-  const recordBunkeringMutation = useMutation({
-    mutationFn: async (activityId: string) => {
-      await api.post(`/vessel-activities/${activityId}/record-bunkering`, {
-        bunkering_start_at: actBunkerStart ? new Date(actBunkerStart).toISOString() : undefined,
-        bunkering_end_at:   actBunkerEnd   ? new Date(actBunkerEnd).toISOString()   : undefined,
-      });
-    },
-    onSuccess: () => {
-      toast.success("Bunkering timing saved");
-      setActBunkerStart(""); setActBunkerEnd("");
-      refetchVesselActivities();
-    },
-    onError: (err) => toast.error(getErrorMessage(err)),
-  });
-
-  const activityDischargeMutation = useMutation({
-    mutationFn: async (activityId: string) => {
-      await api.post(`/vessel-activities/${activityId}/record-discharge`, {
-        quantity_discharged_mt: parseFloat(actDischQty),
-        discharge_start_at:     actDischStart ? new Date(actDischStart).toISOString() : undefined,
-        discharge_end_at:       actDischEnd   ? new Date(actDischEnd).toISOString()   : undefined,
-      });
-    },
-    onSuccess: () => {
-      toast.success("Discharge recorded");
-      setActDischQty(""); setActDischStart(""); setActDischEnd("");
-      refetchVesselActivities();
-    },
-    onError: (err) => toast.error(getErrorMessage(err)),
-  });
-
-  const completeActivityMutation = useMutation({
-    mutationFn: async (activityId: string) => {
-      await api.post(`/vessel-activities/${activityId}/complete`, {
-        completion_notes: actComplNotes.trim() || undefined,
-      });
-    },
-    onSuccess: () => {
-      toast.success("Vessel activity completed — ROB updated");
-      setActComplNotes("");
       refetchVesselActivities();
     },
     onError: (err) => toast.error(getErrorMessage(err)),
@@ -5079,8 +4996,7 @@ export default function OperationDetailPage({
                               {/* Product quality / delivery method — submitter-only, no system equivalent */}
                               <div className="grid grid-cols-3 gap-x-4 gap-y-1 text-[11px] text-muted-foreground bg-muted/20 rounded-md p-2.5">
                                 <span>Density: {parseFloat(tb.density).toLocaleString(undefined, { minimumFractionDigits: 4 })}</span>
-                                <span>Temp Before: {parseFloat(tb.temperature_before_loading).toFixed(1)}°C</span>
-                                <span>Temp After: {parseFloat(tb.temperature_after_loading).toFixed(1)}°C</span>
+                                <span>Temp: {parseFloat(tb.temperature).toFixed(1)}°C</span>
                                 <span>VCF: {parseFloat(tb.vcf).toLocaleString(undefined, { minimumFractionDigits: 4 })}</span>
                                 <span>GOV: {parseFloat(tb.gov).toLocaleString(undefined, { minimumFractionDigits: 2 })} L</span>
                                 <span>GSV: {parseFloat(tb.gsv).toLocaleString(undefined, { minimumFractionDigits: 2 })} L</span>
@@ -5280,12 +5196,8 @@ export default function OperationDetailPage({
                                   <Input type="number" step="0.0001" min="0" className="h-8 text-xs" value={vesselBdnForm.vcf ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, vcf: e.target.value }))} />
                                 </div>
                                 <div className="space-y-1.5">
-                                  <Label className="text-xs">Temp. Before Loading (°C) <span className="text-destructive">*</span></Label>
-                                  <Input type="number" step="0.1" className="h-8 text-xs" value={vesselBdnForm.temperature_before_loading ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, temperature_before_loading: e.target.value }))} />
-                                </div>
-                                <div className="space-y-1.5">
-                                  <Label className="text-xs">Temp. After Loading (°C) <span className="text-destructive">*</span></Label>
-                                  <Input type="number" step="0.1" className="h-8 text-xs" value={vesselBdnForm.temperature_after_loading ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, temperature_after_loading: e.target.value }))} />
+                                  <Label className="text-xs">Temperature (°C) <span className="text-destructive">*</span></Label>
+                                  <Input type="number" step="0.1" className="h-8 text-xs" value={vesselBdnForm.temperature ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, temperature: e.target.value }))} />
                                 </div>
                               </div>
                               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -5334,6 +5246,23 @@ export default function OperationDetailPage({
                                 </div>
                               </div>
                             </div>
+
+                            {/* ── Truck-vs-vessel reconciliation (Full Operation only) — replaces
+                                 the retired Start/Receipt/Bunkering/Discharge/Complete flow.
+                                 Total Quantity Discharged by Trucks is computed server-side from
+                                 Truck Reports on submit, not entered or previewed here. Approving
+                                 this BDN is what updates the vessel's ROB. ── */}
+                            {op?.type === "full_operation" && (
+                              <div className="space-y-1.5 rounded-lg border p-3">
+                                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Truck ↔ Vessel Reconciliation</p>
+                                <Label className="text-xs">Total Quantity Received by the Vessel (MT) <span className="text-destructive">*</span></Label>
+                                <Input type="number" step="0.001" min="0" className="h-8 text-xs" value={vesselBdnForm.vessel_received_total_mt ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, vessel_received_total_mt: e.target.value }))} />
+                                <p className="text-[11px] text-muted-foreground">
+                                  What the vessel itself measured receiving. Total Quantity Discharged by Trucks and
+                                  Truck Variance are computed from Truck Reports once submitted, and shown on the BDN afterward.
+                                </p>
+                              </div>
+                            )}
                           </div>
 
                           <div className="space-y-1.5">
@@ -5436,8 +5365,7 @@ export default function OperationDetailPage({
                                 <span>Receiving Vessel: {vb.receiving_vessel}</span>
                                 <span>Discharge Location: {vb.discharge_location}</span>
                                 <span>Density: {parseFloat(vb.density).toLocaleString(undefined, { minimumFractionDigits: 4 })}</span>
-                                <span>Temp Before: {parseFloat(vb.temperature_before_loading).toFixed(1)}°C</span>
-                                <span>Temp After: {parseFloat(vb.temperature_after_loading).toFixed(1)}°C</span>
+                                <span>Temp: {parseFloat(vb.temperature).toFixed(1)}°C</span>
                                 <span>VCF: {parseFloat(vb.vcf).toLocaleString(undefined, { minimumFractionDigits: 4 })}</span>
                                 <span>Discharge GOV: {parseFloat(vb.discharge_gov).toLocaleString(undefined, { minimumFractionDigits: 2 })} L</span>
                                 <span>Discharge GSV: {parseFloat(vb.discharge_gsv).toLocaleString(undefined, { minimumFractionDigits: 2 })} L</span>
@@ -5456,6 +5384,16 @@ export default function OperationDetailPage({
                                     <span className="col-span-3 font-semibold">
                                       Variance vs Discharge MTvac: {(parseFloat(vb.discharge_mt_vacuum) - parseFloat(vb.received_mt_vacuum)).toLocaleString(undefined, { minimumFractionDigits: 3 })}
                                     </span>
+                                  )}
+                                </div>
+                              )}
+                              {vb.truck_discharged_total_mt != null && (
+                                <div className="grid grid-cols-3 gap-x-4 gap-y-1 text-[11px] rounded-md p-2.5 bg-indigo-50 text-indigo-800 dark:bg-indigo-500/10 dark:text-indigo-300">
+                                  <span className="col-span-3 text-[10px] font-semibold uppercase tracking-wide">Truck ↔ Vessel Reconciliation</span>
+                                  <span>Discharged by Trucks: {parseFloat(vb.truck_discharged_total_mt).toLocaleString(undefined, { minimumFractionDigits: 3 })} MT</span>
+                                  <span>Received by Vessel: {parseFloat(vb.vessel_received_total_mt ?? "0").toLocaleString(undefined, { minimumFractionDigits: 3 })} MT</span>
+                                  {vb.truck_variance_mt != null && (
+                                    <span className="font-semibold">Truck Variance: {parseFloat(vb.truck_variance_mt).toLocaleString(undefined, { minimumFractionDigits: 3 })} MT</span>
                                   )}
                                 </div>
                               )}
@@ -5946,18 +5884,7 @@ export default function OperationDetailPage({
                         // Bunker Manager (who is never assignee-gated).
                         const canAct       = isAssignee || isBM || isOS;
                         const hasReceipt   = !!activity.vessel_received_mt;
-                        const hasBunkering = !!activity.bunkering_start_at;
                         const hasDischarge = !!activity.quantity_discharged_mt;
-
-                        // Only ever rendered for full_operation now — vessel_only uses the
-                        // commence/updates/complete/quantities flow below instead.
-                        const steps = [
-                          { n: 1, label: "Start",     done: activity.status !== "pending" },
-                          { n: 2, label: "Receipt",   done: hasReceipt },
-                          { n: 3, label: "Bunkering", done: hasBunkering },
-                          { n: 4, label: "Discharge", done: hasDischarge },
-                          { n: 5, label: "Complete",  done: activity.status === "completed" },
-                        ];
 
                         return (
                           <Card
@@ -6305,290 +6232,6 @@ export default function OperationDetailPage({
                               );
                             })()}
 
-                            {/* ── Step-by-step action area (only for active/pending, only if canAct) ── */}
-                            {canAct && activity.status !== "completed" && activity.status !== "cancelled" && (
-                              <div className="border-t">
-
-                                {/* Step progress pills */}
-                                <div className="px-5 pt-3.5 pb-2 flex items-center gap-1.5 overflow-x-auto">
-                                  {steps.map(({ n, label, done }) => (
-                                    <div key={n} className="flex items-center gap-1 shrink-0">
-                                      <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold ${
-                                        done
-                                          ? "bg-emerald-500 text-white"
-                                          : n === (activity.status === "pending" ? 1 : !hasReceipt ? 2 : !hasBunkering ? 3 : !hasDischarge ? 4 : 5)
-                                          ? "bg-primary text-white"
-                                          : "bg-muted text-muted-foreground"
-                                      }`}>
-                                        {done ? "✓" : n}
-                                      </div>
-                                      <span className={`text-[10px] ${done ? "text-muted-foreground line-through" : n === (activity.status === "pending" ? 1 : !hasReceipt ? 2 : !hasBunkering ? 3 : !hasDischarge ? 4 : 5) ? "font-semibold" : "text-muted-foreground"}`}>
-                                        {label}
-                                      </span>
-                                      {n < 5 && <ChevronRight className="w-2.5 h-2.5 text-muted-foreground/30 shrink-0" />}
-                                    </div>
-                                  ))}
-                                </div>
-
-                                <div className="px-5 pb-5 space-y-3">
-
-                                  {/* ── STEP 1: Start (pending) ── */}
-                                  {activity.status === "pending" && (
-                                    canAct ? (
-                                      <div className="rounded-lg bg-amber-50 border border-amber-200 p-4 flex items-center justify-between gap-4">
-                                        <div>
-                                          <p className="text-sm font-medium">Ready to begin?</p>
-                                          <p className="text-xs text-muted-foreground mt-0.5">
-                                            Confirm you are on-site. This marks the session as active.
-                                          </p>
-                                        </div>
-                                        <Button
-                                          size="sm" className="shrink-0"
-                                          onClick={() => startActivityMutation.mutate(activity.id)}
-                                          disabled={startActivityMutation.isPending}
-                                        >
-                                          {startActivityMutation.isPending
-                                            ? <Spinner size={14} />
-                                            : <PlayCircle className="w-3.5 h-3.5 mr-1.5" />}
-                                          Start Activity
-                                        </Button>
-                                      </div>
-                                    ) : (
-                                      <div className="rounded-lg bg-muted/40 border border-border p-4 flex items-center gap-3 text-muted-foreground">
-                                        <Loader2 className="w-4 h-4 animate-pulse shrink-0" />
-                                        <div>
-                                          <p className="text-sm font-medium">Waiting for Marine Manager</p>
-                                          <p className="text-xs mt-0.5">
-                                            The assigned supervisor will start this session when on-site.
-                                          </p>
-                                        </div>
-                                      </div>
-                                    )
-                                  )}
-
-                                  {/* ── STEP 2: Record Receipt (active) ── */}
-                                  {activity.status === "active" && (
-                                    <div className={`rounded-lg border p-4 space-y-3 ${
-                                      hasReceipt ? "border-emerald-200 bg-emerald-50/30" : "border-primary/30 bg-primary/5"
-                                    }`}>
-                                      <div className="flex items-center gap-2">
-                                        {hasReceipt
-                                          ? <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                                          : <span className="w-4 h-4 rounded-full bg-primary flex items-center justify-center text-[9px] text-white font-bold shrink-0">2</span>}
-                                        <p className="text-sm font-semibold">
-                                          {hasReceipt ? "Receipt Recorded" : "Record Receipt Quantities"}
-                                        </p>
-                                      </div>
-                                      {hasReceipt ? (
-                                        <p className="text-xs text-muted-foreground">
-                                          {parseFloat(activity.vessel_received_mt!).toFixed(3)} L received
-                                          {activity.product_type && ` · ${activity.product_type}`}
-                                          {activity.variance_mt && ` · Variance: ${parseFloat(activity.variance_mt) > 0 ? "+" : ""}${parseFloat(activity.variance_mt).toFixed(3)} L`}
-                                        </p>
-                                      ) : (
-                                        <>
-                                          {/* Warning if BM hasn't set Initial ROB yet */}
-                                          {!activity.initial_rob_mt && (
-                                            <div className="flex items-center gap-2 text-xs bg-amber-50 border border-amber-200 rounded px-3 py-2 text-amber-800">
-                                              <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                                              Bunker Manager must set the Initial ROB before quantities can be recorded.
-                                            </div>
-                                          )}
-                                          {op?.product_type && (
-                                            <div className="flex items-center gap-2 text-xs bg-muted/50 rounded px-3 py-1.5">
-                                              <span className="text-muted-foreground">Product Type</span>
-                                              <span className="font-semibold text-foreground">{op.product_type}</span>
-                                            </div>
-                                          )}
-                                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                                            <div className="space-y-1">
-                                              <Label className="text-[11px]">
-                                                Vessel Received (L)
-                                                <span className="ml-0.5 text-destructive">*</span>
-                                              </Label>
-                                              <Input
-                                                className="h-8 text-xs"
-                                                type="number" step="0.001"
-                                                placeholder="0.000"
-                                                value={actVesselMt}
-                                                onChange={(e) => setActVesselMt(e.target.value)}
-                                              />
-                                            </div>
-                                            <div className="space-y-1">
-                                              <Label className="text-[11px] text-muted-foreground">Previous ROB (L)</Label>
-                                              <p className="text-sm font-mono font-semibold">
-                                                {activity.initial_rob_mt
-                                                  ? `${parseFloat(activity.initial_rob_mt).toFixed(3)} L`
-                                                  : <span className="text-muted-foreground text-xs">—</span>}
-                                              </p>
-                                            </div>
-                                            {op?.type === "full_operation" && (
-                                              <div className="space-y-1">
-                                                <Label className="text-[11px]">Truck Delivered (L)</Label>
-                                                <Input
-                                                  className="h-8 text-xs"
-                                                  type="number" step="0.001"
-                                                  placeholder="0.000"
-                                                  value={actTruckMt}
-                                                  onChange={(e) => setActTruckMt(e.target.value)}
-                                                />
-                                              </div>
-                                            )}
-                                            <div className="space-y-1">
-                                              <Label className="text-[11px]">Temperature (°C)</Label>
-                                              <Input className="h-8 text-xs" type="number" step="0.1" placeholder="—" value={actTemp} onChange={(e) => setActTemp(e.target.value)} />
-                                            </div>
-                                            <div className="space-y-1">
-                                              <Label className="text-[11px]">Density (kg/m³)</Label>
-                                              <Input className="h-8 text-xs" type="number" step="0.0001" placeholder="—" value={actDensity} onChange={(e) => setActDensity(e.target.value)} />
-                                            </div>
-                                          </div>
-                                          <div className="flex justify-end">
-                                            <Button size="sm"
-                                              disabled={
-                                                !activity.initial_rob_mt ||
-                                                !actVesselMt ||
-                                                recordReceiptMutation.isPending
-                                              }
-                                              onClick={() => recordReceiptMutation.mutate({
-                                                activityId: activity.id,
-                                                previousRob: parseFloat(activity.initial_rob_mt!),
-                                              })}>
-                                              {recordReceiptMutation.isPending && <Spinner size={14} className="mr-1.5" />}
-                                              Save
-                                            </Button>
-                                          </div>
-                                        </>
-                                      )}
-                                    </div>
-                                  )}
-
-                                  {/* ── STEP 3: Bunkering Timing ── */}
-                                  {activity.status === "active" && (
-                                    <div className={`rounded-lg border p-4 space-y-3 ${
-                                      hasBunkering ? "border-emerald-200 bg-emerald-50/30" : "border-border"
-                                    }`}>
-                                      <div className="flex items-center gap-2">
-                                        {hasBunkering
-                                          ? <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                                          : <span className="w-4 h-4 rounded-full bg-muted flex items-center justify-center text-[9px] font-bold shrink-0">3</span>}
-                                        <p className="text-sm font-semibold">{hasBunkering ? "Bunkering Timing Logged" : "Log Bunkering Timing"}</p>
-                                      </div>
-                                      {hasBunkering ? (
-                                        <p className="text-xs text-muted-foreground">
-                                          {activity.bunkering_start_at && new Date(activity.bunkering_start_at).toLocaleString()}
-                                          {activity.bunkering_end_at && ` → ${new Date(activity.bunkering_end_at).toLocaleString()}`}
-                                        </p>
-                                      ) : (
-                                        <>
-                                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                            <div className="space-y-1">
-                                              <Label className="text-[11px]">Bunkering Start</Label>
-                                              <Input className="h-9 sm:h-8 text-xs" type="datetime-local" value={actBunkerStart} onChange={(e) => setActBunkerStart(e.target.value)} />
-                                            </div>
-                                            <div className="space-y-1">
-                                              <Label className="text-[11px]">Bunkering End</Label>
-                                              <Input className="h-9 sm:h-8 text-xs" type="datetime-local" value={actBunkerEnd} onChange={(e) => setActBunkerEnd(e.target.value)} />
-                                            </div>
-                                          </div>
-                                          <div className="flex justify-end">
-                                            <Button size="sm" variant="outline"
-                                              disabled={(!actBunkerStart && !actBunkerEnd) || recordBunkeringMutation.isPending}
-                                              onClick={() => recordBunkeringMutation.mutate(activity.id)}>
-                                              {recordBunkeringMutation.isPending && <Spinner size={14} className="mr-1.5" />}
-                                              Save Timing
-                                            </Button>
-                                          </div>
-                                        </>
-                                      )}
-                                    </div>
-                                  )}
-
-                                  {/* ── STEP 4: Discharge ── */}
-                                  {activity.status === "active" && (
-                                    <div className={`rounded-lg border p-4 space-y-3 ${
-                                      hasDischarge  ? "border-emerald-200 bg-emerald-50/30" :
-                                      "border-border"
-                                    }`}>
-                                      <div className="flex items-center justify-between gap-2">
-                                        <div className="flex items-center gap-2">
-                                          {hasDischarge
-                                            ? <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                                            : <span className="w-4 h-4 rounded-full bg-muted flex items-center justify-center text-[9px] font-bold shrink-0">4</span>}
-                                          <p className="text-sm font-semibold">{hasDischarge ? "Discharge Recorded" : "Record Outbound Discharge"}</p>
-                                        </div>
-                                        {!hasDischarge && (
-                                          <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">optional</span>
-                                        )}
-                                      </div>
-                                      {!hasDischarge && (
-                                        <>
-                                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                                            <div className="space-y-1">
-                                              <Label className="text-[11px]">Qty Discharged (L) *</Label>
-                                              <Input className="h-8 text-xs" type="number" step="0.001" placeholder="0.000" value={actDischQty} onChange={(e) => setActDischQty(e.target.value)} />
-                                            </div>
-                                            <div className="space-y-1">
-                                              <Label className="text-[11px]">Discharge Start</Label>
-                                              <Input className="h-9 sm:h-8 text-xs" type="datetime-local" value={actDischStart} onChange={(e) => setActDischStart(e.target.value)} />
-                                            </div>
-                                            <div className="space-y-1">
-                                              <Label className="text-[11px]">Discharge End</Label>
-                                              <Input className="h-9 sm:h-8 text-xs" type="datetime-local" value={actDischEnd} onChange={(e) => setActDischEnd(e.target.value)} />
-                                            </div>
-                                          </div>
-                                          <div className="flex justify-end">
-                                            <Button size="sm" variant="outline"
-                                              disabled={!actDischQty || activityDischargeMutation.isPending}
-                                              onClick={() => activityDischargeMutation.mutate(activity.id)}>
-                                              {activityDischargeMutation.isPending && <Spinner size={14} className="mr-1.5" />}
-                                              Record Discharge
-                                            </Button>
-                                          </div>
-                                        </>
-                                      )}
-                                      {hasDischarge && (
-                                        <p className="text-xs text-muted-foreground">
-                                          {parseFloat(activity.quantity_discharged_mt!).toFixed(3)} L discharged
-                                          {activity.final_rob_mt && ` · Final ROB: ${parseFloat(activity.final_rob_mt).toFixed(3)} L`}
-                                        </p>
-                                      )}
-                                    </div>
-                                  )}
-
-                                  {/* ── STEP 5: Complete ── */}
-                                  {activity.status === "active" && (
-                                    <div className="rounded-lg border border-emerald-300 bg-emerald-50/50 p-4 space-y-3">
-                                      <div className="flex items-center gap-2">
-                                        <span className="w-4 h-4 rounded-full bg-emerald-600 flex items-center justify-center text-[9px] text-white font-bold shrink-0">5</span>
-                                        <p className="text-sm font-semibold text-emerald-800">Complete &amp; Lock</p>
-                                      </div>
-                                      <p className="text-xs text-muted-foreground">
-                                        Finalises the session. Vessel ROB will update to{" "}
-                                        <strong>{parseFloat(activity.final_rob_mt ?? activity.new_rob_mt ?? "0").toFixed(3)} L</strong>.
-                                        Record becomes immutable — BM and Finance are notified automatically.
-                                      </p>
-                                      <Textarea
-                                        className="h-14 text-xs resize-none"
-                                        placeholder="Completion notes (optional)…"
-                                        value={actComplNotes}
-                                        onChange={(e) => setActComplNotes(e.target.value)}
-                                      />
-                                      <div className="flex justify-end">
-                                        <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800"
-                                          disabled={completeActivityMutation.isPending}
-                                          onClick={() => completeActivityMutation.mutate(activity.id)}>
-                                          {completeActivityMutation.isPending && <Spinner size={14} className="mr-1.5" />}
-                                          <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" />
-                                          Complete Activity
-                                        </Button>
-                                      </div>
-                                    </div>
-                                  )}
-
-                                </div>
-                              </div>
-                            )}
 
                             </> : <>
 
@@ -9354,19 +8997,11 @@ export default function OperationDetailPage({
                 />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs">Temp. Before (°C)</Label>
+                <Label className="text-xs">Temperature (°C)</Label>
                 <Input
                   type="number" step="0.1"
-                  value={editTruckBdnForm.temperature_before_loading ?? ""}
-                  onChange={(e) => setEditTruckBdnForm((f) => ({ ...f, temperature_before_loading: e.target.value }))}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs">Temp. After (°C)</Label>
-                <Input
-                  type="number" step="0.1"
-                  value={editTruckBdnForm.temperature_after_loading ?? ""}
-                  onChange={(e) => setEditTruckBdnForm((f) => ({ ...f, temperature_after_loading: e.target.value }))}
+                  value={editTruckBdnForm.temperature ?? ""}
+                  onChange={(e) => setEditTruckBdnForm((f) => ({ ...f, temperature: e.target.value }))}
                 />
               </div>
             </div>
@@ -9504,12 +9139,8 @@ export default function OperationDetailPage({
                 <Input type="number" step="0.0001" value={editVesselBdnForm.density ?? ""} onChange={(e) => setEditVesselBdnForm((f) => ({ ...f, density: e.target.value }))} />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs">Temp. Before (°C)</Label>
-                <Input type="number" step="0.1" value={editVesselBdnForm.temperature_before_loading ?? ""} onChange={(e) => setEditVesselBdnForm((f) => ({ ...f, temperature_before_loading: e.target.value }))} />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs">Temp. After (°C)</Label>
-                <Input type="number" step="0.1" value={editVesselBdnForm.temperature_after_loading ?? ""} onChange={(e) => setEditVesselBdnForm((f) => ({ ...f, temperature_after_loading: e.target.value }))} />
+                <Label className="text-xs">Temperature (°C)</Label>
+                <Input type="number" step="0.1" value={editVesselBdnForm.temperature ?? ""} onChange={(e) => setEditVesselBdnForm((f) => ({ ...f, temperature: e.target.value }))} />
               </div>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -9555,6 +9186,28 @@ export default function OperationDetailPage({
                 </div>
               </div>
             </div>
+            {op?.type === "full_operation" && (
+              <div className="space-y-2 rounded-lg border p-2.5">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Truck ↔ Vessel Reconciliation (MT)</p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Discharged by Trucks</Label>
+                    <Input type="number" disabled value={editVesselBdnForm.truck_discharged_total_mt ?? ""} className="bg-muted/40" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Received by Vessel <span className="text-destructive">*</span></Label>
+                    <Input type="number" step="0.001" value={editVesselBdnForm.vessel_received_total_mt ?? ""} onChange={(e) => setEditVesselBdnForm((f) => ({ ...f, vessel_received_total_mt: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Truck Variance</Label>
+                    <Input type="number" disabled value={editVesselBdnForm.truck_variance_mt ?? ""} className="bg-muted/40" />
+                  </div>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Correcting Received by Vessel on an approved BDN also corrects the vessel&apos;s ROB ledger — the prior entry is reversed and reapplied with the new figure.
+                </p>
+              </div>
+            )}
             <div className="space-y-1.5">
               <Label className="text-xs">Notes</Label>
               <Textarea rows={2} className="resize-none text-sm" value={editVesselBdnForm.notes ?? ""} onChange={(e) => setEditVesselBdnForm((f) => ({ ...f, notes: e.target.value }))} />

@@ -20,7 +20,7 @@ import {
 const ACT_AS_ROLES: { value: string; label: string }[] = [
   { value: "ops_supervisor", label: "Ops Supervisor" },
   { value: "logistics_officer", label: "Logistics Officer" },
-  { value: "cargo_superintendent", label: "Cargo Superintendent" },
+  { value: "cargo_superintendent", label: "Marine Manager" },
   { value: "finance_manager", label: "Finance Manager" },
   { value: "marine_operator", label: "Marine Operator" },
 ];

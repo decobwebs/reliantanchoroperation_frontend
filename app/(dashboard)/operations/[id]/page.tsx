@@ -153,7 +153,7 @@ import { STATUS_PIPELINE, PIPELINE_LABELS, resolveExpectedVolumeMt } from "@/lib
 const ROLE_LABELS: Record<string, string> = {
   ops_supervisor:       "Ops Supervisor",
   logistics_officer:    "Logistics Officer",
-  cargo_superintendent: "Cargo Superintendent",
+  cargo_superintendent: "Marine Manager",
   finance_manager:      "Finance Manager",
 };
 
@@ -3642,7 +3642,7 @@ export default function OperationDetailPage({
                   <p className="text-xs text-amber-700/80 mt-1.5">
                     {op.type === "vessel_only" ? (
                       <>
-                        Awaiting the Ops Supervisor / Cargo Superintendent to submit a Vessel BDN for each
+                        Awaiting the Ops Supervisor / Marine Manager to submit a Vessel BDN for each
                         receiving vessel (Vessel BDN tab) — the operation completes once every one is approved.
                       </>
                     ) : op.type === "truck_only" ? (
@@ -5824,7 +5824,7 @@ export default function OperationDetailPage({
                               </Select>
                             </div>
                             <div className="space-y-1.5">
-                              <Label className="text-xs">Cargo Superintendent *</Label>
+                              <Label className="text-xs">Marine Manager *</Label>
                               <Select value={actAssignedTo} onValueChange={setActAssignedTo}>
                                 <SelectTrigger className="h-8 text-xs">
                                   <SelectValue placeholder="Select manager…" />
@@ -6357,7 +6357,7 @@ export default function OperationDetailPage({
                                       <div className="rounded-lg bg-muted/40 border border-border p-4 flex items-center gap-3 text-muted-foreground">
                                         <Loader2 className="w-4 h-4 animate-pulse shrink-0" />
                                         <div>
-                                          <p className="text-sm font-medium">Waiting for Cargo Superintendent</p>
+                                          <p className="text-sm font-medium">Waiting for Marine Manager</p>
                                           <p className="text-xs mt-0.5">
                                             The assigned supervisor will start this session when on-site.
                                           </p>

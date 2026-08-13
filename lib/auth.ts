@@ -64,7 +64,7 @@ export const ROLE_LABELS: Record<string, string> = {
   bunker_manager: "Bunker Manager",
   ops_supervisor: "Ops Supervisor",
   logistics_officer: "Logistics Officer",
-  cargo_superintendent: "Cargo Superintendent",
+  cargo_superintendent: "Marine Manager",
   finance_manager: "Finance Manager",
   client: "Client",
   marine_operator: "Marine Operator",

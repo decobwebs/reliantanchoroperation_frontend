@@ -64,7 +64,7 @@ const ELIGIBLE_TASK_TYPES: Record<OperationType, { value: string; label: string 
 const ROLE_LABELS: Record<string, string> = {
   ops_supervisor:       "Ops Supervisor",
   logistics_officer:    "Logistics Officer",
-  cargo_superintendent: "Cargo Superintendent",
+  cargo_superintendent: "Marine Manager",
   finance_manager:      "Finance Manager",
 };
 

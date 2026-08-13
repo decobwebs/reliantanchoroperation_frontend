@@ -908,6 +908,10 @@ export interface BDN {
   reviewed_by?: string;
   status: string;
   quantity_delivered_mt: string;
+  discharge_gov?: string;
+  discharge_gsv?: string;
+  density?: string;
+  temperature?: string;
   product_type?: string;
   fuel_type?: string;
   delivery_date: string;
@@ -916,6 +920,9 @@ export interface BDN {
   pdf_url?: string;
   notes?: string;
   created_at: string;
+  // Truck-vs-vessel reconciliation — computed server-side, display only.
+  truck_discharged_total_mt?: string;
+  truck_variance_mt?: string;
 }
 
 export interface TruckBdn {

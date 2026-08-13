@@ -1424,6 +1424,8 @@ export default function OperationDetailPage({
   const [showBdnForm,     setShowBdnForm]     = useState(false);
   const [bdnVesselId,     setBdnVesselId]     = useState("");
   const [bdnQty,          setBdnQty]          = useState("");
+  const [bdnGov,          setBdnGov]          = useState("");
+  const [bdnGsv,          setBdnGsv]          = useState("");
   const [bdnDeliveryDate, setBdnDeliveryDate] = useState("");
   const [bdnDensity,      setBdnDensity]      = useState("");
   const [bdnTemp,         setBdnTemp]         = useState("");
@@ -1433,7 +1435,7 @@ export default function OperationDetailPage({
 
   const closeBdnForm = () => {
     setShowBdnForm(false);
-    setBdnVesselId(""); setBdnQty(""); setBdnDeliveryDate("");
+    setBdnVesselId(""); setBdnQty(""); setBdnGov(""); setBdnGsv(""); setBdnDeliveryDate("");
     setBdnDensity(""); setBdnTemp(""); setBdnNotes("");
   };
 
@@ -1442,6 +1444,8 @@ export default function OperationDetailPage({
       await api.post(`/operations/${id}/bdns`, {
         vessel_id:             bdnVesselId,
         quantity_delivered_mt: parseFloat(bdnQty),
+        discharge_gov:         parseFloat(bdnGov),
+        discharge_gsv:         parseFloat(bdnGsv),
         delivery_date:         bdnDeliveryDate ? new Date(bdnDeliveryDate).toISOString() : new Date().toISOString(),
         product_type:          op?.product_type || undefined,
         density:               bdnDensity ? parseFloat(bdnDensity) : undefined,
@@ -3921,7 +3925,12 @@ export default function OperationDetailPage({
                   </TabsTrigger>
                 )}
 
-                {canSeeVesselBdn && op.type !== "truck_only" && (
+                {/* Full Operation now records GOV/GSV/MT on the BDNs tab itself
+                     (the one actually used) and that tab's approval drives ROB —
+                     this tab would be a pure duplicate there, so it's scoped to
+                     vessel_only, where it's still the only per-receiving-vessel
+                     delivery record that exists. */}
+                {canSeeVesselBdn && op.type === "vessel_only" && (
                   <TabsTrigger value="vessel-bdns">
                     Vessel Received Quantity
                     <TabCount value={vesselBdns?.length} />
@@ -4670,6 +4679,24 @@ export default function OperationDetailPage({
                           </div>
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <div className="space-y-1.5">
+                              <Label className="text-xs">GOV <span className="text-destructive">*</span></Label>
+                              <Input
+                                type="number" step="0.01" min="0"
+                                className="h-8 text-xs" placeholder="0.00"
+                                value={bdnGov} onChange={(e) => setBdnGov(e.target.value)}
+                              />
+                            </div>
+                            <div className="space-y-1.5">
+                              <Label className="text-xs">GSV <span className="text-destructive">*</span></Label>
+                              <Input
+                                type="number" step="0.01" min="0"
+                                className="h-8 text-xs" placeholder="0.00"
+                                value={bdnGsv} onChange={(e) => setBdnGsv(e.target.value)}
+                              />
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div className="space-y-1.5">
                               <Label className="text-xs">Loading Date <span className="text-destructive">*</span></Label>
                               <Input
                                 type="date" className="h-9 sm:h-8 text-xs"
@@ -4712,7 +4739,7 @@ export default function OperationDetailPage({
                           </div>
                           <Button
                             size="sm" className="w-full"
-                            disabled={!bdnVesselId || !bdnQty || !bdnDeliveryDate || createBdnMutation.isPending}
+                            disabled={!bdnVesselId || !bdnQty || !bdnGov || !bdnGsv || !bdnDeliveryDate || createBdnMutation.isPending}
                             onClick={() => createBdnMutation.mutate()}
                           >
                             {createBdnMutation.isPending ? "Submitting…" : "Submit BDN"}
@@ -4745,6 +4772,25 @@ export default function OperationDetailPage({
                                   {bdn.status}
                                 </Badge>
                               </div>
+
+                              {(bdn.discharge_gov || bdn.discharge_gsv) && (
+                                <div className="grid grid-cols-3 gap-x-4 gap-y-1 text-[11px] text-muted-foreground bg-muted/20 rounded-md p-2.5">
+                                  {bdn.discharge_gov && <span>GOV: {parseFloat(bdn.discharge_gov).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>}
+                                  {bdn.discharge_gsv && <span>GSV: {parseFloat(bdn.discharge_gsv).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>}
+                                  {bdn.density && <span>Density: {parseFloat(bdn.density).toLocaleString(undefined, { minimumFractionDigits: 3 })}</span>}
+                                  {bdn.temperature && <span>Temp: {parseFloat(bdn.temperature).toFixed(1)}°C</span>}
+                                </div>
+                              )}
+
+                              {bdn.truck_discharged_total_mt != null && (
+                                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px] rounded-md p-2.5 bg-indigo-50 text-indigo-800 dark:bg-indigo-500/10 dark:text-indigo-300">
+                                  <span className="col-span-2 text-[10px] font-semibold uppercase tracking-wide">Truck ↔ Vessel Reconciliation</span>
+                                  <span>Discharged by Trucks: {parseFloat(bdn.truck_discharged_total_mt).toLocaleString(undefined, { minimumFractionDigits: 3 })} MT</span>
+                                  {bdn.truck_variance_mt != null && (
+                                    <span className="font-semibold">Truck Variance: {parseFloat(bdn.truck_variance_mt).toLocaleString(undefined, { minimumFractionDigits: 3 })} MT</span>
+                                  )}
+                                </div>
+                              )}
 
                               {/* BM: approve / reject buttons for pending BDNs */}
                               {isBM && bdn.status === "pending" && (
@@ -5201,8 +5247,9 @@ export default function OperationDetailPage({
                 </TabsContent>
               )}
 
-              {/* ── Vessel BDN tab — one per vessel run, gates operation completion until ALL are approved */}
-              {canSeeVesselBdn && op.type !== "truck_only" && (() => {
+              {/* ── Vessel BDN tab — vessel_only only (see the trigger's comment above);
+                   one per receiving-vessel leg, gates operation completion until ALL are approved */}
+              {canSeeVesselBdn && op.type === "vessel_only" && (() => {
                 const isVesselOnly = op.type === "vessel_only";
 
                 // vessel_only: one BDN per receiving-vessel LEG (delivery
@@ -5377,22 +5424,6 @@ export default function OperationDetailPage({
                               </div>
                             </div>
 
-                            {/* ── Truck-vs-vessel reconciliation (Full Operation only) — replaces
-                                 the retired Start/Receipt/Bunkering/Discharge/Complete flow.
-                                 Total Quantity Discharged by Trucks is computed server-side from
-                                 Truck Reports on submit, not entered or previewed here. Approving
-                                 this BDN is what updates the vessel's ROB. ── */}
-                            {op?.type === "full_operation" && (
-                              <div className="space-y-1.5 rounded-lg border p-3">
-                                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Truck ↔ Vessel Reconciliation</p>
-                                <Label className="text-xs">Total Quantity Received by the Vessel (MT) <span className="text-destructive">*</span></Label>
-                                <Input type="number" step="0.001" min="0" className="h-8 text-xs" value={vesselBdnForm.vessel_received_total_mt ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, vessel_received_total_mt: e.target.value }))} />
-                                <p className="text-[11px] text-muted-foreground">
-                                  What the vessel itself measured receiving. Total Quantity Discharged by Trucks and
-                                  Truck Variance are computed from Truck Reports once submitted, and shown on the BDN afterward.
-                                </p>
-                              </div>
-                            )}
                           </div>
 
                           <div className="space-y-1.5">
@@ -5761,24 +5792,56 @@ export default function OperationDetailPage({
                     })()}
                   </section>
 
-                  {/* ── Vessel Receipt Summary: the actual Vessel BDN detail, not a
-                       truck-derived guess. A vessel with no submitted BDN yet simply
-                       doesn't appear here — this only ever shows what was manually
-                       recorded and approved, since that (vessel_received_total_mt) is
-                       the figure that became the vessel's ROB. Trucks-discharged stays
-                       visible per BDN purely for reference — it never drives anything. ── */}
+                  {/* ── Vessel Receipt Summary: the actual BDN detail, not a truck-
+                       derived guess. Sourced from whichever BDN flow is the real
+                       record of truth for this operation type:
+                         - full_operation → the "BDNs" tab (bdns) — the one actually
+                           used; GOV/GSV/MT are manually entered there and approving
+                           one is what credits the vessel's ROB.
+                         - vessel_only    → the "Vessel Received Quantity" tab
+                           (vesselBdns) — unaffected by the above, still its own
+                           per-receiving-vessel record.
+                       A vessel with no submitted BDN yet simply doesn't appear —
+                       this only ever shows what was actually recorded and approved.
+                       Trucks-discharged stays visible per BDN purely for reference;
+                       it never drives anything. ── */}
                   {(() => {
-                    const live = (vesselBdns ?? []).filter((vb) => vb.status !== "rejected");
-                    if (!live.length) return null;
+                    type Row = {
+                      id: string; bdnNumber: string; vesselId: string; status: string;
+                      primaryMt: number | null; secondaryLabel: string; secondaryValue: string;
+                      truckTotalMt: number | null; truckVarianceMt: number | null; sortKey: string;
+                    };
 
-                    const byVessel = new Map<string, VesselBdn[]>();
-                    live.forEach((vb) => {
-                      const list = byVessel.get(vb.vessel_id);
-                      if (list) list.push(vb); else byVessel.set(vb.vessel_id, [vb]);
+                    const rows: Row[] = op.type === "vessel_only"
+                      ? (vesselBdns ?? []).filter((vb) => vb.status !== "rejected").map((vb) => ({
+                          id: vb.id, bdnNumber: vb.bdn_number, vesselId: vb.vessel_id, status: vb.status,
+                          primaryMt: vb.vessel_received_total_mt ? parseFloat(vb.vessel_received_total_mt) : null,
+                          secondaryLabel: "Discharge MTvac",
+                          secondaryValue: parseFloat(vb.discharge_mt_vacuum).toLocaleString(undefined, { minimumFractionDigits: 3 }),
+                          truckTotalMt: vb.truck_discharged_total_mt != null ? parseFloat(vb.truck_discharged_total_mt) : null,
+                          truckVarianceMt: vb.truck_variance_mt != null ? parseFloat(vb.truck_variance_mt) : null,
+                          sortKey: vb.approved_at ?? vb.discharge_completed_at,
+                        }))
+                      : (bdns ?? []).filter((b) => b.status !== "rejected").map((b) => ({
+                          id: b.id, bdnNumber: b.bdn_number, vesselId: b.vessel_id, status: b.status,
+                          primaryMt: parseFloat(b.quantity_delivered_mt),
+                          secondaryLabel: "GOV / GSV",
+                          secondaryValue: `${b.discharge_gov ? parseFloat(b.discharge_gov).toLocaleString(undefined, { minimumFractionDigits: 2 }) : "—"} / ${b.discharge_gsv ? parseFloat(b.discharge_gsv).toLocaleString(undefined, { minimumFractionDigits: 2 }) : "—"}`,
+                          truckTotalMt: b.truck_discharged_total_mt != null ? parseFloat(b.truck_discharged_total_mt) : null,
+                          truckVarianceMt: b.truck_variance_mt != null ? parseFloat(b.truck_variance_mt) : null,
+                          sortKey: b.approved_at ?? b.delivery_date,
+                        }));
+
+                    if (!rows.length) return null;
+
+                    const byVessel = new Map<string, Row[]>();
+                    rows.forEach((r) => {
+                      const list = byVessel.get(r.vesselId);
+                      if (list) list.push(r); else byVessel.set(r.vesselId, [r]);
                     });
-                    byVessel.forEach((list) => list.sort((a, b) => (b.approved_at ?? b.discharge_completed_at).localeCompare(a.approved_at ?? a.discharge_completed_at)));
+                    byVessel.forEach((list) => list.sort((a, b) => b.sortKey.localeCompare(a.sortKey)));
 
-                    const totalMt = live.reduce((acc, vb) => acc + parseFloat(vb.vessel_received_total_mt ?? "0"), 0);
+                    const totalMt = rows.reduce((acc, r) => acc + (r.primaryMt ?? 0), 0);
 
                     return (
                       <Card className="rounded-2xl border border-navy-100 shadow-[0_1px_2px_rgb(16_36_71/0.04)] dark:border-border">
@@ -5788,43 +5851,43 @@ export default function OperationDetailPage({
                             Vessel Receipt Summary
                           </CardTitle>
                           <p className="text-xs text-muted-foreground">
-                            Recorded Vessel BDNs for this operation — the figure below is what updated each vessel&apos;s ROB.
+                            Recorded BDNs for this operation — the figure below is what updated each vessel&apos;s ROB.
                           </p>
                         </CardHeader>
                         <CardContent className="p-0">
                           <div className="divide-y">
-                            {Array.from(byVessel.entries()).flatMap(([vid, vbList]) => {
+                            {Array.from(byVessel.entries()).flatMap(([vid, rList]) => {
                               const vesselRecord = allVessels?.find((v) => v.id === vid);
                               const name = vesselRecord?.vessel_name ?? `Vessel ${vid.slice(0, 8)}`;
-                              return vbList.map((vb) => (
-                                <div key={vb.id} className="px-5 py-3 space-y-1.5">
+                              return rList.map((r) => (
+                                <div key={r.id} className="px-5 py-3 space-y-1.5">
                                   <div className="flex items-center justify-between gap-3">
                                     <div className="min-w-0">
                                       <p className="text-sm font-semibold truncate">{name}</p>
-                                      <p className="text-xs text-muted-foreground font-mono">{vb.bdn_number}</p>
+                                      <p className="text-xs text-muted-foreground font-mono">{r.bdnNumber}</p>
                                     </div>
                                     <div className="text-right shrink-0">
                                       <p className="text-sm font-mono font-semibold text-brand-700">
-                                        {vb.vessel_received_total_mt ? `+${parseFloat(vb.vessel_received_total_mt).toFixed(3)} MT` : "—"}
+                                        {r.primaryMt != null ? `+${r.primaryMt.toFixed(3)} MT` : "—"}
                                       </p>
-                                      <p className="text-[10px] text-muted-foreground uppercase tracking-wide">received by vessel</p>
+                                      <p className="text-[10px] text-muted-foreground uppercase tracking-wide">received</p>
                                     </div>
                                   </div>
                                   <div className="flex items-center justify-between gap-3 text-[11px] text-muted-foreground">
-                                    <span>Discharge MTvac: {parseFloat(vb.discharge_mt_vacuum).toLocaleString(undefined, { minimumFractionDigits: 3 })}</span>
-                                    <Badge variant={vb.status === "approved" ? "default" : "secondary"} className="text-[10px] capitalize shrink-0">{vb.status}</Badge>
+                                    <span>{r.secondaryLabel}: {r.secondaryValue}</span>
+                                    <Badge variant={r.status === "approved" ? "default" : "secondary"} className="text-[10px] capitalize shrink-0">{r.status}</Badge>
                                   </div>
-                                  {vb.truck_discharged_total_mt != null && (
+                                  {r.truckTotalMt != null && (
                                     <p className="text-[11px] text-muted-foreground">
-                                      Trucks discharged: {parseFloat(vb.truck_discharged_total_mt).toLocaleString(undefined, { minimumFractionDigits: 3 })} MT (for reference)
-                                      {vb.truck_variance_mt != null && ` · Truck Variance: ${parseFloat(vb.truck_variance_mt).toLocaleString(undefined, { minimumFractionDigits: 3 })} MT`}
+                                      Trucks discharged: {r.truckTotalMt.toLocaleString(undefined, { minimumFractionDigits: 3 })} MT (for reference)
+                                      {r.truckVarianceMt != null && ` · Truck Variance: ${r.truckVarianceMt.toLocaleString(undefined, { minimumFractionDigits: 3 })} MT`}
                                     </p>
                                   )}
                                 </div>
                               ));
                             })}
                           </div>
-                          {live.length > 1 && (
+                          {rows.length > 1 && (
                             <div className="px-5 py-2.5 border-t bg-muted/20 flex items-center justify-between">
                               <p className="text-xs text-muted-foreground">Total received across all vessels</p>
                               <p className="text-sm font-mono font-semibold">{totalMt.toFixed(3)} MT</p>

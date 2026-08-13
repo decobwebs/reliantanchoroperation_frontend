@@ -82,18 +82,15 @@ export default function LoginPage() {
               shake ? "animate-[shake_0.4s_ease-in-out]" : ""
             }`}
           >
-            {/* Brand lockup — the source PNG is the full stacked lockup, so the
-                mark is zoomed to the anchor glyph (ink spans 40.5% down, half the
-                canvas tall) and the wordmark is set in type instead. */}
             <div className="mb-12 flex items-center gap-4">
-              <div className="h-14 w-14 shrink-0 overflow-hidden">
+              <div className="h-14 w-14 shrink-0">
                 <Image
                   src="/logo-mark-sm.png"
                   alt=""
                   width={160}
                   height={160}
                   priority
-                  className="h-full w-full translate-y-[17%] scale-[1.75] object-cover"
+                  className="h-full w-full object-contain"
                 />
               </div>
               <div>

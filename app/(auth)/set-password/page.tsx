@@ -99,14 +99,14 @@ export default function SetPasswordPage() {
         <div className="flex flex-1 items-center justify-center">
           <div className="w-full max-w-[400px]">
             <div className="mb-12 flex items-center gap-4">
-              <div className="h-14 w-14 shrink-0 overflow-hidden">
+              <div className="h-14 w-14 shrink-0">
                 <Image
                   src="/logo-mark-sm.png"
                   alt=""
                   width={160}
                   height={160}
                   priority
-                  className="h-full w-full translate-y-[17%] scale-[1.75] object-cover"
+                  className="h-full w-full object-contain"
                 />
               </div>
               <div>

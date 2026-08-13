@@ -1887,10 +1887,10 @@ export default function OperationDetailPage({
   // of the ROB session status above.
   const VESSEL_STAGES: { value: string; label: string }[] = [
     { value: "cast_off", label: "Cast Off" },
-    { value: "outbound", label: "Outbound" },
+    { value: "approach", label: "Approach" },
     { value: "alongside", label: "Alongside" },
     { value: "hse_check", label: "HSE Check" },
-    { value: "discharging", label: "Discharging" },
+    { value: "commence_discharge", label: "Commence Discharge" },
     { value: "discharge_completed", label: "Discharge Completed" },
   ];
   const [stageFormActivityId, setStageFormActivityId] = useState<string | null>(null);
@@ -4530,7 +4530,7 @@ export default function OperationDetailPage({
                               </Select>
                             </div>
                             <div className="space-y-1.5">
-                              <Label className="text-xs">Quantity Loaded (L) <span className="text-destructive">*</span></Label>
+                              <Label className="text-xs">Quantity Loaded (MT) <span className="text-destructive">*</span></Label>
                               <Input
                                 type="number" step="0.001" min="0"
                                 className="h-8 text-xs" placeholder="0.000"
@@ -5179,11 +5179,11 @@ export default function OperationDetailPage({
                             <div className="space-y-4 rounded-lg border p-3">
                               <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Discharge Quantity — as read by the discharging vessel</p>
                               <div className="space-y-1.5">
-                                <Label className="text-xs">Quantity Loaded (L) <span className="text-destructive">*</span></Label>
+                                <Label className="text-xs">Quantity Loaded (MT) <span className="text-destructive">*</span></Label>
                                 <Input type="number" step="0.01" min="0" className="h-8 text-xs" value={vesselBdnForm.quantity_loaded_litres ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, quantity_loaded_litres: e.target.value }))} />
                               </div>
                               <div className="space-y-1.5">
-                                <Label className="text-xs">Quantity Discharged (L) <span className="text-destructive">*</span></Label>
+                                <Label className="text-xs">Quantity Discharged (MT) <span className="text-destructive">*</span></Label>
                                 <Input type="number" step="0.01" min="0" className="h-8 text-xs" value={vesselBdnForm.quantity_discharged_litres ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, quantity_discharged_litres: e.target.value }))} />
                               </div>
                               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -5202,11 +5202,11 @@ export default function OperationDetailPage({
                               </div>
                               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                                 <div className="space-y-1.5">
-                                  <Label className="text-xs">GOV (L) <span className="text-destructive">*</span></Label>
+                                  <Label className="text-xs">GOV <span className="text-destructive">*</span></Label>
                                   <Input type="number" step="0.01" min="0" className="h-8 text-xs" value={vesselBdnForm.discharge_gov ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, discharge_gov: e.target.value }))} />
                                 </div>
                                 <div className="space-y-1.5">
-                                  <Label className="text-xs">GSV (L) <span className="text-destructive">*</span></Label>
+                                  <Label className="text-xs">GSV <span className="text-destructive">*</span></Label>
                                   <Input type="number" step="0.01" min="0" className="h-8 text-xs" value={vesselBdnForm.discharge_gsv ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, discharge_gsv: e.target.value }))} />
                                 </div>
                                 <div className="space-y-1.5">
@@ -5233,11 +5233,11 @@ export default function OperationDetailPage({
                               </p>
                               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                                 <div className="space-y-1.5">
-                                  <Label className="text-xs">GOV (L)</Label>
+                                  <Label className="text-xs">GOV</Label>
                                   <Input type="number" step="0.01" min="0" className="h-8 text-xs" value={vesselBdnForm.received_gov ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, received_gov: e.target.value }))} />
                                 </div>
                                 <div className="space-y-1.5">
-                                  <Label className="text-xs">GSV (L)</Label>
+                                  <Label className="text-xs">GSV</Label>
                                   <Input type="number" step="0.01" min="0" className="h-8 text-xs" value={vesselBdnForm.received_gsv ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, received_gsv: e.target.value }))} />
                                 </div>
                                 <div className="space-y-1.5">
@@ -5521,15 +5521,15 @@ export default function OperationDetailPage({
                           <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                               <div className="space-y-1">
-                                <Label className="text-[10px] text-muted-foreground">Quantity (L) <span className="text-destructive">*</span></Label>
+                                <Label className="text-[10px] text-muted-foreground">Quantity (MT) <span className="text-destructive">*</span></Label>
                                 <Input type="number" step="0.01" min="0" className="h-8 text-xs" value={termQtyLitres} onChange={(e) => setTermQtyLitres(e.target.value)} />
                               </div>
                               <div className="space-y-1">
-                                <Label className="text-[10px] text-muted-foreground">GOV (L)</Label>
+                                <Label className="text-[10px] text-muted-foreground">GOV</Label>
                                 <Input type="number" step="0.01" min="0" className="h-8 text-xs" value={termGov} onChange={(e) => setTermGov(e.target.value)} />
                               </div>
                               <div className="space-y-1">
-                                <Label className="text-[10px] text-muted-foreground">GSV (L)</Label>
+                                <Label className="text-[10px] text-muted-foreground">GSV</Label>
                                 <Input type="number" step="0.01" min="0" className="h-8 text-xs" value={termGsv} onChange={(e) => setTermGsv(e.target.value)} />
                               </div>
                               <div className="space-y-1">
@@ -6013,7 +6013,7 @@ export default function OperationDetailPage({
                               <div className="grid grid-cols-4 gap-px border-t bg-muted/20">
                                 {[
                                   ["Prev ROB",  activity.previous_rob_mt],
-                                  ["Received",  activity.vessel_received_mt],
+                                  ["Discharged", activity.vessel_received_mt],
                                   ["New ROB",   activity.new_rob_mt],
                                   ["Variance",  activity.variance_mt],
                                 ].map(([lbl, val]) => (
@@ -6167,7 +6167,7 @@ export default function OperationDetailPage({
                                   )}
 
                                   {/* Discharge quantities — GOV/VCF/density in, GSV/MTvac computed */}
-                                  {canAct && stageIdx >= VESSEL_STAGES.findIndex((s) => s.value === "discharging") && (
+                                  {canAct && stageIdx >= VESSEL_STAGES.findIndex((s) => s.value === "commence_discharge") && (
                                     <div className="pt-1">
                                       {activity.gsv ? (
                                         <div className="grid grid-cols-4 gap-px border rounded-md overflow-hidden text-xs">
@@ -6183,7 +6183,7 @@ export default function OperationDetailPage({
                                           <p className="text-xs font-semibold">Discharge Quantities</p>
                                           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                                             <div className="space-y-1">
-                                              <Label className="text-[10px] text-muted-foreground">GOV (L)</Label>
+                                              <Label className="text-[10px] text-muted-foreground">GOV</Label>
                                               <Input type="number" className="h-8 text-xs" value={dqGov} onChange={(e) => setDqGov(e.target.value)} />
                                             </div>
                                             <div className="space-y-1">
@@ -6335,7 +6335,7 @@ export default function OperationDetailPage({
                                       {isBM && (
                                         editInitialRobId === activity.id ? (
                                           <div className="rounded-lg border bg-muted/30 p-3 space-y-2 mt-2">
-                                            <Label className="text-[10px] text-muted-foreground">Initial ROB (L)</Label>
+                                            <Label className="text-[10px] text-muted-foreground">Initial ROB (MT)</Label>
                                             <Input type="number" className="h-8 text-xs" value={editInitialRob} onChange={(e) => setEditInitialRob(e.target.value)} />
                                             <Textarea className="text-xs min-h-10 resize-none" placeholder="Reason for correction (required)…" value={editInitialRobReason} onChange={(e) => setEditInitialRobReason(e.target.value)} />
                                             <div className="flex gap-2">
@@ -6546,7 +6546,7 @@ export default function OperationDetailPage({
                                           <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
                                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                               <div className="space-y-1">
-                                                <Label className="text-[10px] text-muted-foreground">Received Quantity (L)</Label>
+                                                <Label className="text-[10px] text-muted-foreground">Received Quantity (MT)</Label>
                                                 <Input type="number" className="h-8 text-xs" value={loadReceived} onChange={(e) => setLoadReceived(e.target.value)} />
                                               </div>
                                               <div className="space-y-1">
@@ -6600,7 +6600,7 @@ export default function OperationDetailPage({
                                         ) : activity.loading_quantity_recorded_at ? (
                                           <QuantityReadout
                                             columns={[
-                                              ["Received", `${parseFloat(activity.loading_received_quantity_litres ?? "0").toLocaleString()} L`],
+                                              ["Received", `${parseFloat(activity.loading_received_quantity_litres ?? "0").toLocaleString()} MT`],
                                               ["MTVC",     parseFloat(activity.loading_mt_vacuum ?? "0").toLocaleString()],
                                               ["Recorded", formatDateTime(activity.loading_quantity_recorded_at)],
                                             ]}
@@ -6968,7 +6968,7 @@ export default function OperationDetailPage({
                                                             <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
                                                               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                                                 <div className="space-y-1">
-                                                                  <Label className="text-[10px] text-muted-foreground">Discharged Quantity (L)</Label>
+                                                                  <Label className="text-[10px] text-muted-foreground">Discharged Quantity (MT)</Label>
                                                                   <Input type="number" className="h-8 text-xs" value={legQtyDischarged} onChange={(e) => setLegQtyDischarged(e.target.value)} />
                                                                 </div>
                                                                 <div className="space-y-1">

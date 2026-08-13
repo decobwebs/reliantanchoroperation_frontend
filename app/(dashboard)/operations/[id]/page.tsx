@@ -1889,7 +1889,7 @@ export default function OperationDetailPage({
     { value: "cast_off", label: "Cast Off" },
     { value: "approach", label: "Approach" },
     { value: "alongside", label: "Alongside" },
-    { value: "hse_check", label: "HSE Check" },
+    { value: "hse_check", label: "Pre HSE Check" },
     { value: "commence_discharge", label: "Commence Discharge" },
     { value: "discharge_completed", label: "Discharge Completed" },
   ];
@@ -2075,9 +2075,12 @@ export default function OperationDetailPage({
    *  Post items. Deriving them means the two can never drift apart, and the
    *  wording stays the compliance-form wording it was signed off as.
    *
-   *  `resultField`/`checklistField` name the columns each phase reads back
-   *  from; "pre" uses the original unprefixed pair, which is why existing
-   *  recorded checklists still display after the split. */
+   *  `resultField`/`checklistField`/`notesField`/`officerField` name the
+   *  columns each phase reads back from; "pre" uses the original unprefixed
+   *  set, which is why existing recorded checklists still display after the
+   *  split. The "during" label borrows the BM's own section header ("B.
+   *  Transfer Operation") rather than a coined term like "During Operation",
+   *  so the name on screen matches the name on the signed form. */
   const HSE_PHASES = [
     {
       phase: "pre" as const,
@@ -2086,14 +2089,18 @@ export default function OperationDetailPage({
       sections: ["A. Pre-Operation"],
       resultField: "hse_result" as const,
       checklistField: "hse_checklist" as const,
+      notesField: "hse_notes" as const,
+      officerField: "hse_safety_officer" as const,
     },
     {
       phase: "during" as const,
-      label: "During Operation",
+      label: "Transfer Operation",
       atStage: "commence_discharge",
       sections: ["B. Transfer Operation", "C. Mid-Operation Safety"],
       resultField: "hse_during_result" as const,
       checklistField: "hse_during_checklist" as const,
+      notesField: "hse_during_notes" as const,
+      officerField: "hse_during_safety_officer" as const,
     },
     {
       phase: "post" as const,
@@ -2102,6 +2109,8 @@ export default function OperationDetailPage({
       sections: ["D. Post-Operation"],
       resultField: "hse_post_result" as const,
       checklistField: "hse_post_checklist" as const,
+      notesField: "hse_post_notes" as const,
+      officerField: "hse_post_safety_officer" as const,
     },
   ];
 
@@ -2155,6 +2164,12 @@ export default function OperationDetailPage({
   const [hseChecklist, setHseChecklist] = useState(DEFAULT_HSE_CHECKLIST);
   const [hseNotes, setHseNotes] = useState("");
   const [hseOfficer, setHseOfficer] = useState("");
+  // Set only when the form was opened via "Correct" on an already-recorded
+  // phase — the backend requires a reason in that case, and this is what
+  // keeps that requirement from applying to a fresh, first-time recording.
+  const [hseIsCorrecting, setHseIsCorrecting] = useState(false);
+  const [hseCorrectReason, setHseCorrectReason] = useState("");
+
   const openHseForm = (activityId: string, phase?: (typeof HSE_PHASES)[number]) => {
     setHseFormActivityId(activityId);
     setHseFormPhase(phase?.phase ?? "pre");
@@ -2163,6 +2178,24 @@ export default function OperationDetailPage({
     setHseChecklist(phase ? hsePhaseChecklist(phase) : DEFAULT_HSE_CHECKLIST);
     setHseNotes("");
     setHseOfficer("");
+    setHseIsCorrecting(false);
+    setHseCorrectReason("");
+  };
+  // Reopens an already-recorded phase pre-filled with what was submitted, so
+  // amending a checklist after the operation has moved on doesn't mean
+  // retyping it from scratch. That room to go back stays open for the rest
+  // of the run, same as the Cast Off client block below.
+  const openHseCorrection = (activity: VesselActivity, phase: (typeof HSE_PHASES)[number]) => {
+    setHseFormActivityId(activity.id);
+    setHseFormPhase(phase.phase);
+    const stored = (activity[phase.checklistField] as { section?: string; item: string; passed: boolean; notes?: string }[]) ?? [];
+    setHseChecklist(stored.length
+      ? stored.map((r) => ({ section: r.section ?? "", item: r.item, passed: r.passed, notes: r.notes ?? "" }))
+      : hsePhaseChecklist(phase));
+    setHseNotes((activity[phase.notesField] as string | undefined) ?? "");
+    setHseOfficer((activity[phase.officerField] as string | undefined) ?? "");
+    setHseIsCorrecting(true);
+    setHseCorrectReason("");
   };
   const closeHseForm = () => {
     setHseFormActivityId(null);
@@ -2170,6 +2203,8 @@ export default function OperationDetailPage({
     setHseChecklist(DEFAULT_HSE_CHECKLIST);
     setHseNotes("");
     setHseOfficer("");
+    setHseIsCorrecting(false);
+    setHseCorrectReason("");
   };
 
   const recordHseMutation = useMutation({
@@ -2180,11 +2215,12 @@ export default function OperationDetailPage({
         notes: hseNotes.trim() || undefined,
         safety_officer: hseOfficer.trim() || undefined,
         phase: hseFormPhase,
+        reason: hseIsCorrecting ? hseCorrectReason.trim() : undefined,
       });
     },
     onSuccess: () => {
       const label = HSE_PHASES.find((p) => p.phase === hseFormPhase)?.label ?? "HSE";
-      toast.success(`${label} checklist recorded`);
+      toast.success(hseIsCorrecting ? `${label} checklist correction saved` : `${label} checklist recorded`);
       closeHseForm();
       refetchVesselActivities();
     },
@@ -6165,16 +6201,31 @@ export default function OperationDetailPage({
                                     {VESSEL_STAGES.map((s, i) => {
                                       const done = i <= stageIdx;
                                       const current = i === stageIdx + 1;
+                                      // The HSE check tied to this stage, if any — shown inline so
+                                      // the checklist status is visible on the progress line itself,
+                                      // not only in the separate section further down.
+                                      const hsePhase = HSE_PHASES.find((p) => p.atStage === s.value);
+                                      const hseRecorded = hsePhase ? !!activity[hsePhase.resultField] : false;
                                       return (
                                         <div key={s.value} className="flex items-center gap-1 shrink-0">
-                                          <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold ${
-                                            done ? "bg-emerald-500 text-white" : current ? "bg-primary text-white" : "bg-muted text-muted-foreground"
-                                          }`}>
-                                            {done ? "✓" : i + 1}
+                                          <div className="flex flex-col items-center gap-0.5">
+                                            <div className="flex items-center gap-1">
+                                              <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold ${
+                                                done ? "bg-emerald-500 text-white" : current ? "bg-primary text-white" : "bg-muted text-muted-foreground"
+                                              }`}>
+                                                {done ? "✓" : i + 1}
+                                              </div>
+                                              <span className={`text-[10px] ${done ? "text-muted-foreground line-through" : current ? "font-semibold" : "text-muted-foreground"}`}>
+                                                {s.label}
+                                              </span>
+                                            </div>
+                                            {hsePhase && i <= stageIdx && (
+                                              <span className={`flex items-center gap-0.5 text-[8px] font-medium whitespace-nowrap ${hseRecorded ? "text-emerald-600" : "text-amber-600"}`}>
+                                                <ShieldCheck className="w-2.5 h-2.5 shrink-0" />
+                                                {hsePhase.label} HSE {hseRecorded ? "✓" : "pending"}
+                                              </span>
+                                            )}
                                           </div>
-                                          <span className={`text-[10px] ${done ? "text-muted-foreground line-through" : current ? "font-semibold" : "text-muted-foreground"}`}>
-                                            {s.label}
-                                          </span>
                                           {i < VESSEL_STAGES.length - 1 && <ChevronRight className="w-2.5 h-2.5 text-muted-foreground/30 shrink-0" />}
                                         </div>
                                       );
@@ -6312,16 +6363,22 @@ export default function OperationDetailPage({
                                     if (stageIdx < unlockIdx) return null;   // stage not reached yet
                                     const result = activity[p.resultField] as string | undefined;
                                     const isOpen = hseFormActivityId === activity.id && hseFormPhase === p.phase;
+                                    const isCorrectingThis = isOpen && hseIsCorrecting;
                                     return (
                                       <div key={p.phase} className="pt-1">
-                                        {result ? (
-                                          <div className={`rounded-md px-3 py-2 text-xs flex items-center gap-2 ${result === "satisfactory" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
-                                            <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
-                                            {p.label} HSE recorded — {result === "satisfactory" ? "Satisfactory" : "Issues noted (recorded, non-blocking)"}
+                                        {result && !isCorrectingThis ? (
+                                          <div className={`rounded-md px-3 py-2 text-xs flex items-center justify-between gap-2 ${result === "satisfactory" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
+                                            <span className="flex items-center gap-2">
+                                              <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+                                              {p.label} HSE recorded — {result === "satisfactory" ? "Satisfactory" : "Issues noted (recorded, non-blocking)"}
+                                            </span>
+                                            {isBM && (
+                                              <button className={cn(INLINE_LINK, "shrink-0")} onClick={() => openHseCorrection(activity, p)}>Correct</button>
+                                            )}
                                           </div>
                                         ) : isOpen ? (
                                           <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
-                                            <p className="text-xs font-semibold">{p.label} HSE Checklist</p>
+                                            <p className="text-xs font-semibold">{isCorrectingThis ? `Correct ${p.label} HSE Checklist` : `${p.label} HSE Checklist`}</p>
                                             {hseChecklist.map((item, i) => (
                                               <label key={i} className="flex items-start gap-2 text-xs">
                                                 <input type="checkbox" className="mt-0.5 shrink-0" checked={item.passed} onChange={(e) => setHseChecklist((rows) => rows.map((r, idx) => idx === i ? { ...r, passed: e.target.checked } : r))} />
@@ -6333,9 +6390,16 @@ export default function OperationDetailPage({
                                               <Input className="h-9 sm:h-8 text-xs" placeholder="Name of the officer signing off…" value={hseOfficer} onChange={(e) => setHseOfficer(e.target.value)} />
                                             </div>
                                             <Textarea className="text-xs min-h-12.5 resize-none" placeholder="Notes…" value={hseNotes} onChange={(e) => setHseNotes(e.target.value)} />
+                                            {isCorrectingThis && (
+                                              <Textarea className="text-xs min-h-10 resize-none" placeholder="Reason for correction (required)…" value={hseCorrectReason} onChange={(e) => setHseCorrectReason(e.target.value)} />
+                                            )}
                                             <div className="flex gap-2">
-                                              <Button size="sm" className="flex-1 text-xs" disabled={recordHseMutation.isPending} onClick={() => recordHseMutation.mutate(activity.id)}>
-                                                {recordHseMutation.isPending ? <Spinner size={14} /> : `Submit ${p.label} Checklist`}
+                                              <Button
+                                                size="sm" className="flex-1 text-xs"
+                                                disabled={recordHseMutation.isPending || (isCorrectingThis && !hseCorrectReason.trim())}
+                                                onClick={() => recordHseMutation.mutate(activity.id)}
+                                              >
+                                                {recordHseMutation.isPending ? <Spinner size={14} /> : isCorrectingThis ? "Save Correction" : `Submit ${p.label} Checklist`}
                                               </Button>
                                               <Button size="sm" variant="ghost" className="text-xs" onClick={closeHseForm}>Cancel</Button>
                                             </div>

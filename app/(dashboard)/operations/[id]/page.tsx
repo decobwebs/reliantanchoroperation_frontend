@@ -4781,9 +4781,9 @@ export default function OperationDetailPage({
                               {bdn.truck_discharged_total_mt != null && (
                                 <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px] rounded-md p-2.5 bg-indigo-50 text-indigo-800 dark:bg-indigo-500/10 dark:text-indigo-300">
                                   <span className="col-span-2 text-[10px] font-semibold uppercase tracking-wide">Truck ↔ Vessel Reconciliation</span>
-                                  <span>Discharged by Trucks: {parseFloat(bdn.truck_discharged_total_mt).toLocaleString(undefined, { minimumFractionDigits: 3 })} MT</span>
+                                  <span>Discharged by Trucks: {parseFloat(bdn.truck_discharged_total_mt).toLocaleString(undefined, { minimumFractionDigits: 3 })}</span>
                                   {bdn.truck_variance_mt != null && (
-                                    <span className="font-semibold">Truck Variance: {parseFloat(bdn.truck_variance_mt).toLocaleString(undefined, { minimumFractionDigits: 3 })} MT</span>
+                                    <span className="font-semibold">Truck Variance: {parseFloat(bdn.truck_variance_mt).toLocaleString(undefined, { minimumFractionDigits: 3 })}</span>
                                   )}
                                 </div>
                               )}

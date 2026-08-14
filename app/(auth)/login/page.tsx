@@ -85,7 +85,7 @@ export default function LoginPage() {
             <div className="mb-12 flex items-center gap-4">
               <div className="h-14 w-14 shrink-0">
                 <Image
-                  src="/logo-mark-sm.png"
+                  src="/logo-email.png"
                   alt=""
                   width={160}
                   height={160}

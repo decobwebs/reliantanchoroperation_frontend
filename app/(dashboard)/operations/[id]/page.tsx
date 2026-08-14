@@ -1432,6 +1432,65 @@ export default function OperationDetailPage({
   const [bdnNotes,        setBdnNotes]        = useState("");
   const [rejectBdnId,     setRejectBdnId]     = useState<string | null>(null);
   const [rejectBdnReason, setRejectBdnReason] = useState("");
+  // BM: edit any BDN regardless of status — the one BDN flow that had no
+  // correction path at all until now (Vessel BDN and Truck BDN already had
+  // their own Edit dialogs; this tab was create/approve/reject only).
+  const [editBdnId,   setEditBdnId]   = useState<string | null>(null);
+  const [editBdnForm, setEditBdnForm] = useState<Record<string, string>>({});
+  const [editBdnReason, setEditBdnReason] = useState("");
+  const [deleteBdnId, setDeleteBdnId] = useState<string | null>(null);
+
+  const openEditBdn = (bdn: BDN) => {
+    setEditBdnId(bdn.id);
+    setEditBdnForm({
+      quantity_delivered_mt: bdn.quantity_delivered_mt ?? "",
+      discharge_gov: bdn.discharge_gov ?? "",
+      discharge_gsv: bdn.discharge_gsv ?? "",
+      product_type: bdn.product_type ?? "",
+      density: bdn.density ?? "",
+      temperature: bdn.temperature ?? "",
+      delivery_date: bdn.delivery_date ? bdn.delivery_date.slice(0, 10) : "",
+      notes: bdn.notes ?? "",
+    });
+    setEditBdnReason("");
+  };
+
+  const editBdnMutation = useMutation({
+    mutationFn: async () => {
+      if (!editBdnId) return;
+      const payload: Record<string, unknown> = { reason: editBdnReason.trim() };
+      if (editBdnForm.quantity_delivered_mt) payload.quantity_delivered_mt = parseFloat(editBdnForm.quantity_delivered_mt);
+      if (editBdnForm.discharge_gov) payload.discharge_gov = parseFloat(editBdnForm.discharge_gov);
+      if (editBdnForm.discharge_gsv) payload.discharge_gsv = parseFloat(editBdnForm.discharge_gsv);
+      if (editBdnForm.product_type) payload.product_type = editBdnForm.product_type;
+      if (editBdnForm.density) payload.density = parseFloat(editBdnForm.density);
+      if (editBdnForm.temperature) payload.temperature = parseFloat(editBdnForm.temperature);
+      if (editBdnForm.delivery_date) payload.delivery_date = new Date(editBdnForm.delivery_date).toISOString();
+      if (editBdnForm.notes) payload.notes = editBdnForm.notes;
+      await api.put(`/bdns/${editBdnId}`, payload);
+    },
+    onSuccess: () => {
+      toast.success("BDN updated");
+      setEditBdnId(null);
+      qc.invalidateQueries({ queryKey: ["operation-bdns", id] });
+      qc.invalidateQueries({ queryKey: ["operation-activity", id] });
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const deleteBdnMutation = useMutation({
+    mutationFn: async (bdnId: string) => {
+      await api.delete(`/bdns/${bdnId}`);
+    },
+    onSuccess: () => {
+      toast.success("BDN deleted");
+      setDeleteBdnId(null);
+      qc.invalidateQueries({ queryKey: ["operation-bdns", id] });
+      qc.invalidateQueries({ queryKey: ["operation", id] });
+      qc.invalidateQueries({ queryKey: ["operation-activity", id] });
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
 
   const closeBdnForm = () => {
     setShowBdnForm(false);
@@ -1520,6 +1579,18 @@ export default function OperationDetailPage({
   const [editTruckBdnId,       setEditTruckBdnId]       = useState<string | null>(null);
   const [editTruckBdnForm,     setEditTruckBdnForm]     = useState<Record<string, string>>({});
   const [editTruckBdnReason,   setEditTruckBdnReason]   = useState("");
+  const [deleteTruckBdnId,     setDeleteTruckBdnId]     = useState<string | null>(null);
+
+  const deleteTruckBdnMutation = useMutation({
+    mutationFn: async (truckBdnId: string) => { await api.delete(`/truck-bdns/${truckBdnId}`); },
+    onSuccess: () => {
+      toast.success("Truck BDN deleted");
+      setDeleteTruckBdnId(null);
+      qc.invalidateQueries({ queryKey: ["operation-truck-bdns", id] });
+      qc.invalidateQueries({ queryKey: ["operation", id] });
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
 
   const truckBdnFormComplete = TRUCK_BDN_REQUIRED_FIELDS.every((k) => (truckBdnForm[k] ?? "").trim() !== "");
 
@@ -1747,6 +1818,18 @@ export default function OperationDetailPage({
       toast.success("Vessel BDN rejected");
       setRejectVesselBdnId(null);
       setRejectVesselBdnReason("");
+      qc.invalidateQueries({ queryKey: ["operation-vessel-bdns", id] });
+      qc.invalidateQueries({ queryKey: ["operation", id] });
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const [deleteVesselBdnId, setDeleteVesselBdnId] = useState<string | null>(null);
+  const deleteVesselBdnMutation = useMutation({
+    mutationFn: async (bdnId: string) => { await api.delete(`/vessel-bdns/${bdnId}`); },
+    onSuccess: () => {
+      toast.success("Vessel BDN deleted");
+      setDeleteVesselBdnId(null);
       qc.invalidateQueries({ queryKey: ["operation-vessel-bdns", id] });
       qc.invalidateQueries({ queryKey: ["operation", id] });
     },
@@ -4817,6 +4900,37 @@ export default function OperationDetailPage({
                                 </div>
                               )}
 
+                              {/* BM: edit / delete — available on every BDN regardless of status */}
+                              {isBM && (
+                                deleteBdnId === bdn.id ? (
+                                  <div className="space-y-2 border border-destructive/30 rounded-md p-3 bg-destructive/5">
+                                    <p className="text-xs font-semibold text-destructive">
+                                      Delete BDN {bdn.bdn_number}? This cannot be undone.
+                                      {bdn.status === "approved" && " Its ROB credit will be reversed."}
+                                    </p>
+                                    <div className="flex gap-2">
+                                      <Button
+                                        size="sm" variant="destructive" className="flex-1 text-xs"
+                                        disabled={deleteBdnMutation.isPending}
+                                        onClick={() => deleteBdnMutation.mutate(bdn.id)}
+                                      >
+                                        {deleteBdnMutation.isPending ? "Deleting…" : "Confirm Delete"}
+                                      </Button>
+                                      <Button size="sm" variant="outline" className="flex-1 text-xs" onClick={() => setDeleteBdnId(null)}>Cancel</Button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="flex gap-2 pt-1">
+                                    <Button size="sm" variant="outline" className="text-xs gap-1" onClick={() => openEditBdn(bdn)}>
+                                      <Pencil className="w-3 h-3" />Edit
+                                    </Button>
+                                    <Button size="sm" variant="outline" className="text-xs gap-1 text-destructive border-destructive/30 hover:bg-destructive/10" onClick={() => setDeleteBdnId(bdn.id)}>
+                                      <Trash2 className="w-3 h-3" />Delete
+                                    </Button>
+                                  </div>
+                                )
+                              )}
+
                               {/* BM: approve / reject buttons for pending BDNs */}
                               {isBM && bdn.status === "pending" && (
                                 <div className="pt-1 space-y-2">
@@ -5165,12 +5279,29 @@ export default function OperationDetailPage({
                                     {tb.status}
                                   </Badge>
                                   {isBM && (
-                                    <Button size="sm" variant="outline" className="h-6 px-1.5" onClick={() => openEditTruckBdn(tb)}>
-                                      <Pencil className="w-3 h-3" />
-                                    </Button>
+                                    <>
+                                      <Button size="sm" variant="outline" className="h-6 px-1.5" onClick={() => openEditTruckBdn(tb)}>
+                                        <Pencil className="w-3 h-3" />
+                                      </Button>
+                                      <Button size="sm" variant="outline" className="h-6 px-1.5 text-destructive border-destructive/30 hover:bg-destructive/10" onClick={() => setDeleteTruckBdnId(tb.id)}>
+                                        <Trash2 className="w-3 h-3" />
+                                      </Button>
+                                    </>
                                   )}
                                 </div>
                               </div>
+
+                              {deleteTruckBdnId === tb.id && (
+                                <div className="space-y-2 border border-destructive/30 rounded-md p-3 bg-destructive/5">
+                                  <p className="text-xs font-semibold text-destructive">Delete Truck BDN {tb.truck_bdn_number}? This cannot be undone.</p>
+                                  <div className="flex gap-2">
+                                    <Button size="sm" variant="destructive" className="flex-1 text-xs" disabled={deleteTruckBdnMutation.isPending} onClick={() => deleteTruckBdnMutation.mutate(tb.id)}>
+                                      {deleteTruckBdnMutation.isPending ? "Deleting…" : "Confirm Delete"}
+                                    </Button>
+                                    <Button size="sm" variant="outline" className="flex-1 text-xs" onClick={() => setDeleteTruckBdnId(null)}>Cancel</Button>
+                                  </div>
+                                </div>
+                              )}
 
                               {/* System recorded vs. Submitted comparison */}
                               <div className="rounded-md border overflow-hidden">
@@ -5543,12 +5674,32 @@ export default function OperationDetailPage({
                                     {vb.status}
                                   </Badge>
                                   {isBM && (
-                                    <Button size="sm" variant="outline" className="h-6 px-1.5" onClick={() => openEditVesselBdn(vb)}>
-                                      <Pencil className="w-3 h-3" />
-                                    </Button>
+                                    <>
+                                      <Button size="sm" variant="outline" className="h-6 px-1.5" onClick={() => openEditVesselBdn(vb)}>
+                                        <Pencil className="w-3 h-3" />
+                                      </Button>
+                                      <Button size="sm" variant="outline" className="h-6 px-1.5 text-destructive border-destructive/30 hover:bg-destructive/10" onClick={() => setDeleteVesselBdnId(vb.id)}>
+                                        <Trash2 className="w-3 h-3" />
+                                      </Button>
+                                    </>
                                   )}
                                 </div>
                               </div>
+
+                              {deleteVesselBdnId === vb.id && (
+                                <div className="space-y-2 border border-destructive/30 rounded-md p-3 bg-destructive/5">
+                                  <p className="text-xs font-semibold text-destructive">
+                                    Delete Vessel BDN {vb.bdn_number}? This cannot be undone.
+                                    {vb.status === "approved" && " Its ROB debit will be reversed."}
+                                  </p>
+                                  <div className="flex gap-2">
+                                    <Button size="sm" variant="destructive" className="flex-1 text-xs" disabled={deleteVesselBdnMutation.isPending} onClick={() => deleteVesselBdnMutation.mutate(vb.id)}>
+                                      {deleteVesselBdnMutation.isPending ? "Deleting…" : "Confirm Delete"}
+                                    </Button>
+                                    <Button size="sm" variant="outline" className="flex-1 text-xs" onClick={() => setDeleteVesselBdnId(null)}>Cancel</Button>
+                                  </div>
+                                </div>
+                              )}
 
                               <div className="rounded-md border overflow-hidden">
                                 <div className="grid grid-cols-[1fr_1fr_1fr] bg-muted/40 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
@@ -9353,6 +9504,75 @@ export default function OperationDetailPage({
             >
               {sendStaffNotificationMutation.isPending && <Spinner size={14} className="mr-1.5" />}
               Send
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── BM: Edit BDN dialog (the "BDNs" tab — trucks loading onto our vessel) */}
+      <Dialog open={!!editBdnId} onOpenChange={(v) => { if (!v) setEditBdnId(null); }}>
+        <DialogContent className="sm:max-w-md" aria-describedby={undefined}>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><Pencil className="w-4 h-4 text-primary" />Edit BDN</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 mt-1 max-h-[70vh] overflow-y-auto pr-1">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">MT</Label>
+                <Input type="number" step="0.001" value={editBdnForm.quantity_delivered_mt ?? ""} onChange={(e) => setEditBdnForm((f) => ({ ...f, quantity_delivered_mt: e.target.value }))} />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Product Type</Label>
+                <Input value={editBdnForm.product_type ?? ""} onChange={(e) => setEditBdnForm((f) => ({ ...f, product_type: e.target.value }))} />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">GOV</Label>
+                <Input type="number" step="0.01" value={editBdnForm.discharge_gov ?? ""} onChange={(e) => setEditBdnForm((f) => ({ ...f, discharge_gov: e.target.value }))} />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">GSV</Label>
+                <Input type="number" step="0.01" value={editBdnForm.discharge_gsv ?? ""} onChange={(e) => setEditBdnForm((f) => ({ ...f, discharge_gsv: e.target.value }))} />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Density</Label>
+                <Input type="number" step="0.0001" value={editBdnForm.density ?? ""} onChange={(e) => setEditBdnForm((f) => ({ ...f, density: e.target.value }))} />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Temperature (°C)</Label>
+                <Input type="number" step="0.1" value={editBdnForm.temperature ?? ""} onChange={(e) => setEditBdnForm((f) => ({ ...f, temperature: e.target.value }))} />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Loading Date</Label>
+              <Input type="date" value={editBdnForm.delivery_date ?? ""} onChange={(e) => setEditBdnForm((f) => ({ ...f, delivery_date: e.target.value }))} />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Notes</Label>
+              <Textarea rows={2} className="resize-none text-xs" value={editBdnForm.notes ?? ""} onChange={(e) => setEditBdnForm((f) => ({ ...f, notes: e.target.value }))} />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Reason for edit <span className="text-destructive">*</span></Label>
+              <Textarea
+                rows={2}
+                className="resize-none text-xs"
+                placeholder="Why is this being changed…"
+                value={editBdnReason}
+                onChange={(e) => setEditBdnReason(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditBdnId(null)}>Cancel</Button>
+            <Button
+              disabled={editBdnReason.trim().length < 10 || editBdnMutation.isPending}
+              onClick={() => editBdnMutation.mutate()}
+            >
+              {editBdnMutation.isPending && <Spinner size={14} className="mr-1.5" />}
+              Save Changes
             </Button>
           </DialogFooter>
         </DialogContent>

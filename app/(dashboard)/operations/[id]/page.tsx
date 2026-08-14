@@ -8122,15 +8122,38 @@ export default function OperationDetailPage({
                                 })()}
                               </div>
 
-                              {/* BM: discharge approval section */}
-                              {isBM && to.discharge_approved === false && (
-                                <div className="flex items-center gap-3 pt-1 border-t flex-wrap">
-                                  <div className="flex items-center gap-1.5 flex-1">
-                                    <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                                    <p className="text-xs font-semibold text-amber-800">
-                                      Discharge pending approval — ROB not yet updated
+                              {/* BM: journey edit + discharge approval section — Edit is always
+                                   available, regardless of approval state or stage reached. It used
+                                   to only render when discharge_approved was exactly true or false;
+                                   a truck with no destination vessel ever set (the exact case that
+                                   needs fixing) sits at null and matched neither, so the button
+                                   silently never appeared for it. */}
+                              {isBM && (
+                                <div className="flex items-center justify-between gap-3 pt-1 border-t flex-wrap">
+                                  {to.discharge_approved === false ? (
+                                    <div className="flex items-center gap-1.5 flex-1">
+                                      <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                                      <p className="text-xs font-semibold text-amber-800">
+                                        Discharge pending approval — ROB not yet updated
+                                      </p>
+                                    </div>
+                                  ) : to.discharge_approved === true ? (
+                                    <div className="flex items-center gap-1.5">
+                                      <BadgeCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                      <p className="text-xs font-semibold text-emerald-700">
+                                        Discharge approved — vessel ROB updated
+                                        {to.discharge_approved_at && (
+                                          <span className="ml-1 font-normal text-muted-foreground">
+                                            · {formatDateTime(to.discharge_approved_at)}
+                                          </span>
+                                        )}
+                                      </p>
+                                    </div>
+                                  ) : (
+                                    <p className="text-xs text-muted-foreground flex-1">
+                                      No destination vessel recorded yet — ROB not updated.
                                     </p>
-                                  </div>
+                                  )}
                                   <div className="flex gap-2 shrink-0">
                                     <Button
                                       size="sm"
@@ -8141,44 +8164,22 @@ export default function OperationDetailPage({
                                       <Pencil className="w-3 h-3" />
                                       Edit
                                     </Button>
-                                    <Button
-                                      size="sm"
-                                      className="h-7 text-xs gap-1 bg-emerald-600 hover:bg-emerald-700"
-                                      disabled={approveDischargeM.isPending}
-                                      onClick={() => approveDischargeM.mutate(to.id)}
-                                    >
-                                      {approveDischargeM.isPending ? (
-                                        <Spinner size={12} />
-                                      ) : (
-                                        <BadgeCheck className="w-3 h-3" />
-                                      )}
-                                      Approve Discharge
-                                    </Button>
+                                    {to.discharge_approved === false && (
+                                      <Button
+                                        size="sm"
+                                        className="h-7 text-xs gap-1 bg-emerald-600 hover:bg-emerald-700"
+                                        disabled={approveDischargeM.isPending}
+                                        onClick={() => approveDischargeM.mutate(to.id)}
+                                      >
+                                        {approveDischargeM.isPending ? (
+                                          <Spinner size={12} />
+                                        ) : (
+                                          <BadgeCheck className="w-3 h-3" />
+                                        )}
+                                        Approve Discharge
+                                      </Button>
+                                    )}
                                   </div>
-                                </div>
-                              )}
-                              {isBM && to.discharge_approved === true && (
-                                <div className="flex items-center justify-between gap-3 pt-1 border-t flex-wrap">
-                                  <div className="flex items-center gap-1.5">
-                                    <BadgeCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                                    <p className="text-xs font-semibold text-emerald-700">
-                                      Discharge approved — vessel ROB updated
-                                      {to.discharge_approved_at && (
-                                        <span className="ml-1 font-normal text-muted-foreground">
-                                          · {formatDateTime(to.discharge_approved_at)}
-                                        </span>
-                                      )}
-                                    </p>
-                                  </div>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="h-7 text-xs gap-1 shrink-0"
-                                    onClick={() => openEditDischarge(to)}
-                                  >
-                                    <Pencil className="w-3 h-3" />
-                                    Edit Record
-                                  </Button>
                                 </div>
                               )}
                             </div>

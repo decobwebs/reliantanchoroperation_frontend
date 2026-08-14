@@ -1644,7 +1644,7 @@ export default function OperationDetailPage({
     "quantity_loaded_litres", "quantity_discharged_litres",
     "density", "temperature",
     "vcf", "discharge_gov", "discharge_gsv", "discharge_mt_vacuum",
-    "discharge_completed_at", "discharge_completion_date",
+    "discharge_commenced_at", "discharge_completed_at", "discharge_completion_date",
   ] as const;
 
   const [vesselBdnFormActivityId, setVesselBdnFormActivityId] = useState<string | null>(null);
@@ -1681,11 +1681,7 @@ export default function OperationDetailPage({
       if (raw === "") return true;
       const n = parseFloat(raw);
       return Number.isFinite(n) && n > 0;
-    }) &&
-    (op?.type !== "full_operation" || (() => {
-      const n = parseFloat(vesselBdnForm.vessel_received_total_mt ?? "");
-      return Number.isFinite(n) && n > 0;
-    })());
+    });
 
   const createVesselBdnMutation = useMutation({
     mutationFn: async () => {
@@ -1706,12 +1702,12 @@ export default function OperationDetailPage({
         discharge_gov:              parseFloat(vesselBdnForm.discharge_gov),
         discharge_gsv:              parseFloat(vesselBdnForm.discharge_gsv),
         discharge_mt_vacuum:        parseFloat(vesselBdnForm.discharge_mt_vacuum),
+        discharge_commenced_at:     new Date(vesselBdnForm.discharge_commenced_at).toISOString(),
         discharge_completed_at:     new Date(vesselBdnForm.discharge_completed_at).toISOString(),
         discharge_completion_date:  vesselBdnForm.discharge_completion_date,
         received_gov:               vesselBdnForm.received_gov?.trim() ? parseFloat(vesselBdnForm.received_gov) : undefined,
         received_gsv:               vesselBdnForm.received_gsv?.trim() ? parseFloat(vesselBdnForm.received_gsv) : undefined,
         received_mt_vacuum:         vesselBdnForm.received_mt_vacuum?.trim() ? parseFloat(vesselBdnForm.received_mt_vacuum) : undefined,
-        vessel_received_total_mt:   vesselBdnForm.vessel_received_total_mt?.trim() ? parseFloat(vesselBdnForm.vessel_received_total_mt) : undefined,
         notes:                      vesselBdnForm.notes?.trim() || undefined,
       });
     },
@@ -1772,15 +1768,12 @@ export default function OperationDetailPage({
       discharge_gov:              vb.discharge_gov,
       discharge_gsv:              vb.discharge_gsv,
       discharge_mt_vacuum:        vb.discharge_mt_vacuum,
+      discharge_commenced_at:     vb.discharge_commenced_at ? vb.discharge_commenced_at.slice(0, 16) : "",
       discharge_completed_at:     vb.discharge_completed_at ? vb.discharge_completed_at.slice(0, 16) : "",
       discharge_completion_date:  vb.discharge_completion_date ?? "",
       received_gov:               vb.received_gov ?? "",
       received_gsv:               vb.received_gsv ?? "",
       received_mt_vacuum:         vb.received_mt_vacuum ?? "",
-      vessel_received_total_mt:   vb.vessel_received_total_mt ?? "",
-      // Display-only — computed server-side, never sent back in the update payload.
-      truck_discharged_total_mt: vb.truck_discharged_total_mt ?? "",
-      truck_variance_mt:         vb.truck_variance_mt ?? "",
       notes:                      vb.notes ?? "",
     });
     setEditVesselBdnReason("");
@@ -1802,12 +1795,12 @@ export default function OperationDetailPage({
         discharge_gov:              editVesselBdnForm.discharge_gov ? parseFloat(editVesselBdnForm.discharge_gov) : undefined,
         discharge_gsv:              editVesselBdnForm.discharge_gsv ? parseFloat(editVesselBdnForm.discharge_gsv) : undefined,
         discharge_mt_vacuum:        editVesselBdnForm.discharge_mt_vacuum ? parseFloat(editVesselBdnForm.discharge_mt_vacuum) : undefined,
+        discharge_commenced_at:     editVesselBdnForm.discharge_commenced_at ? new Date(editVesselBdnForm.discharge_commenced_at).toISOString() : undefined,
         discharge_completed_at:     editVesselBdnForm.discharge_completed_at ? new Date(editVesselBdnForm.discharge_completed_at).toISOString() : undefined,
         discharge_completion_date:  editVesselBdnForm.discharge_completion_date || undefined,
         received_gov:               editVesselBdnForm.received_gov ? parseFloat(editVesselBdnForm.received_gov) : undefined,
         received_gsv:               editVesselBdnForm.received_gsv ? parseFloat(editVesselBdnForm.received_gsv) : undefined,
         received_mt_vacuum:         editVesselBdnForm.received_mt_vacuum ? parseFloat(editVesselBdnForm.received_mt_vacuum) : undefined,
-        vessel_received_total_mt:   editVesselBdnForm.vessel_received_total_mt ? parseFloat(editVesselBdnForm.vessel_received_total_mt) : undefined,
         notes:                      editVesselBdnForm.notes || undefined,
         reason:                     editVesselBdnReason.trim(),
       });
@@ -5396,9 +5389,13 @@ export default function OperationDetailPage({
                                   <Input type="number" step="0.001" min="0" className="h-8 text-xs" value={vesselBdnForm.discharge_mt_vacuum ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, discharge_mt_vacuum: e.target.value }))} />
                                 </div>
                               </div>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                                 <div className="space-y-1.5">
-                                  <Label className="text-xs">Completed Discharge <span className="text-destructive">*</span></Label>
+                                  <Label className="text-xs">Commence Discharge <span className="text-destructive">*</span></Label>
+                                  <Input type="datetime-local" className="h-9 sm:h-8 text-xs" value={vesselBdnForm.discharge_commenced_at ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, discharge_commenced_at: e.target.value }))} />
+                                </div>
+                                <div className="space-y-1.5">
+                                  <Label className="text-xs">Discharge Completed <span className="text-destructive">*</span></Label>
                                   <Input type="datetime-local" className="h-9 sm:h-8 text-xs" value={vesselBdnForm.discharge_completed_at ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, discharge_completed_at: e.target.value }))} />
                                 </div>
                                 <div className="space-y-1.5">
@@ -5429,22 +5426,17 @@ export default function OperationDetailPage({
                               </div>
                             </div>
 
-                            {/* ── Truck-vs-vessel reconciliation (Full Operation only) — this is
-                                 the leg the BDNs tab doesn't cover: what OUR vessel discharged to
-                                 the receiving vessel, reconciled against what trucks brought in.
-                                 Total Quantity Discharged by Trucks is computed server-side from
-                                 Truck Reports on submit, not entered or previewed here. Approving
-                                 this BDN is what updates the vessel's ROB. ── */}
+                            {/* No truck-vs-vessel reconciliation here — this form is entirely
+                                 about OUR vessel discharging OUT to the receiving vessel above.
+                                 That reconciliation is the loading leg (trucks onto our vessel)
+                                 and lives on the BDNs tab, which already does it independently
+                                 with its own GOV/GSV and its own ROB credit. Approving this BDN
+                                 debits our vessel's ROB by MTvac instead — see
+                                 _apply_discharge_rob_debit in vessel_bdn_service.py. */}
                             {op?.type === "full_operation" && (
-                              <div className="space-y-1.5 rounded-lg border p-3">
-                                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Truck ↔ Vessel Reconciliation</p>
-                                <Label className="text-xs">Total Quantity Received by the Vessel (MT) <span className="text-destructive">*</span></Label>
-                                <Input type="number" step="0.001" min="0" className="h-8 text-xs" value={vesselBdnForm.vessel_received_total_mt ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, vessel_received_total_mt: e.target.value }))} />
-                                <p className="text-[11px] text-muted-foreground">
-                                  What the vessel itself measured receiving. Total Quantity Discharged by Trucks and
-                                  Truck Variance are computed from Truck Reports once submitted, and shown on the BDN afterward.
-                                </p>
-                              </div>
+                              <p className="text-[11px] text-muted-foreground">
+                                Approving this BDN reduces this vessel&apos;s ROB by MTvac above — product leaving to {vesselBdnForm.receiving_vessel?.trim() || "the receiving vessel"}.
+                              </p>
                             )}
                           </div>
 
@@ -5835,13 +5827,17 @@ export default function OperationDetailPage({
                     };
 
                     const rows: Row[] = op.type === "vessel_only"
+                      // vessel_received_total_mt is never populated for a leg-based Vessel
+                      // BDN (create_vessel_bdn_for_leg never sets it) — every row here would
+                      // show a blank headline. discharge_mt_vacuum is the real, always-present
+                      // figure: what this vessel actually discharged to the receiving vessel.
                       ? (vesselBdns ?? []).filter((vb) => vb.status !== "rejected").map((vb) => ({
                           id: vb.id, bdnNumber: vb.bdn_number, vesselId: vb.vessel_id, status: vb.status,
-                          primaryMt: vb.vessel_received_total_mt ? parseFloat(vb.vessel_received_total_mt) : null,
-                          secondaryLabel: "Discharge MTvac",
-                          secondaryValue: parseFloat(vb.discharge_mt_vacuum).toLocaleString(undefined, { minimumFractionDigits: 3 }),
-                          truckTotalMt: vb.truck_discharged_total_mt != null ? parseFloat(vb.truck_discharged_total_mt) : null,
-                          truckVarianceMt: vb.truck_variance_mt != null ? parseFloat(vb.truck_variance_mt) : null,
+                          primaryMt: vb.discharge_mt_vacuum ? parseFloat(vb.discharge_mt_vacuum) : null,
+                          secondaryLabel: "GOV / GSV",
+                          secondaryValue: `${vb.discharge_gov ? parseFloat(vb.discharge_gov).toLocaleString(undefined, { minimumFractionDigits: 2 }) : "—"} / ${vb.discharge_gsv ? parseFloat(vb.discharge_gsv).toLocaleString(undefined, { minimumFractionDigits: 2 }) : "—"}`,
+                          truckTotalMt: null,
+                          truckVarianceMt: null,
                           sortKey: vb.approved_at ?? vb.discharge_completed_at,
                         }))
                       : (bdns ?? []).filter((b) => b.status !== "rejected").map((b) => ({
@@ -9498,13 +9494,19 @@ export default function OperationDetailPage({
                 <Input type="number" step="0.001" value={editVesselBdnForm.discharge_mt_vacuum ?? ""} onChange={(e) => setEditVesselBdnForm((f) => ({ ...f, discharge_mt_vacuum: e.target.value }))} />
               </div>
             </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Completed Discharge</Label>
-              <Input type="datetime-local" value={editVesselBdnForm.discharge_completed_at ?? ""} onChange={(e) => setEditVesselBdnForm((f) => ({ ...f, discharge_completed_at: e.target.value }))} />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Date of Discharge Completion</Label>
-              <Input type="date" value={editVesselBdnForm.discharge_completion_date ?? ""} onChange={(e) => setEditVesselBdnForm((f) => ({ ...f, discharge_completion_date: e.target.value }))} />
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Commence Discharge</Label>
+                <Input type="datetime-local" value={editVesselBdnForm.discharge_commenced_at ?? ""} onChange={(e) => setEditVesselBdnForm((f) => ({ ...f, discharge_commenced_at: e.target.value }))} />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Discharge Completed</Label>
+                <Input type="datetime-local" value={editVesselBdnForm.discharge_completed_at ?? ""} onChange={(e) => setEditVesselBdnForm((f) => ({ ...f, discharge_completed_at: e.target.value }))} />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Date of Discharge Completion</Label>
+                <Input type="date" value={editVesselBdnForm.discharge_completion_date ?? ""} onChange={(e) => setEditVesselBdnForm((f) => ({ ...f, discharge_completion_date: e.target.value }))} />
+              </div>
             </div>
             <div className="space-y-2 rounded-lg border p-2.5">
               <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Received Quantity (receiving vessel&apos;s own readings)</p>
@@ -9524,26 +9526,9 @@ export default function OperationDetailPage({
               </div>
             </div>
             {op?.type === "full_operation" && (
-              <div className="space-y-2 rounded-lg border p-2.5">
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Truck ↔ Vessel Reconciliation (MT)</p>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">Discharged by Trucks</Label>
-                    <Input type="number" disabled value={editVesselBdnForm.truck_discharged_total_mt ?? ""} className="bg-muted/40" />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">Received by Vessel <span className="text-destructive">*</span></Label>
-                    <Input type="number" step="0.001" value={editVesselBdnForm.vessel_received_total_mt ?? ""} onChange={(e) => setEditVesselBdnForm((f) => ({ ...f, vessel_received_total_mt: e.target.value }))} />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">Truck Variance</Label>
-                    <Input type="number" disabled value={editVesselBdnForm.truck_variance_mt ?? ""} className="bg-muted/40" />
-                  </div>
-                </div>
-                <p className="text-[11px] text-muted-foreground">
-                  Correcting Received by Vessel on an approved BDN also corrects the vessel&apos;s ROB ledger — the prior entry is reversed and reapplied with the new figure.
-                </p>
-              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Correcting MTvac on an approved BDN also corrects the vessel&apos;s ROB ledger — the prior discharge entry is reversed and reapplied with the new figure.
+              </p>
             )}
             <div className="space-y-1.5">
               <Label className="text-xs">Notes</Label>

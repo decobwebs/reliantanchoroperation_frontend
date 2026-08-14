@@ -2776,6 +2776,11 @@ export default function OperationDetailPage({
   const [editDischVesselId, setEditDischVesselId] = useState("");
   const [editDischVesselName, setEditDischVesselName] = useState("");
   const [editDischNotes, setEditDischNotes] = useState("");
+  // The rest of the journey — every TRUCK_STAGES timestamp plus the fields
+  // logged alongside each one, so a stage that was skipped or wrongly filled
+  // in (like a truck that finished discharge with no destination vessel
+  // ever picked) can be fixed here instead of needing a database fix.
+  const [editJourneyForm, setEditJourneyForm] = useState<Record<string, string>>({});
 
   const openEditDischarge = (to: TruckOperation) => {
     setEditDischargeId(to.id);
@@ -2796,6 +2801,19 @@ export default function OperationDetailPage({
       setEditDischVesselName("");
     }
     setEditDischNotes(to.notes ?? "");
+    setEditJourneyForm({
+      departed_parking_at:     to.departed_parking_at ? to.departed_parking_at.slice(0, 16) : "",
+      arrived_loading_at:      to.arrived_loading_at ? to.arrived_loading_at.slice(0, 16) : "",
+      loading_location:        to.loading_location ?? "",
+      transit_start_at:        to.transit_start_at ? to.transit_start_at.slice(0, 16) : "",
+      departed_loading_at:     to.departed_loading_at ? to.departed_loading_at.slice(0, 16) : "",
+      quantity_loaded_mt:      to.quantity_loaded_mt ?? "",
+      waybill_document_number: to.waybill_document_number ?? "",
+      arrived_discharge_at:    to.arrived_discharge_at ? to.arrived_discharge_at.slice(0, 16) : "",
+      discharge_location:      to.discharge_location ?? "",
+      discharge_start_at:      to.discharge_start_at ? to.discharge_start_at.slice(0, 16) : "",
+      discharge_end_at:        to.discharge_end_at ? to.discharge_end_at.slice(0, 16) : "",
+    });
   };
 
   // ── Safety audit state
@@ -3359,6 +3377,17 @@ export default function OperationDetailPage({
       else if (editDischVesselMode === "other" && editDischVesselName)
         payload.destination_vessel_name = editDischVesselName;
       if (editDischNotes) payload.notes = editDischNotes;
+      const dtFields = [
+        "departed_parking_at", "arrived_loading_at", "transit_start_at",
+        "departed_loading_at", "arrived_discharge_at", "discharge_start_at", "discharge_end_at",
+      ] as const;
+      for (const f of dtFields) {
+        if (editJourneyForm[f]) payload[f] = new Date(editJourneyForm[f]).toISOString();
+      }
+      if (editJourneyForm.loading_location) payload.loading_location = editJourneyForm.loading_location;
+      if (editJourneyForm.discharge_location) payload.discharge_location = editJourneyForm.discharge_location;
+      if (editJourneyForm.quantity_loaded_mt) payload.quantity_loaded_mt = parseFloat(editJourneyForm.quantity_loaded_mt);
+      if (editJourneyForm.waybill_document_number) payload.waybill_document_number = editJourneyForm.waybill_document_number;
       await api.patch(`/operations/${id}/trucks/${editDischargeId}/discharge-record`, payload);
     },
     onSuccess: () => {
@@ -8828,14 +8857,16 @@ export default function OperationDetailPage({
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Pencil className="w-4 h-4 text-primary" />
-              Edit Discharge Record
+              Edit Truck Journey
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3 mt-2">
             <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5">
               <p className="text-xs text-amber-800 font-semibold">Bunker Manager Edit</p>
               <p className="text-xs text-amber-700 mt-0.5">
-                All changes will be logged in the audit trail as "Edited by BM". If already approved, ROB entries will be adjusted automatically.
+                Any stage of this truck's journey can be corrected here — including a destination vessel
+                that was never picked. All changes are logged in the audit trail as "Edited by BM"; ROB is
+                credited or adjusted automatically where it applies.
               </p>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -8908,6 +8939,60 @@ export default function OperationDetailPage({
                   />
                 )}
               </div>
+            </div>
+            <div className="space-y-2 rounded-lg border p-2.5">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Full Journey — fix a skipped or wrong stage
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div className="space-y-1">
+                  <Label className="text-[11px]">Departed Parking</Label>
+                  <Input type="datetime-local" className="h-8 text-xs" value={editJourneyForm.departed_parking_at ?? ""} onChange={(e) => setEditJourneyForm((f) => ({ ...f, departed_parking_at: e.target.value }))} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[11px]">Arrived at Loading Point</Label>
+                  <Input type="datetime-local" className="h-8 text-xs" value={editJourneyForm.arrived_loading_at ?? ""} onChange={(e) => setEditJourneyForm((f) => ({ ...f, arrived_loading_at: e.target.value }))} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[11px]">Loading Location</Label>
+                  <Input className="h-8 text-xs" value={editJourneyForm.loading_location ?? ""} onChange={(e) => setEditJourneyForm((f) => ({ ...f, loading_location: e.target.value }))} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[11px]">Loading Started</Label>
+                  <Input type="datetime-local" className="h-8 text-xs" value={editJourneyForm.transit_start_at ?? ""} onChange={(e) => setEditJourneyForm((f) => ({ ...f, transit_start_at: e.target.value }))} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[11px]">Loading Completed / Departed</Label>
+                  <Input type="datetime-local" className="h-8 text-xs" value={editJourneyForm.departed_loading_at ?? ""} onChange={(e) => setEditJourneyForm((f) => ({ ...f, departed_loading_at: e.target.value }))} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[11px]">Quantity Loaded (L)</Label>
+                  <Input type="number" step="0.001" className="h-8 text-xs" value={editJourneyForm.quantity_loaded_mt ?? ""} onChange={(e) => setEditJourneyForm((f) => ({ ...f, quantity_loaded_mt: e.target.value }))} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[11px]">Waybill Number</Label>
+                  <Input className="h-8 text-xs" value={editJourneyForm.waybill_document_number ?? ""} onChange={(e) => setEditJourneyForm((f) => ({ ...f, waybill_document_number: e.target.value }))} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[11px]">Arrived at Discharge Point</Label>
+                  <Input type="datetime-local" className="h-8 text-xs" value={editJourneyForm.arrived_discharge_at ?? ""} onChange={(e) => setEditJourneyForm((f) => ({ ...f, arrived_discharge_at: e.target.value }))} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[11px]">Discharge Location</Label>
+                  <Input className="h-8 text-xs" value={editJourneyForm.discharge_location ?? ""} onChange={(e) => setEditJourneyForm((f) => ({ ...f, discharge_location: e.target.value }))} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[11px]">Discharge Started</Label>
+                  <Input type="datetime-local" className="h-8 text-xs" value={editJourneyForm.discharge_start_at ?? ""} onChange={(e) => setEditJourneyForm((f) => ({ ...f, discharge_start_at: e.target.value }))} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[11px]">Discharge Completed</Label>
+                  <Input type="datetime-local" className="h-8 text-xs" value={editJourneyForm.discharge_end_at ?? ""} onChange={(e) => setEditJourneyForm((f) => ({ ...f, discharge_end_at: e.target.value }))} />
+                </div>
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Leave any field blank to keep it as it is — only what you change here gets updated.
+              </p>
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold">Notes <span className="font-normal text-muted-foreground">(opt.)</span></Label>

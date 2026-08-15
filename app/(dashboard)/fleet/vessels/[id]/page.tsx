@@ -57,7 +57,7 @@ const BDN_STATUS_CONFIG: Record<string, { label: string; color: string }> = {
 const ROLE_LABEL: Record<string, string> = {
   bunker_manager:       "Bunker Manager",
   ops_supervisor:       "Ops Supervisor",
-  cargo_superintendent: "Marine Manager",
+  cargo_superintendent: "Cargo Superintendent",
 };
 
 // The ledger's five entry types map onto the five shared AccentTones exactly

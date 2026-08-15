@@ -537,7 +537,7 @@ export function CreateOperationDialog({ open, onClose, onCreated }: Props) {
   } = useFieldArray({ control, name: "pfi_allocations" });
 
   const opType = watch("type") as OperationType;
-  const [navalClearanceId, setNavalClearanceId] = useState("");
+  const [navalClearanceIds, setNavalClearanceIds] = useState<string[]>([]);
 
   // Seed one empty product row when the dialog opens, so the form isn't
   // empty-by-default requiring an extra click.
@@ -561,7 +561,7 @@ export function CreateOperationDialog({ open, onClose, onCreated }: Props) {
     // before switching would otherwise still get silently linked on submit.
     if (prevType === "truck_only") {
       setValue("vessel_id", "");
-      setNavalClearanceId("");
+      setNavalClearanceIds([]);
     }
     // source_type only applies to vessel-only — clear it switching to any
     // other type so a stale value from an earlier vessel-only selection
@@ -643,15 +643,17 @@ export function CreateOperationDialog({ open, onClose, onCreated }: Props) {
       };
       const res = await api.post("/operations", payload);
       const operation = extractData<{ id: string }>(res);
-      if (navalClearanceId && operation?.id) {
-        await api.post(`/operations/${operation.id}/link-naval-clearance`, { naval_clearance_id: navalClearanceId });
+      if (operation?.id) {
+        for (const ncId of navalClearanceIds) {
+          await api.post(`/operations/${operation.id}/link-naval-clearance`, { naval_clearance_id: ncId });
+        }
       }
       return operation;
     },
     onSuccess: () => {
       toast.success("Operation created");
       reset();
-      setNavalClearanceId("");
+      setNavalClearanceIds([]);
       onCreated();
     },
     onError: (err) => toast.error(getErrorMessage(err)),
@@ -659,7 +661,7 @@ export function CreateOperationDialog({ open, onClose, onCreated }: Props) {
 
   const handleClose = useCallback(() => {
     reset();
-    setNavalClearanceId("");
+    setNavalClearanceIds([]);
     onClose();
   }, [reset, onClose]);
 
@@ -808,19 +810,43 @@ export function CreateOperationDialog({ open, onClose, onCreated }: Props) {
               </div>
             )}
 
-            {/* Naval Clearance (conditional, optional, never a gate) */}
+            {/* Naval Clearance (conditional, optional, never a gate) — an
+                operation can hold more than one, so this picks and adds
+                rather than replacing a single selection. */}
             {needsVessel && (
               <div className="space-y-1.5">
                 <Label>
                   Naval Clearance
-                  <span className="ml-1 text-xs font-normal text-muted-foreground">(optional — can be linked later)</span>
+                  <span className="ml-1 text-xs font-normal text-muted-foreground">(optional — can be linked later, more than one allowed)</span>
                 </Label>
-                <Select value={navalClearanceId} onValueChange={setNavalClearanceId}>
+                {navalClearanceIds.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mb-1.5">
+                    {navalClearanceIds.map((ncId) => {
+                      const nc = navalClearances?.find((n) => n.id === ncId);
+                      return (
+                        <span key={ncId} className="inline-flex items-center gap-1 rounded-full border bg-muted/40 px-2.5 py-1 text-xs">
+                          {nc?.clearance_number ?? ncId.slice(0, 8)}
+                          <button
+                            type="button"
+                            className="text-muted-foreground hover:text-destructive"
+                            onClick={() => setNavalClearanceIds((ids) => ids.filter((id) => id !== ncId))}
+                          >
+                            ×
+                          </button>
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+                <Select
+                  value=""
+                  onValueChange={(v) => setNavalClearanceIds((ids) => (ids.includes(v) ? ids : [...ids, v]))}
+                >
                   <SelectTrigger>
-                    <SelectValue placeholder="Select Naval Clearance…" />
+                    <SelectValue placeholder="Add a Naval Clearance…" />
                   </SelectTrigger>
                   <SelectContent>
-                    {navalClearances?.map((nc) => (
+                    {navalClearances?.filter((nc) => !navalClearanceIds.includes(nc.id)).map((nc) => (
                       <SelectItem key={nc.id} value={nc.id}>
                         {nc.clearance_number}
                         <span className="ml-1.5 text-xs text-muted-foreground">

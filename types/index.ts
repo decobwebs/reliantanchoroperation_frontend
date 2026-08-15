@@ -114,6 +114,16 @@ export interface Operation {
     products: string[];
     is_valid: boolean;
   };
+  // Supersedes naval_clearance_id/naval_clearance above (kept, unused going
+  // forward) — an operation can hold any number of clearances now.
+  naval_clearances?: {
+    id: string;
+    clearance_number: string;
+    ppdl_number?: string;
+    bfl_numbers: string[];
+    products: string[];
+    is_valid: boolean;
+  }[];
   // Serialised by OperationOut — the real product list. `product_type` above
   // is the legacy single-product scalar and is null on anything created
   // through the current flow.

@@ -1198,14 +1198,19 @@ export default function OperationDetailPage({
   });
   const [unlinkNcReason, setUnlinkNcReason] = useState("");
   const [showUnlinkNc, setShowUnlinkNc] = useState(false);
+  // Which clearance is being unlinked — an operation can hold several, so
+  // "unlink" always needs to say which one, not just "the one."
+  const [unlinkNcTargetId, setUnlinkNcTargetId] = useState<string | null>(null);
   const unlinkNcMutation = useMutation({
     mutationFn: async () => {
-      await api.post(`/operations/${id}/unlink-naval-clearance`, { reason: unlinkNcReason.trim() });
+      if (!unlinkNcTargetId) return;
+      await api.post(`/operations/${id}/unlink-naval-clearance`, { naval_clearance_id: unlinkNcTargetId, reason: unlinkNcReason.trim() });
     },
     onSuccess: () => {
       toast.success("Naval Clearance unlinked");
       setShowUnlinkNc(false);
       setUnlinkNcReason("");
+      setUnlinkNcTargetId(null);
       qc.invalidateQueries({ queryKey: ["operation", id] });
     },
     onError: (err) => toast.error(getErrorMessage(err)),
@@ -1235,7 +1240,7 @@ export default function OperationDetailPage({
       const res = await api.get<ApiResponse<ClientNotificationLog[]>>(`/operations/${id}/client-notifications/log`);
       return res.data.data ?? [];
     },
-    enabled: isBM && !!op?.naval_clearance_id,
+    enabled: isBM && !!op?.naval_clearances?.length,
   });
 
   const { data: operationKpi, isLoading: operationKpiLoading, isError: operationKpiErrored, refetch: refetchOperationKpi } = useQuery({
@@ -3555,14 +3560,14 @@ export default function OperationDetailPage({
                 </span>
               </MetaChip>
             )}
-            {op.type !== "truck_only" && op.naval_clearance && (
-              <MetaChip icon={ShieldCheck}>
-                {op.naval_clearance.clearance_number}
-                {!op.naval_clearance.is_valid && (
+            {op.type !== "truck_only" && op.naval_clearances?.map((nc) => (
+              <MetaChip key={nc.id} icon={ShieldCheck}>
+                {nc.clearance_number}
+                {!nc.is_valid && (
                   <span className="ml-1 text-amber-600">(expired)</span>
                 )}
               </MetaChip>
-            )}
+            ))}
             {op.color && (
               <MetaChip>
                 <span
@@ -3620,32 +3625,34 @@ export default function OperationDetailPage({
                   </DropdownMenuItem>
 
                   {op.type !== "truck_only" && (
-                    op.naval_clearance ? (
-                      <>
+                    <>
+                      {(op.naval_clearances?.length ?? 0) > 0 && (
                         <DropdownMenuItem className="text-[13px]" onSelect={() => setShowNotifyDialog(true)}>
                           <Bell className="mr-2 h-3.5 w-3.5" />
                           Notify Clients
                         </DropdownMenuItem>
+                      )}
+                      {/* Multiple clearances allowed — linking another never
+                          replaces one already attached. */}
+                      <DropdownMenuItem className="text-[13px]" onSelect={() => setShowLinkNc(true)}>
+                        <Anchor className="mr-2 h-3.5 w-3.5" />
+                        {(op.naval_clearances?.length ?? 0) > 0 ? "Link Another Naval Clearance" : "Link Naval Clearance"}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem className="text-[13px]" onSelect={() => setShowCreateNc(true)}>
+                        <PlusCircle className="mr-2 h-3.5 w-3.5" />
+                        Create &amp; Link BFL / Naval Clearance
+                      </DropdownMenuItem>
+                      {op.naval_clearances?.map((nc) => (
                         <DropdownMenuItem
+                          key={nc.id}
                           className="text-[13px] text-destructive focus:text-destructive"
-                          onSelect={() => setShowUnlinkNc(true)}
+                          onSelect={() => { setUnlinkNcTargetId(nc.id); setShowUnlinkNc(true); }}
                         >
                           <XCircle className="mr-2 h-3.5 w-3.5" />
-                          Unlink Naval Clearance
+                          Unlink {nc.clearance_number}
                         </DropdownMenuItem>
-                      </>
-                    ) : (
-                      <>
-                        <DropdownMenuItem className="text-[13px]" onSelect={() => setShowLinkNc(true)}>
-                          <Anchor className="mr-2 h-3.5 w-3.5" />
-                          Link Naval Clearance
-                        </DropdownMenuItem>
-                        <DropdownMenuItem className="text-[13px]" onSelect={() => setShowCreateNc(true)}>
-                          <PlusCircle className="mr-2 h-3.5 w-3.5" />
-                          Create &amp; Link BFL / Naval Clearance
-                        </DropdownMenuItem>
-                      </>
-                    )
+                      ))}
+                    </>
                   )}
 
                   <DropdownMenuItem className="text-[13px]" onSelect={() => setShowColorPicker(true)}>
@@ -9280,7 +9287,7 @@ export default function OperationDetailPage({
             <Select value={linkNcId} onValueChange={setLinkNcId}>
               <SelectTrigger><SelectValue placeholder="Select Naval Clearance…" /></SelectTrigger>
               <SelectContent>
-                {linkableClearances?.map((nc) => (
+                {linkableClearances?.filter((nc) => !op.naval_clearances?.some((linked) => linked.id === nc.id)).map((nc) => (
                   <SelectItem key={nc.id} value={nc.id}>
                     {nc.clearance_number}
                     <span className="ml-1.5 text-xs text-muted-foreground">
@@ -9302,9 +9309,13 @@ export default function OperationDetailPage({
       </Dialog>
 
       {/* ── BM: Unlink Naval Clearance dialog ── */}
-      <Dialog open={showUnlinkNc} onOpenChange={(v) => { setShowUnlinkNc(v); if (!v) setUnlinkNcReason(""); }}>
+      <Dialog open={showUnlinkNc} onOpenChange={(v) => { setShowUnlinkNc(v); if (!v) { setUnlinkNcReason(""); setUnlinkNcTargetId(null); } }}>
         <DialogContent className="sm:max-w-sm" aria-describedby={undefined}>
-          <DialogHeader><DialogTitle>Unlink Naval Clearance</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>
+              Unlink {op.naval_clearances?.find((nc) => nc.id === unlinkNcTargetId)?.clearance_number ?? "Naval Clearance"}
+            </DialogTitle>
+          </DialogHeader>
           <div className="space-y-3 mt-1">
             <Label className="text-xs">Reason <span className="text-destructive">*</span></Label>
             <Textarea

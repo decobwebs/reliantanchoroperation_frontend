@@ -246,10 +246,13 @@ function getAvailableTransitions(
       // Delivery done — completion no longer happens directly from here.
       // Ops Supervisor / Logistics Officer must submit the Truck BDN (Truck
       // BDN tab); BM's only direct action at this stage is to bounce it back
-      // to Active.
-      return [
-        { to: "active", label: "Return to Active", destructive: true },
-      ];
+      // a step. Where "back" lands depends on the type: truck-only reverses
+      // to active, but vessel/full have no such transition (see
+      // state_machine.py — their pending_completion only allows
+      // vessel_operations or bdn_pending), so sending "active" there 422s.
+      return op.type === "truck_only"
+        ? [{ to: "active", label: "Return to Active", destructive: true }]
+        : [{ to: "vessel_operations", label: "Return to Vessel Ops", destructive: true }];
     case "bdn_approved":
       // Serves both vessel/full (approved via the BDN tab) and, now,
       // truck-only (approved via the Truck BDN tab).
@@ -3878,17 +3881,27 @@ export default function OperationDetailPage({
                 </div>
               </div>
               <div className="flex gap-2 flex-wrap pt-1">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={transitionMutation.isPending}
-                  onClick={() => transitionMutation.mutate({ to_status: "active", reason: "Returned to active by BM" })}
-                >
-                  {transitionMutation.isPending
-                    ? <Spinner size={14} className="mr-1.5" />
-                    : <XCircle className="w-3.5 h-3.5 mr-1.5" />}
-                  Return to Active
-                </Button>
+                {(() => {
+                  // Truck-only reverses to active; vessel/full have no
+                  // pending_completion->active transition at all (see
+                  // state_machine.py) and must go back to vessel_operations
+                  // instead — sending "active" there 422s.
+                  const backTo = op.type === "truck_only" ? "active" : "vessel_operations";
+                  const backLabel = op.type === "truck_only" ? "Return to Active" : "Return to Vessel Ops";
+                  return (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={transitionMutation.isPending}
+                      onClick={() => transitionMutation.mutate({ to_status: backTo, reason: `Returned to ${backLabel.replace("Return to ", "")} by BM` })}
+                    >
+                      {transitionMutation.isPending
+                        ? <Spinner size={14} className="mr-1.5" />
+                        : <XCircle className="w-3.5 h-3.5 mr-1.5" />}
+                      {backLabel}
+                    </Button>
+                  );
+                })()}
               </div>
             </CardContent>
           </Card>

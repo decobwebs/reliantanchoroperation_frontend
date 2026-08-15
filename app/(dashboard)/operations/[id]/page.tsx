@@ -140,6 +140,7 @@ import type {
   OperationTotals,
   ClientNotificationRecipient,
   ClientNotificationLog,
+  PendingClientNotification,
   OperationKpi,
   RoleStageDurations,
 } from "@/types";
@@ -1218,6 +1219,8 @@ export default function OperationDetailPage({
 
   // ── Client notifications — tick-to-send, strictly isolated per recipient ──
   const [showNotifyDialog, setShowNotifyDialog] = useState(false);
+  // Ticked by client_email — the one field every recipient has regardless
+  // of source (a Cast Off recipient has no naval_clearance_vessel_id).
   const [tickedRecipients, setTickedRecipients] = useState<Set<string>>(new Set());
   const [notifType, setNotifType] = useState("stage_update");
   const [customMessage, setCustomMessage] = useState("");
@@ -1234,13 +1237,23 @@ export default function OperationDetailPage({
     enabled: showNotifyDialog && isBM,
   });
 
+  // Awaiting approval, or approved but not yet sent.
+  const { data: pendingNotifications } = useQuery({
+    queryKey: ["client-notification-pending", id],
+    queryFn: async () => {
+      const res = await api.get<ApiResponse<PendingClientNotification[]>>(`/operations/${id}/client-notifications/pending`);
+      return res.data.data ?? [];
+    },
+    enabled: showNotifyDialog && isBM,
+  });
+
   const { data: notificationLog } = useQuery({
     queryKey: ["client-notification-log", id],
     queryFn: async () => {
       const res = await api.get<ApiResponse<ClientNotificationLog[]>>(`/operations/${id}/client-notifications/log`);
       return res.data.data ?? [];
     },
-    enabled: isBM && !!op?.naval_clearances?.length,
+    enabled: isBM && op?.type !== "truck_only",
   });
 
   const { data: operationKpi, isLoading: operationKpiLoading, isError: operationKpiErrored, refetch: refetchOperationKpi } = useQuery({
@@ -1276,20 +1289,60 @@ export default function OperationDetailPage({
     onError: (err) => toast.error(getErrorMessage(err)),
   });
 
-  const sendNotificationMutation = useMutation({
+  const queueNotificationMutation = useMutation({
     mutationFn: async () => {
-      await api.post(`/operations/${id}/client-notifications/send`, {
-        recipient_naval_clearance_vessel_ids: Array.from(tickedRecipients),
+      const ticked = notifyRecipients?.filter((r) => tickedRecipients.has((r.client_email ?? "").toLowerCase())) ?? [];
+      await api.post(`/operations/${id}/client-notifications/queue`, {
+        recipient_naval_clearance_vessel_ids: ticked.filter((r) => r.source === "naval_clearance").map((r) => r.naval_clearance_vessel_id),
+        recipient_cast_off_emails: ticked.filter((r) => r.source === "cast_off").map((r) => r.client_email),
         notification_type: notifType,
         custom_message: customMessage.trim() || undefined,
       });
     },
     onSuccess: () => {
-      toast.success(`Notification sent to ${tickedRecipients.size} recipient(s)`);
-      setShowNotifyDialog(false);
+      toast.success(`${tickedRecipients.size} recipient(s) queued for approval`);
       setTickedRecipients(new Set());
       setCustomMessage("");
+      qc.invalidateQueries({ queryKey: ["client-notification-pending", id] });
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const approveNotificationMutation = useMutation({
+    mutationFn: async (pendingIds: string[]) => {
+      await api.post(`/operations/${id}/client-notifications/approve`, { pending_ids: pendingIds });
+    },
+    onSuccess: () => {
+      toast.success("Approved");
+      qc.invalidateQueries({ queryKey: ["client-notification-pending", id] });
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const sendApprovedMutation = useMutation({
+    mutationFn: async (pendingIds: string[]) => {
+      await api.post(`/operations/${id}/client-notifications/send-approved`, { pending_ids: pendingIds });
+    },
+    onSuccess: (_, pendingIds) => {
+      toast.success(`Sent to ${pendingIds.length} recipient(s)`);
+      qc.invalidateQueries({ queryKey: ["client-notification-pending", id] });
       qc.invalidateQueries({ queryKey: ["client-notification-log", id] });
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const [rejectPendingId, setRejectPendingId] = useState<string | null>(null);
+  const [rejectPendingReason, setRejectPendingReason] = useState("");
+  const rejectPendingMutation = useMutation({
+    mutationFn: async () => {
+      if (!rejectPendingId) return;
+      await api.post(`/operations/${id}/client-notifications/${rejectPendingId}/reject`, { reason: rejectPendingReason.trim() });
+    },
+    onSuccess: () => {
+      toast.success("Removed from queue");
+      setRejectPendingId(null);
+      setRejectPendingReason("");
+      qc.invalidateQueries({ queryKey: ["client-notification-pending", id] });
     },
     onError: (err) => toast.error(getErrorMessage(err)),
   });
@@ -3626,12 +3679,14 @@ export default function OperationDetailPage({
 
                   {op.type !== "truck_only" && (
                     <>
-                      {(op.naval_clearances?.length ?? 0) > 0 && (
-                        <DropdownMenuItem className="text-[13px]" onSelect={() => setShowNotifyDialog(true)}>
-                          <Bell className="mr-2 h-3.5 w-3.5" />
-                          Notify Clients
-                        </DropdownMenuItem>
-                      )}
+                      {/* Always available — recipients can come from a linked
+                          Naval Clearance or from Cast Off client emails,
+                          independently; the dialog itself handles having
+                          neither yet. */}
+                      <DropdownMenuItem className="text-[13px]" onSelect={() => setShowNotifyDialog(true)}>
+                        <Bell className="mr-2 h-3.5 w-3.5" />
+                        Notify Clients
+                      </DropdownMenuItem>
                       {/* Multiple clearances allowed — linking another never
                           replaces one already attached. */}
                       <DropdownMenuItem className="text-[13px]" onSelect={() => setShowLinkNc(true)}>
@@ -9347,6 +9402,8 @@ export default function OperationDetailPage({
           setEtaEditId(null);
           setEtaEditValue("");
           setEtaEditReason("");
+          setRejectPendingId(null);
+          setRejectPendingReason("");
         }
       }}>
         <DialogContent className="sm:max-w-lg" aria-describedby={undefined}>
@@ -9354,7 +9411,7 @@ export default function OperationDetailPage({
             <DialogTitle className="flex items-center gap-2"><Bell className="w-4 h-4 text-primary" />Notify Clients</DialogTitle>
           </DialogHeader>
           <div className="space-y-3 mt-1 max-h-[65vh] overflow-y-auto pr-1">
-            {new Set(Array.from(tickedRecipients).map((rid) => notifyRecipients?.find((r) => r.naval_clearance_vessel_id === rid)?.client_id)).size > 1 && (
+            {new Set(Array.from(tickedRecipients).map((email) => notifyRecipients?.find((r) => (r.client_email ?? "").toLowerCase() === email)?.client_name ?? email)).size > 1 && (
               <div className="rounded-md bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-700 flex items-center gap-2">
                 <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
                 This will notify more than one client organisation.
@@ -9382,52 +9439,122 @@ export default function OperationDetailPage({
             <div className="space-y-1.5">
               <Label className="text-xs">Recipients — tick to select</Label>
               <div className="rounded-md border divide-y">
-                {notifyRecipients?.length ? notifyRecipients.map((r) => (
-                  <div key={r.naval_clearance_vessel_id} className="px-3 py-2 space-y-1.5">
-                    <label className="flex items-start gap-2 text-xs cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={tickedRecipients.has(r.naval_clearance_vessel_id)}
-                        onChange={(e) => setTickedRecipients((prev) => {
-                          const next = new Set(prev);
-                          if (e.target.checked) next.add(r.naval_clearance_vessel_id); else next.delete(r.naval_clearance_vessel_id);
-                          return next;
-                        })}
-                      />
-                      <span className="flex-1">
-                        <span className="font-medium">{r.client_name ?? "—"}</span>
-                        <span className="text-muted-foreground"> ({r.client_email ?? "—"})</span>
-                        <br />
-                        <span className="text-muted-foreground">{r.vessel_name}{r.imo_number ? ` · IMO ${r.imo_number}` : ""}</span>
-                      </span>
-                    </label>
-                    <div className="pl-6 flex items-center gap-2 text-[11px] text-muted-foreground">
-                      {etaEditId === r.naval_clearance_vessel_id ? (
-                        <>
-                          <Input type="datetime-local" className="h-6 text-[11px] w-40" value={etaEditValue} onChange={(e) => setEtaEditValue(e.target.value)} />
-                          <Input className="h-6 text-[11px]" placeholder="Reason (e.g. weather)" value={etaEditReason} onChange={(e) => setEtaEditReason(e.target.value)} />
-                          <Button size="sm" className="h-6 px-2 text-[11px]" disabled={!etaEditValue || setEtaMutation.isPending} onClick={() => setEtaMutation.mutate(r.naval_clearance_vessel_id)}>Save</Button>
-                          <Button size="sm" variant="ghost" className="h-6 px-2 text-[11px]" onClick={() => setEtaEditId(null)}>Cancel</Button>
-                        </>
-                      ) : (
-                        <>
-                          <span>ETA: {r.current_eta ? formatDateTime(r.current_eta) : "not set"}</span>
-                          <button className="text-primary underline" onClick={() => { setEtaEditId(r.naval_clearance_vessel_id); setEtaEditValue(""); setEtaEditReason(""); }}>
-                            Update ETA
-                          </button>
-                        </>
+                {notifyRecipients?.length ? notifyRecipients.map((r) => {
+                  const email = (r.client_email ?? "").toLowerCase();
+                  return (
+                    <div key={email || r.naval_clearance_vessel_id} className="px-3 py-2 space-y-1.5">
+                      <label className="flex items-start gap-2 text-xs cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={tickedRecipients.has(email)}
+                          onChange={(e) => setTickedRecipients((prev) => {
+                            const next = new Set(prev);
+                            if (e.target.checked) next.add(email); else next.delete(email);
+                            return next;
+                          })}
+                        />
+                        <span className="flex-1">
+                          <span className="font-medium">{r.client_name ?? "—"}</span>
+                          <span className="text-muted-foreground"> ({r.client_email ?? "—"})</span>
+                          {r.source === "cast_off" && (
+                            <span className="ml-1.5 rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground align-middle">Cast Off</span>
+                          )}
+                          <br />
+                          <span className="text-muted-foreground">{r.vessel_name}{r.imo_number ? ` · IMO ${r.imo_number}` : ""}</span>
+                        </span>
+                      </label>
+                      {r.source === "naval_clearance" && r.naval_clearance_vessel_id && (
+                        <div className="pl-6 flex items-center gap-2 text-[11px] text-muted-foreground">
+                          {etaEditId === r.naval_clearance_vessel_id ? (
+                            <>
+                              <Input type="datetime-local" className="h-6 text-[11px] w-40" value={etaEditValue} onChange={(e) => setEtaEditValue(e.target.value)} />
+                              <Input className="h-6 text-[11px]" placeholder="Reason (e.g. weather)" value={etaEditReason} onChange={(e) => setEtaEditReason(e.target.value)} />
+                              <Button size="sm" className="h-6 px-2 text-[11px]" disabled={!etaEditValue || setEtaMutation.isPending} onClick={() => setEtaMutation.mutate(r.naval_clearance_vessel_id!)}>Save</Button>
+                              <Button size="sm" variant="ghost" className="h-6 px-2 text-[11px]" onClick={() => setEtaEditId(null)}>Cancel</Button>
+                            </>
+                          ) : (
+                            <>
+                              <span>ETA: {r.current_eta ? formatDateTime(r.current_eta) : "not set"}</span>
+                              <button className="text-primary underline" onClick={() => { setEtaEditId(r.naval_clearance_vessel_id!); setEtaEditValue(""); setEtaEditReason(""); }}>
+                                Update ETA
+                              </button>
+                            </>
+                          )}
+                        </div>
                       )}
                     </div>
-                  </div>
-                )) : (
-                  <p className="text-xs text-muted-foreground text-center py-6">No client vessels on this operation's Naval Clearance</p>
+                  );
+                }) : (
+                  <p className="text-xs text-muted-foreground text-center py-6">No eligible recipients yet — link a Naval Clearance or record a Cast Off client contact</p>
                 )}
               </div>
             </div>
 
+            {pendingNotifications && pendingNotifications.filter((p) => p.status === "pending_approval").length > 0 && (
+              <div className="space-y-1.5">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Awaiting Approval</p>
+                <div className="rounded-md border divide-y">
+                  {pendingNotifications.filter((p) => p.status === "pending_approval").map((p) => (
+                    <div key={p.id} className="px-3 py-2 flex items-center justify-between gap-2 text-xs">
+                      <span className="min-w-0">
+                        <span className="font-medium">{p.recipient_name ?? p.recipient_email}</span>
+                        <span className="text-muted-foreground"> — {p.subject}</span>
+                      </span>
+                      <div className="flex gap-1.5 shrink-0">
+                        <Button size="sm" className="h-6 px-2 text-[11px]" disabled={approveNotificationMutation.isPending} onClick={() => approveNotificationMutation.mutate([p.id])}>
+                          Approve
+                        </Button>
+                        <Button size="sm" variant="outline" className="h-6 px-2 text-[11px] text-destructive border-destructive/30 hover:bg-destructive/10" onClick={() => setRejectPendingId(p.id)}>
+                          Reject
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {rejectPendingId && (
+                  <div className="space-y-1.5 rounded-md border border-destructive/30 bg-destructive/5 p-2.5">
+                    <Textarea rows={2} className="resize-none text-xs" placeholder="Reason (min 10 characters)…" value={rejectPendingReason} onChange={(e) => setRejectPendingReason(e.target.value)} />
+                    <div className="flex gap-2">
+                      <Button size="sm" variant="destructive" className="flex-1 text-xs" disabled={rejectPendingReason.trim().length < 10 || rejectPendingMutation.isPending} onClick={() => rejectPendingMutation.mutate()}>
+                        Confirm Reject
+                      </Button>
+                      <Button size="sm" variant="outline" className="flex-1 text-xs" onClick={() => { setRejectPendingId(null); setRejectPendingReason(""); }}>Cancel</Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {pendingNotifications && pendingNotifications.filter((p) => p.status === "approved").length > 0 && (() => {
+              const approved = pendingNotifications.filter((p) => p.status === "approved");
+              return (
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Approved, Not Yet Sent</p>
+                    <Button size="sm" className="h-6 px-2 text-[11px]" disabled={sendApprovedMutation.isPending} onClick={() => sendApprovedMutation.mutate(approved.map((p) => p.id))}>
+                      {sendApprovedMutation.isPending ? <Spinner size={12} /> : `Send All (${approved.length})`}
+                    </Button>
+                  </div>
+                  <div className="rounded-md border divide-y">
+                    {approved.map((p) => (
+                      <div key={p.id} className="px-3 py-2 flex items-center justify-between gap-2 text-xs">
+                        <span className="min-w-0">
+                          <span className="font-medium">{p.recipient_name ?? p.recipient_email}</span>
+                          <span className="text-muted-foreground"> — {p.subject}</span>
+                        </span>
+                        <Button size="sm" variant="outline" className="h-6 px-2 text-[11px] shrink-0" disabled={sendApprovedMutation.isPending} onClick={() => sendApprovedMutation.mutate([p.id])}>
+                          Send
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+
             {notificationLog && notificationLog.length > 0 && (
               <div className="space-y-1">
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Previously Sent</p>
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Sent</p>
                 {notificationLog.map((l) => (
                   <div key={l.id} className="text-[11px] text-muted-foreground border-l-2 border-muted pl-2">
                     <span className="font-medium text-foreground">{l.recipient_name}</span> — {l.subject} · {formatDateTime(l.sent_at)}
@@ -9437,10 +9564,10 @@ export default function OperationDetailPage({
             )}
           </div>
           <DialogFooter className="mt-4">
-            <Button variant="outline" onClick={() => setShowNotifyDialog(false)}>Cancel</Button>
-            <Button disabled={tickedRecipients.size === 0 || sendNotificationMutation.isPending} onClick={() => sendNotificationMutation.mutate()}>
-              {sendNotificationMutation.isPending && <Spinner size={14} className="mr-1.5" />}
-              Send to {tickedRecipients.size || 0} Recipient(s)
+            <Button variant="outline" onClick={() => setShowNotifyDialog(false)}>Close</Button>
+            <Button disabled={tickedRecipients.size === 0 || queueNotificationMutation.isPending} onClick={() => queueNotificationMutation.mutate()}>
+              {queueNotificationMutation.isPending && <Spinner size={14} className="mr-1.5" />}
+              Queue {tickedRecipients.size || 0} for Approval
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -369,8 +369,9 @@ export interface RoleStageDurations {
 }
 
 export interface ClientNotificationRecipient {
-  naval_clearance_vessel_id: string;
-  client_id: string;
+  source: "naval_clearance" | "cast_off";
+  naval_clearance_vessel_id?: string;
+  client_id?: string;
   client_name?: string;
   client_email?: string;
   vessel_name: string;
@@ -381,8 +382,8 @@ export interface ClientNotificationRecipient {
 export interface ClientNotificationLog {
   id: string;
   operation_id: string;
-  naval_clearance_vessel_id: string;
-  client_id: string;
+  naval_clearance_vessel_id?: string;
+  client_id?: string;
   recipient_email: string;
   recipient_name: string;
   notification_type: string;
@@ -391,6 +392,28 @@ export interface ClientNotificationLog {
   sent_by: string;
   sent_at: string;
   thread_key: string;
+}
+
+// A recipient queued for a client notification, awaiting BM approval (or
+// approved but not yet sent) — the pre-send lifecycle ClientNotificationLog
+// deliberately doesn't carry, since a log row always means "actually sent."
+export interface PendingClientNotification {
+  id: string;
+  operation_id: string;
+  naval_clearance_vessel_id?: string;
+  client_id?: string;
+  source: "naval_clearance" | "cast_off";
+  recipient_email: string;
+  recipient_name?: string;
+  notification_type: string;
+  stage?: string;
+  subject: string;
+  status: "pending_approval" | "approved" | "sent" | "rejected";
+  requested_by: string;
+  approved_by?: string;
+  approved_at?: string;
+  sent_log_id?: string;
+  created_at: string;
 }
 
 export interface Voucher {

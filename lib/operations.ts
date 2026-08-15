@@ -9,15 +9,21 @@ export const STATUS_PIPELINE: Record<string, string[]> = {
     "active",
     "pending_completion","bdn_pending","bdn_approved","completed",
   ],
+  // pending_completion sits between vessel_operations and bdn_pending for
+  // both vessel types — state_machine.py allows vessel_operations ->
+  // pending_completion -> bdn_pending, and every run reaching
+  // discharge_completed auto-advances an operation into it. Omitting it here
+  // meant indexOf returned -1 for an operation actually sitting in that
+  // status, so the whole chip row greyed out and progress read 0%.
   vessel_only: [
     "draft","tasks_assigned","active",
-    "vessel_operations","bdn_pending","bdn_approved",
+    "vessel_operations","pending_completion","bdn_pending","bdn_approved",
     "completed",
   ],
   full_operation: [
     "draft","tasks_assigned","awaiting_feedback","feedback_submitted",
     "active",
-    "vessel_operations","bdn_pending","bdn_approved",
+    "vessel_operations","pending_completion","bdn_pending","bdn_approved",
     "completed",
   ],
 };
@@ -44,6 +50,10 @@ export const PIPELINE_LABELS: Record<string, string> = {
 // reads sensibly instead of collapsing to 0%.
 const OFF_PIPELINE_PROGRESS: Partial<Record<OperationStatus, number>> = {
   feedback_rejected: 30,
+  // On-pipeline for every type now, but kept as a backstop: an operation
+  // sitting here is nearly done, and reading 0% (the old `?? 0` fallback)
+  // was actively misleading.
+  pending_completion: 70,
   pfi_linked: 60,
   payment_processing: 65,
   payment_confirmed: 75,

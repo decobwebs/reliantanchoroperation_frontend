@@ -2817,6 +2817,23 @@ export default function OperationDetailPage({
     onError: (err) => toast.error(getErrorMessage(err)),
   });
 
+  // Restoring a cancelled vessel RUN. The endpoint has always existed; only
+  // the leg equivalent had a UI, so a run cancelled by mistake left the
+  // Vessel Received Quantity tab with nothing selectable and no way back.
+  const [uncancelActivityId, setUncancelActivityId] = useState<string | null>(null);
+  const [uncancelActivityReason, setUncancelActivityReason] = useState("");
+  const uncancelActivityMutation = useMutation({
+    mutationFn: async (activityId: string) => {
+      await api.post(`/vessel-activities/${activityId}/uncancel`, { reason: uncancelActivityReason.trim() });
+    },
+    onSuccess: () => {
+      toast.success("Vessel run restored");
+      setUncancelActivityId(null); setUncancelActivityReason(""); refetchVesselActivities();
+      qc.invalidateQueries({ queryKey: ["operation-vessel-bdns", id] });
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
   // Correct the Initial ROB (allowed even after completion)
   const [editInitialRobId, setEditInitialRobId] = useState<string | null>(null);
   const [editInitialRob, setEditInitialRob] = useState("");
@@ -5524,6 +5541,76 @@ export default function OperationDetailPage({
                       {approvedRuns < totalRuns && " — operation cannot complete until every run is approved"}
                     </div>
                   )}
+
+                  {/* Nothing submittable AND the only reason is a cancelled run —
+                       previously this tab just said "No Vessel BDNs yet" with no
+                       form and no explanation, which is a dead end: the run was
+                       cancelled, cancelled runs are filtered out of the picker,
+                       and the restore endpoint had no UI. Explain it and offer
+                       the restore rather than leaving the BM stuck. */}
+                  {!isVesselOnly && submittableActivities.length === 0 && (() => {
+                    const cancelledRuns = (vesselActivities ?? []).filter((a) => a.status === "cancelled");
+                    if (cancelledRuns.length === 0) return null;
+                    return (
+                      <Card className="rounded-2xl border border-amber-200 bg-amber-50/50 dark:border-amber-500/30 dark:bg-amber-500/10">
+                        <CardContent className="p-4 space-y-3">
+                          <div className="flex items-start gap-3">
+                            <AlertTriangle className="w-5 h-5 text-amber-600 mt-0.5 shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-semibold text-amber-800">
+                                No vessel run available to record against
+                              </p>
+                              <p className="text-xs text-amber-700 mt-1">
+                                {cancelledRuns.length === 1
+                                  ? `${cancelledRuns[0].activity_number} is cancelled, so it can't be selected here.`
+                                  : `${cancelledRuns.length} vessel runs on this operation are cancelled, so none can be selected here.`}
+                                {" "}Restore one below, or assign a fresh run from the Marine tab.
+                              </p>
+                            </div>
+                          </div>
+                          {isBM && (
+                            <div className="space-y-2">
+                              {cancelledRuns.map((a) => (
+                                <div key={a.id} className="rounded-lg border bg-background/60 px-3 py-2 space-y-2">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="text-xs font-mono font-semibold">
+                                      {a.activity_number}
+                                      <span className="ml-1.5 font-sans font-normal text-muted-foreground">{a.vessel_name}</span>
+                                    </span>
+                                    {uncancelActivityId !== a.id && (
+                                      <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1 shrink-0"
+                                        onClick={() => { setUncancelActivityId(a.id); setUncancelActivityReason(""); }}>
+                                        <RefreshCw className="w-3 h-3" />Restore Run
+                                      </Button>
+                                    )}
+                                  </div>
+                                  {uncancelActivityId === a.id && (
+                                    <div className="space-y-2">
+                                      <Textarea className="text-xs min-h-10 resize-none"
+                                        placeholder="Reason for restoring (required)…"
+                                        value={uncancelActivityReason}
+                                        onChange={(e) => setUncancelActivityReason(e.target.value)} />
+                                      <div className="flex gap-2">
+                                        <Button size="sm" className="flex-1 text-xs"
+                                          disabled={!uncancelActivityReason.trim() || uncancelActivityMutation.isPending}
+                                          onClick={() => uncancelActivityMutation.mutate(a.id)}>
+                                          {uncancelActivityMutation.isPending ? <Spinner size={14} /> : "Restore Run"}
+                                        </Button>
+                                        <Button size="sm" variant="ghost" className="text-xs"
+                                          onClick={() => { setUncancelActivityId(null); setUncancelActivityReason(""); }}>
+                                          Cancel
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </CardContent>
+                      </Card>
+                    );
+                  })()}
 
                   {/* OS/Marine: Submit Vessel BDN form */}
                   {(isOS || isMM) && (isVesselOnly ? submittableLegs.length > 0 : submittableActivities.length > 0) && (

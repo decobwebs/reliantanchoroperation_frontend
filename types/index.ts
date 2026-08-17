@@ -1009,8 +1009,10 @@ export interface VesselBdn {
   product_type: string;
   discharge_location: string;
   receiving_vessel: string;
-  quantity_loaded_litres: string;
-  quantity_discharged_litres: string;
+  // Null on every Vessel BDN submitted since the form dropped these —
+  // MTvac is the figure of record now. Optional so callers must guard.
+  quantity_loaded_litres?: string;
+  quantity_discharged_litres?: string;
   variance_litres?: string;
   density: string;
   temperature: string;
@@ -1020,7 +1022,7 @@ export interface VesselBdn {
   discharge_mt_vacuum: string;
   discharge_commenced_at?: string;
   discharge_completed_at: string;
-  discharge_completion_date: string;
+  discharge_completion_date?: string;
   received_gov?: string;
   received_gsv?: string;
   received_mt_vacuum?: string;

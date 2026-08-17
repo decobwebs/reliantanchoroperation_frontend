@@ -1899,8 +1899,10 @@ export default function OperationDetailPage({
       product_type:               vb.product_type,
       discharge_location:         vb.discharge_location,
       receiving_vessel:           vb.receiving_vessel,
-      quantity_loaded_litres:     vb.quantity_loaded_litres,
-      quantity_discharged_litres: vb.quantity_discharged_litres,
+      // Null on anything submitted since the form dropped these — the BM edit
+      // dialog still renders them so an older BDN that has them stays editable.
+      quantity_loaded_litres:     vb.quantity_loaded_litres ?? "",
+      quantity_discharged_litres: vb.quantity_discharged_litres ?? "",
       density:                    vb.density,
       temperature:                vb.temperature,
       vcf:                        vb.vcf,
@@ -5698,17 +5700,27 @@ export default function OperationDetailPage({
                             const leg = vb.vessel_leg_id ? activity?.legs?.find((l) => l.id === vb.vessel_leg_id) : undefined;
                             const rows: { label: string; system?: string; submitted: string; mismatch: boolean }[] = [
                               { label: "Product Type", system: vb.system_product_type ?? "—", submitted: vb.product_type, mismatch: (vb.system_product_type ?? "").trim().toLowerCase() !== vb.product_type.trim().toLowerCase() },
-                              {
+                              // Quantity Loaded/Discharged (litres) are no longer
+                              // collected — null on every BDN submitted since the
+                              // form dropped them, and parseFloat(null) renders
+                              // "NaN L". Only shown for older rows that still
+                              // carry them; MTvac below is the current figure.
+                              ...(vb.quantity_loaded_litres ? [{
                                 label: "Quantity Loaded",
                                 system: vb.system_quantity_loaded_litres ? `${parseFloat(vb.system_quantity_loaded_litres).toLocaleString(undefined, { minimumFractionDigits: 2 })} L` : "—",
                                 submitted: `${parseFloat(vb.quantity_loaded_litres).toLocaleString(undefined, { minimumFractionDigits: 2 })} L`,
                                 mismatch: vb.system_quantity_loaded_litres !== undefined && parseFloat(vb.system_quantity_loaded_litres ?? "0") !== parseFloat(vb.quantity_loaded_litres),
-                              },
-                              {
+                              }] : []),
+                              ...(vb.quantity_discharged_litres ? [{
                                 label: "Quantity Discharged",
                                 system: vb.system_quantity_discharged_litres ? `${parseFloat(vb.system_quantity_discharged_litres).toLocaleString(undefined, { minimumFractionDigits: 2 })} L` : "—",
                                 submitted: `${parseFloat(vb.quantity_discharged_litres).toLocaleString(undefined, { minimumFractionDigits: 2 })} L`,
                                 mismatch: vb.system_quantity_discharged_litres !== undefined && parseFloat(vb.system_quantity_discharged_litres ?? "0") !== parseFloat(vb.quantity_discharged_litres),
+                              }] : []),
+                              {
+                                label: "MTvac",
+                                submitted: `${parseFloat(vb.discharge_mt_vacuum).toLocaleString(undefined, { minimumFractionDigits: 3 })} MT`,
+                                mismatch: false,
                               },
                               {
                                 label: "Completed Discharge",
@@ -5727,7 +5739,7 @@ export default function OperationDetailPage({
                                   <p className="text-xs text-muted-foreground">
                                     {leg ? `${leg.receiving_vessel_name} · ${activity?.vessel_name}` : activity ? `${activity.activity_number} · ${activity.vessel_name}` : "—"}
                                     {" · "}{vb.company_name}
-                                    {" · "}{parseFloat(vb.quantity_discharged_litres).toLocaleString(undefined, { minimumFractionDigits: 2 })} L
+                                    {" · "}{parseFloat(vb.discharge_mt_vacuum).toLocaleString(undefined, { minimumFractionDigits: 3 })} MT
                                   </p>
                                 </div>
                                 <div className="flex items-center gap-1.5">

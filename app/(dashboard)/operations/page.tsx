@@ -253,6 +253,9 @@ export default function OperationsPage() {
   }, [overview]);
 
   const isBM = effectiveRole === "bunker_manager";
+  // Creation only — the Ops Supervisor gets no other operation-level action
+  // (edit, close, pause, transition, delete all stay BM-only, front and back).
+  const canCreateOperation = isBM || effectiveRole === "ops_supervisor";
   const total = data?.total ?? 0;
   const totalPages = Math.ceil(total / PER_PAGE);
   const from = total === 0 ? 0 : (page - 1) * PER_PAGE + 1;
@@ -301,7 +304,7 @@ export default function OperationsPage() {
             )}
             Export CSV
           </Button>
-          {isBM && (
+          {canCreateOperation && (
             <Button
               className="brand-grad-active h-10.5 rounded-xl px-4 text-[13px] font-semibold text-white shadow-[0_12px_26px_-14px_rgb(14_121_200/0.9)] hover:opacity-95"
               onClick={() => setShowCreate(true)}

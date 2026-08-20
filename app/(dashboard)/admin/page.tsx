@@ -10,6 +10,7 @@ import {
   UserPlus,
   Phone,
   Trash2,
+  MailPlus,
 } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "sonner";
@@ -38,7 +39,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ROLE_LABELS } from "@/lib/auth";
-import { cn, getInitials } from "@/lib/utils";
+import { cn, getInitials, formatDateTime } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { QueryError } from "@/components/shared/QueryError";
 import type { ApiResponse, User } from "@/types";
@@ -254,6 +255,28 @@ export default function AdminPage() {
     onError: (err) => toast.error(getErrorMessage(err)),
   });
 
+  // ── Resend set-password link ──
+  // For someone who never got the invite, lost it, or let it expire. Before
+  // this the only remedy was delete-and-recreate, which is destructive and
+  // impossible for anyone carrying operational history.
+  const [resendUserId, setResendUserId] = useState<string | null>(null);
+  const resendMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await api.post<ApiResponse<{ email_sent: boolean }>>(
+        `/admin/users/${id}/resend-invite`, {}
+      );
+      return res.data;
+    },
+    onSuccess: (res) => {
+      // The API reports delivery honestly — a failed send still returns 200
+      // with email_sent false, so don't claim success on its behalf.
+      if (res.data?.email_sent) toast.success(res.message ?? "Password link sent");
+      else toast.error(res.message ?? "Could not send the password link");
+      setResendUserId(null);
+    },
+    onError: (err) => { toast.error(getErrorMessage(err)); setResendUserId(null); },
+  });
+
   if (user && !isBM) {
     return (
       <DashboardShell icon={Users} iconTone="blue" showRole={false} title="User Management" subtitle="Restricted">
@@ -289,6 +312,13 @@ export default function AdminPage() {
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-[13px] font-semibold text-foreground">{u.full_name}</p>
                     <p className="truncate text-[12px] text-muted-foreground">{u.email}</p>
+                    {/* Never signed in = the invite was missed or never arrived,
+                        which is exactly who the Resend button is for. */}
+                    <p className="truncate text-[11px] text-muted-foreground/70">
+                      {u.last_login_at
+                        ? `Last signed in ${formatDateTime(u.last_login_at)}`
+                        : "Never signed in"}
+                    </p>
                   </div>
 
                   {u.phone ? (
@@ -313,6 +343,25 @@ export default function AdminPage() {
                   >
                     {u.is_active ? "Active" : "Inactive"}
                   </Badge>
+
+                  {/* Re-send the choose-your-password email. Only meaningful
+                      while the account is active; a deactivated one has no
+                      auth identity to attach a link to. */}
+                  {u.is_active && (
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      aria-label={`Resend password link to ${u.full_name}`}
+                      title="Resend set-password link"
+                      className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
+                      disabled={resendMutation.isPending && resendUserId === u.id}
+                      onClick={() => { setResendUserId(u.id); resendMutation.mutate(u.id); }}
+                    >
+                      {resendMutation.isPending && resendUserId === u.id
+                        ? <Spinner size={14} />
+                        : <MailPlus className="h-3.5 w-3.5" />}
+                    </Button>
+                  )}
 
                   {/* Deleting yourself would drop your own admin access, and
                       the API rejects it — don't offer it. */}

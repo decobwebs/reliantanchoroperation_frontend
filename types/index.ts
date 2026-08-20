@@ -19,6 +19,9 @@ export interface User {
   is_active: boolean;
   created_at: string;
   acting_as_role?: string | null;
+  // Written on every successful sign-in (routers/auth.py). Null means the
+  // person has never signed in — usually a missed set-password invite.
+  last_login_at?: string | null;
 }
 
 export interface AuthTokens {

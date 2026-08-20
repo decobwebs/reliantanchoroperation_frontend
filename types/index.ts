@@ -854,8 +854,8 @@ export interface VesselActivity {
   // ── Loading Received Quantity — one-time, six-stage + legs flow ──
   loading_received_quantity_litres?: string;
   loading_density?: string;
-  loading_temperature_before_loading?: string;
-  loading_temperature_after_loading?: string;
+  // Single reading since migration 054 collapsed before/after loading.
+  loading_temperature?: string;
   loading_vcf?: string;
   loading_gov?: string;
   loading_gsv?: string;
@@ -910,8 +910,7 @@ export interface VesselActivityLeg {
 
   quantity_discharged_litres?: string;
   density?: string;
-  temperature_before_loading?: string;
-  temperature_after_loading?: string;
+  temperature?: string;
   vcf?: string;
   gov?: string;
   gsv?: string;

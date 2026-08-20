@@ -2509,23 +2509,24 @@ export default function OperationDetailPage({
   const [loadReceiptFormActivityId, setLoadReceiptFormActivityId] = useState<string | null>(null);
   const [loadReceived, setLoadReceived] = useState("");
   const [loadDensity, setLoadDensity] = useState("");
-  const [loadTempBefore, setLoadTempBefore] = useState("");
-  const [loadTempAfter, setLoadTempAfter] = useState("");
+  // Single reading — migration 054 collapsed before/after loading into one
+  // `temperature`; this form kept sending the old pair, so the required
+  // `temperature` was absent and every submit failed validation.
+  const [loadTemp, setLoadTemp] = useState("");
   const [loadVcf, setLoadVcf] = useState("");
   const [loadGov, setLoadGov] = useState("");
   const [loadDescription, setLoadDescription] = useState("");
   const [loadReason, setLoadReason] = useState("");
   const resetLoadReceiptForm = () => {
     setLoadReceiptFormActivityId(null);
-    setLoadReceived(""); setLoadDensity(""); setLoadTempBefore(""); setLoadTempAfter("");
+    setLoadReceived(""); setLoadDensity(""); setLoadTemp("");
     setLoadVcf(""); setLoadGov(""); setLoadDescription(""); setLoadReason("");
   };
   const openLoadReceiptForm = (activity: VesselActivity) => {
     setLoadReceiptFormActivityId(activity.id);
     setLoadReceived(activity.loading_received_quantity_litres ?? "");
     setLoadDensity(activity.loading_density ?? "");
-    setLoadTempBefore(activity.loading_temperature_before_loading ?? "");
-    setLoadTempAfter(activity.loading_temperature_after_loading ?? "");
+    setLoadTemp(activity.loading_temperature ?? "");
     setLoadVcf(activity.loading_vcf ?? "");
     setLoadGov(activity.loading_gov ?? "");
     setLoadDescription(activity.loading_quantity_description ?? "");
@@ -2536,8 +2537,7 @@ export default function OperationDetailPage({
       await api.post(`/vessel-activities/${activityId}/loading-receipt`, {
         received_quantity_litres: parseFloat(loadReceived),
         density: parseFloat(loadDensity),
-        temperature_before_loading: parseFloat(loadTempBefore),
-        temperature_after_loading: parseFloat(loadTempAfter),
+        temperature: parseFloat(loadTemp),
         vcf: parseFloat(loadVcf),
         gov: parseFloat(loadGov),
         description: loadDescription.trim() || undefined,
@@ -2622,23 +2622,21 @@ export default function OperationDetailPage({
   const [legQtyFormLegId, setLegQtyFormLegId] = useState<string | null>(null);
   const [legQtyDischarged, setLegQtyDischarged] = useState("");
   const [legQtyDensity, setLegQtyDensity] = useState("");
-  const [legQtyTempBefore, setLegQtyTempBefore] = useState("");
-  const [legQtyTempAfter, setLegQtyTempAfter] = useState("");
+  const [legQtyTemp, setLegQtyTemp] = useState("");
   const [legQtyVcf, setLegQtyVcf] = useState("");
   const [legQtyGov, setLegQtyGov] = useState("");
   const [legQtyDescription, setLegQtyDescription] = useState("");
   const [legQtyReason, setLegQtyReason] = useState("");
   const resetLegQtyForm = () => {
     setLegQtyFormLegId(null);
-    setLegQtyDischarged(""); setLegQtyDensity(""); setLegQtyTempBefore(""); setLegQtyTempAfter("");
+    setLegQtyDischarged(""); setLegQtyDensity(""); setLegQtyTemp("");
     setLegQtyVcf(""); setLegQtyGov(""); setLegQtyDescription(""); setLegQtyReason("");
   };
   const openLegQtyForm = (leg: VesselActivityLeg) => {
     setLegQtyFormLegId(leg.id);
     setLegQtyDischarged(leg.quantity_discharged_litres ?? "");
     setLegQtyDensity(leg.density ?? "");
-    setLegQtyTempBefore(leg.temperature_before_loading ?? "");
-    setLegQtyTempAfter(leg.temperature_after_loading ?? "");
+    setLegQtyTemp(leg.temperature ?? "");
     setLegQtyVcf(leg.vcf ?? "");
     setLegQtyGov(leg.gov ?? "");
     setLegQtyDescription(leg.quantity_description ?? "");
@@ -2649,8 +2647,7 @@ export default function OperationDetailPage({
       await api.post(`/vessel-activity-legs/${legId}/quantities`, {
         quantity_discharged_litres: parseFloat(legQtyDischarged),
         density: parseFloat(legQtyDensity),
-        temperature_before_loading: parseFloat(legQtyTempBefore),
-        temperature_after_loading: parseFloat(legQtyTempAfter),
+        temperature: parseFloat(legQtyTemp),
         vcf: parseFloat(legQtyVcf),
         gov: parseFloat(legQtyGov),
         description: legQtyDescription.trim() || undefined,
@@ -7240,12 +7237,8 @@ export default function OperationDetailPage({
                                                 <Input type="number" step="0.0001" className="h-8 text-xs" value={loadDensity} onChange={(e) => setLoadDensity(e.target.value)} />
                                               </div>
                                               <div className="space-y-1">
-                                                <Label className="text-[10px] text-muted-foreground">Temp Before Loading (°C)</Label>
-                                                <Input type="number" step="0.01" className="h-8 text-xs" value={loadTempBefore} onChange={(e) => setLoadTempBefore(e.target.value)} />
-                                              </div>
-                                              <div className="space-y-1">
-                                                <Label className="text-[10px] text-muted-foreground">Temp After Loading (°C)</Label>
-                                                <Input type="number" step="0.01" className="h-8 text-xs" value={loadTempAfter} onChange={(e) => setLoadTempAfter(e.target.value)} />
+                                                <Label className="text-[10px] text-muted-foreground">Temperature (°C)</Label>
+                                                <Input type="number" step="0.01" className="h-8 text-xs" value={loadTemp} onChange={(e) => setLoadTemp(e.target.value)} />
                                               </div>
                                               <div className="space-y-1">
                                                 <Label className="text-[10px] text-muted-foreground">VCF</Label>
@@ -7275,7 +7268,7 @@ export default function OperationDetailPage({
                                             <div className="flex gap-2">
                                               <Button
                                                 size="sm" className="flex-1 text-xs"
-                                                disabled={!loadReceived || !loadDensity || !loadTempBefore || !loadTempAfter || !loadVcf || !loadGov || (!!activity.loading_quantity_recorded_at && !loadReason.trim()) || recordLoadingReceiptMutation.isPending}
+                                                disabled={!loadReceived || !loadDensity || !loadTemp || !loadVcf || !loadGov || (!!activity.loading_quantity_recorded_at && !loadReason.trim()) || recordLoadingReceiptMutation.isPending}
                                                 onClick={() => recordLoadingReceiptMutation.mutate(activity.id)}
                                               >
                                                 {recordLoadingReceiptMutation.isPending ? <Spinner size={14} /> : "Save Loading Receipt"}
@@ -7662,12 +7655,8 @@ export default function OperationDetailPage({
                                                                   <Input type="number" step="0.0001" className="h-8 text-xs" value={legQtyDensity} onChange={(e) => setLegQtyDensity(e.target.value)} />
                                                                 </div>
                                                                 <div className="space-y-1">
-                                                                  <Label className="text-[10px] text-muted-foreground">Temp Before Loading (°C)</Label>
-                                                                  <Input type="number" step="0.01" className="h-8 text-xs" value={legQtyTempBefore} onChange={(e) => setLegQtyTempBefore(e.target.value)} />
-                                                                </div>
-                                                                <div className="space-y-1">
-                                                                  <Label className="text-[10px] text-muted-foreground">Temp After Loading (°C)</Label>
-                                                                  <Input type="number" step="0.01" className="h-8 text-xs" value={legQtyTempAfter} onChange={(e) => setLegQtyTempAfter(e.target.value)} />
+                                                                  <Label className="text-[10px] text-muted-foreground">Temperature (°C)</Label>
+                                                                  <Input type="number" step="0.01" className="h-8 text-xs" value={legQtyTemp} onChange={(e) => setLegQtyTemp(e.target.value)} />
                                                                 </div>
                                                                 <div className="space-y-1">
                                                                   <Label className="text-[10px] text-muted-foreground">VCF</Label>
@@ -7697,7 +7686,7 @@ export default function OperationDetailPage({
                                                               <div className="flex gap-2">
                                                                 <Button
                                                                   size="sm" className="flex-1 text-xs"
-                                                                  disabled={!legQtyDischarged || !legQtyDensity || !legQtyTempBefore || !legQtyTempAfter || !legQtyVcf || !legQtyGov || (!!leg.quantity_recorded_at && !legQtyReason.trim()) || recordLegQtyMutation.isPending}
+                                                                  disabled={!legQtyDischarged || !legQtyDensity || !legQtyTemp || !legQtyVcf || !legQtyGov || (!!leg.quantity_recorded_at && !legQtyReason.trim()) || recordLegQtyMutation.isPending}
                                                                   onClick={() => recordLegQtyMutation.mutate(leg.id)}
                                                                 >
                                                                   {recordLegQtyMutation.isPending ? <Spinner size={14} /> : "Save Quantities"}

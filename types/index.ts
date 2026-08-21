@@ -654,12 +654,35 @@ export interface TruckStats {
   total_variance_mt: string;
   total_spillage_mt: string;
   efficiency_pct?: number;
+  open_issues: number;
+}
+
+export type TruckIssueSeverity = "low" | "medium" | "high";
+export type TruckIssueStatus = "open" | "resolved";
+
+export interface TruckIssue {
+  id: string;
+  truck_id: string;
+  operation_id?: string;
+  operation_number?: string;
+  reported_by: string;
+  reported_by_name?: string;
+  severity: TruckIssueSeverity;
+  status: TruckIssueStatus;
+  title: string;
+  description?: string;
+  resolved_by?: string;
+  resolved_by_name?: string;
+  resolved_at?: string;
+  resolution_notes?: string;
+  created_at: string;
 }
 
 export interface TruckProfile {
   truck: Truck;
   stats: TruckStats;
   history: TruckOperationHistory[];
+  issues: TruckIssue[];
 }
 
 // ─── Vessel Discharge Events ──────────────────────────────────────────────────

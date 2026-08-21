@@ -27,10 +27,12 @@ import {
   Droplets,
   Thermometer,
   BarChart3,
+  Wrench,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { PanelCard } from "@/components/dashboard/PanelCard";
+import { TruckIssuesPanel } from "@/components/shared/TruckIssuesPanel";
 import { MetaChip } from "@/components/operations/DetailHeader";
 import { StatTile, StatTileRow } from "@/components/operations/StatTile";
 import { Badge } from "@/components/ui/badge";
@@ -155,6 +157,8 @@ export default function TruckProfilePage({
   }
 
   const { truck, stats, history } = data;
+  const issues   = data.issues ?? [];
+  const openIssues = issues.filter((i) => i.status === "open").length;
   const effPct   = stats.efficiency_pct ?? null;
   const varNum   = parseFloat(stats.total_variance_mt);
   const variancePositive = varNum >= 0;
@@ -246,6 +250,12 @@ export default function TruckProfilePage({
               label="Failed/Waived Audits"
               value={failedAudits || "—"}
             />
+            <StatTile
+              icon={Wrench}
+              tone={openIssues > 0 ? "amber" : "slate"}
+              label="Open Issues"
+              value={openIssues || "—"}
+            />
           </StatTileRow>
         </div>
       </div>
@@ -255,6 +265,18 @@ export default function TruckProfilePage({
           <TabsTrigger value="history">
             Operation History
             <span className="ml-1 rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">{history.length}</span>
+          </TabsTrigger>
+          <TabsTrigger value="issues">
+            Issues
+            {openIssues > 0 ? (
+              <span className="ml-1 rounded bg-amber-100 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-amber-700 dark:bg-amber-500/20 dark:text-amber-300">
+                {openIssues}
+              </span>
+            ) : (
+              <span className="ml-1 rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+                {issues.length}
+              </span>
+            )}
           </TabsTrigger>
           <TabsTrigger value="info">Truck Details</TabsTrigger>
         </TabsList>
@@ -436,6 +458,14 @@ export default function TruckProfilePage({
               </div>
             )}
           </PanelCard>
+        </TabsContent>
+
+        <TabsContent value="issues" className="mt-4">
+          <TruckIssuesPanel
+            truckId={truck.id}
+            truckNumber={truck.truck_number}
+            issues={issues}
+          />
         </TabsContent>
 
         <TabsContent value="info" className="mt-4">

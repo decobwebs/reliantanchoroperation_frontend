@@ -7,6 +7,7 @@ import { BunkerManagerDashboard } from "./_dashboards/BunkerManagerDashboard";
 import { OpsSupervisorDashboard } from "./_dashboards/OpsSupervisorDashboard";
 import { LogisticsOfficerDashboard } from "./_dashboards/LogisticsOfficerDashboard";
 import { MarineManagerDashboard } from "./_dashboards/MarineManagerDashboard";
+import { MarineOperatorDashboard } from "./_dashboards/MarineOperatorDashboard";
 import { FinanceManagerDashboard } from "./_dashboards/FinanceManagerDashboard";
 
 export default function DashboardPage() {
@@ -29,6 +30,8 @@ export default function DashboardPage() {
       return <LogisticsOfficerDashboard />;
     case "cargo_superintendent":
       return <MarineManagerDashboard />;
+    case "marine_operator":
+      return <MarineOperatorDashboard />;
     case "finance_manager":
       return <FinanceManagerDashboard />;
     default:

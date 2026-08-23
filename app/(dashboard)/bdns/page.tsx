@@ -65,10 +65,13 @@ export default function BdnRegisterPage() {
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ["bdn-register", page],
     queryFn: async () => {
-      const res = await api.get<{ items: BdnRow[]; total: number }>("/bdns", {
+      // PaginatedResponse nests the page under `data`, so items live at
+      // res.data.data.items — reading res.data.items silently yields
+      // undefined and renders an empty register.
+      const res = await api.get<{ data: { items: BdnRow[]; total: number } }>("/bdns", {
         params: { page, per_page: perPage },
       });
-      return res.data;
+      return res.data.data;
     },
     enabled: isBM,
   });

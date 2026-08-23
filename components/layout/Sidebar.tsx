@@ -101,6 +101,15 @@ export const NAV_ITEMS: NavItem[] = [
     roles: ["bunker_manager", "cargo_superintendent", "marine_operator"],
   },
 
+  {
+    // Global BDN register — every BDN across every operation in one place,
+    // with the operation it belongs to. BM only, matching GET /bdns.
+    href: "/bdns",
+    label: "BDNs",
+    icon: FileText,
+    roles: ["bunker_manager"],
+  },
+
   // ── Finance ──────────────────────────────────────────────────────────────
   {
     href: "/finance",

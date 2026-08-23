@@ -500,6 +500,30 @@ function SectionHead({
  * receiving vessel's Discharge Quantity: a bordered strip of mono figures with
  * an optional description line beneath.
  */
+/** Vessel-side number formatting.
+ *
+ *  Units on the vessel side are MT(vac) — litres belong to trucks only, per
+ *  the BM: "from the moment it is [on the vessel] it has to show GOV, GSV,
+ *  MT(vac)... except on truck, that is just litres."
+ *
+ *  A missing value renders blank rather than a dash or a placeholder —
+ *  "just leave it blank, we know exactly what it is." */
+const qty = (v: string | number | null | undefined, dp = 3): string => {
+  if (v === null || v === undefined || v === "") return "";
+  const n = typeof v === "number" ? v : parseFloat(v);
+  return Number.isFinite(n) ? n.toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp }) : "";
+};
+
+/** Signed difference plus its percentage of the baseline, e.g. "-8.662 (1.23%)".
+ *  Matches the format the BM had been typing into the description by hand. */
+const variance = (actual?: string | null, baseline?: string | null, dp = 3): string => {
+  if (!actual || !baseline) return "";
+  const a = parseFloat(actual), b = parseFloat(baseline);
+  if (!Number.isFinite(a) || !Number.isFinite(b) || b === 0) return "";
+  const d = a - b;
+  return `${d >= 0 ? "+" : "-"}${Math.abs(d).toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp })} (${Math.abs((d / b) * 100).toFixed(2)}%)`;
+};
+
 function QuantityReadout({
   columns,
   note,
@@ -509,13 +533,16 @@ function QuantityReadout({
 }) {
   return (
     <div className="overflow-hidden rounded-xl border border-navy-100 bg-card dark:border-border">
-      <div className="grid grid-cols-1 divide-y divide-border/70 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+      {/* Wraps to as many rows as the figures need — GOV/GSV/MT(vac) lead,
+          then the quality readings — instead of the old fixed three columns
+          that forced everything else into a hand-typed note. */}
+      <div className="grid grid-cols-2 gap-px bg-border/70 sm:grid-cols-3">
         {columns.map(([label, value]) => (
-          <div key={label} className="px-3.5 py-2.5">
+          <div key={label} className="bg-card px-3.5 py-2.5">
             <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
               {label}
             </p>
-            <p className="mt-0.5 font-mono text-[13px] font-semibold tabular-nums text-foreground">
+            <p className="mt-0.5 min-h-[1.15rem] font-mono text-[13px] font-semibold tabular-nums text-foreground">
               {value}
             </p>
           </div>
@@ -3628,7 +3655,7 @@ export default function OperationDetailPage({
             {expectedVolumeMt != null && (
               <MetaChip icon={Droplets}>
                 <span className="tabular-nums">
-                  {expectedVolumeMt.toLocaleString()} L expected
+                  {expectedVolumeMt.toLocaleString()} MT expected
                 </span>
               </MetaChip>
             )}
@@ -5791,14 +5818,14 @@ export default function OperationDetailPage({
                               // carry them; MTvac below is the current figure.
                               ...(vb.quantity_loaded_litres ? [{
                                 label: "Quantity Loaded",
-                                system: vb.system_quantity_loaded_litres ? `${parseFloat(vb.system_quantity_loaded_litres).toLocaleString(undefined, { minimumFractionDigits: 2 })} L` : "—",
-                                submitted: `${parseFloat(vb.quantity_loaded_litres).toLocaleString(undefined, { minimumFractionDigits: 2 })} L`,
+                                system: vb.system_quantity_loaded_litres ? `${parseFloat(vb.system_quantity_loaded_litres).toLocaleString(undefined, { minimumFractionDigits: 2 })}` : "—",
+                                submitted: `${parseFloat(vb.quantity_loaded_litres).toLocaleString(undefined, { minimumFractionDigits: 2 })}`,
                                 mismatch: vb.system_quantity_loaded_litres !== undefined && parseFloat(vb.system_quantity_loaded_litres ?? "0") !== parseFloat(vb.quantity_loaded_litres),
                               }] : []),
                               ...(vb.quantity_discharged_litres ? [{
                                 label: "Quantity Discharged",
-                                system: vb.system_quantity_discharged_litres ? `${parseFloat(vb.system_quantity_discharged_litres).toLocaleString(undefined, { minimumFractionDigits: 2 })} L` : "—",
-                                submitted: `${parseFloat(vb.quantity_discharged_litres).toLocaleString(undefined, { minimumFractionDigits: 2 })} L`,
+                                system: vb.system_quantity_discharged_litres ? `${parseFloat(vb.system_quantity_discharged_litres).toLocaleString(undefined, { minimumFractionDigits: 2 })}` : "—",
+                                submitted: `${parseFloat(vb.quantity_discharged_litres).toLocaleString(undefined, { minimumFractionDigits: 2 })}`,
                                 mismatch: vb.system_quantity_discharged_litres !== undefined && parseFloat(vb.system_quantity_discharged_litres ?? "0") !== parseFloat(vb.quantity_discharged_litres),
                               }] : []),
                               {
@@ -5884,18 +5911,18 @@ export default function OperationDetailPage({
                                 <span>Density: {parseFloat(vb.density).toLocaleString(undefined, { minimumFractionDigits: 4 })}</span>
                                 <span>Temp: {parseFloat(vb.temperature).toFixed(1)}°C</span>
                                 <span>VCF: {parseFloat(vb.vcf).toLocaleString(undefined, { minimumFractionDigits: 4 })}</span>
-                                <span>Discharge GOV: {parseFloat(vb.discharge_gov).toLocaleString(undefined, { minimumFractionDigits: 2 })} L</span>
-                                <span>Discharge GSV: {parseFloat(vb.discharge_gsv).toLocaleString(undefined, { minimumFractionDigits: 2 })} L</span>
+                                <span>Discharge GOV: {parseFloat(vb.discharge_gov).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                <span>Discharge GSV: {parseFloat(vb.discharge_gsv).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                                 <span>Discharge MTvac: {parseFloat(vb.discharge_mt_vacuum).toLocaleString(undefined, { minimumFractionDigits: 3 })}</span>
-                                {vb.variance_litres && <span>Variance: {parseFloat(vb.variance_litres).toLocaleString(undefined, { minimumFractionDigits: 2 })} L</span>}
+                                {vb.variance_litres && <span>Variance: {parseFloat(vb.variance_litres).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>}
                                 <span>Completion Date: {formatDate(vb.discharge_completion_date)}</span>
                               </div>
 
                               {(vb.received_gov || vb.received_gsv || vb.received_mt_vacuum) && (
                                 <div className="grid grid-cols-3 gap-x-4 gap-y-1 text-[11px] rounded-md p-2.5 bg-sky-50 text-sky-800 dark:bg-sky-500/10 dark:text-sky-300">
                                   <span className="col-span-3 text-[10px] font-semibold uppercase tracking-wide">Received Quantity — receiving vessel&apos;s own readings</span>
-                                  {vb.received_gov && <span>Received GOV: {parseFloat(vb.received_gov).toLocaleString(undefined, { minimumFractionDigits: 2 })} L</span>}
-                                  {vb.received_gsv && <span>Received GSV: {parseFloat(vb.received_gsv).toLocaleString(undefined, { minimumFractionDigits: 2 })} L</span>}
+                                  {vb.received_gov && <span>Received GOV: {parseFloat(vb.received_gov).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>}
+                                  {vb.received_gsv && <span>Received GSV: {parseFloat(vb.received_gsv).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>}
                                   {vb.received_mt_vacuum && <span>Received MTvac: {parseFloat(vb.received_mt_vacuum).toLocaleString(undefined, { minimumFractionDigits: 3 })}</span>}
                                   {vb.received_mt_vacuum && (
                                     <span className="col-span-3 font-semibold">
@@ -6070,8 +6097,9 @@ export default function OperationDetailPage({
                               <QuantityReadout
                                 key={r.id}
                                 columns={[
-                                  ["Quantity", `${parseFloat(r.quantity_litres).toLocaleString()} L`],
-                                  ["MTVC", r.mt_vacuum ? parseFloat(r.mt_vacuum).toLocaleString() : "—"],
+                                  ["GOV",      qty(r.gov, 2)],
+                                  ["GSV",      qty(r.gsv, 2)],
+                                  ["MT(vac)",  qty(r.mt_vacuum)],
                                   ["Recorded", formatDateTime(r.recorded_at)],
                                 ]}
                                 note={r.description}
@@ -6091,12 +6119,18 @@ export default function OperationDetailPage({
 
                       const sum = (vals: (string | undefined)[]) =>
                         vals.reduce<number>((acc, v) => acc + (v ? parseFloat(v) : 0), 0);
-                      const litres = (n: number) => (n > 0 ? `${n.toLocaleString()} L` : "—");
-                      const mtvc = (n: number) => (n > 0 ? `${n.toLocaleString()} MTVC` : undefined);
+                      // Vessel side is MT(vac) only — litres are a truck unit.
+                      const mtvac = (n: number) => (n > 0 ? `${n.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })} MT(vac)` : "");
+                      const govGsv = (g: number, s: number) =>
+                        g > 0 || s > 0
+                          ? `GOV ${g.toLocaleString(undefined, { maximumFractionDigits: 2 })} · GSV ${s.toLocaleString(undefined, { maximumFractionDigits: 2 })}`
+                          : undefined;
 
-                      const loadedL   = sum(acts.map((a) => a.loading_received_quantity_litres));
+                      const loadedGov = sum(acts.map((a) => a.loading_gov));
+                      const loadedGsv = sum(acts.map((a) => a.loading_gsv));
                       const loadedMt  = sum(acts.map((a) => a.loading_mt_vacuum));
-                      const dischL    = sum(legs.map((l) => l.quantity_discharged_litres));
+                      const dischGov  = sum(legs.map((l) => l.gov));
+                      const dischGsv  = sum(legs.map((l) => l.gsv));
                       const dischMt   = sum(legs.map((l) => l.mt_vacuum));
 
                       // "Completed" is the last discharge actually recorded —
@@ -6113,15 +6147,15 @@ export default function OperationDetailPage({
                           <StatTile
                             icon={Ship}
                             label="Loading Received Quantity"
-                            value={litres(loadedL)}
-                            detail={mtvc(loadedMt)}
+                            value={mtvac(loadedMt)}
+                            detail={govGsv(loadedGov, loadedGsv)}
                           />
                           <StatTile
                             icon={Droplets}
                             tone="emerald"
                             label="Discharge Quantity"
-                            value={litres(dischL)}
-                            detail={mtvc(dischMt)}
+                            value={mtvac(dischMt)}
+                            detail={govGsv(dischGov, dischGsv)}
                           />
                           <StatTile
                             icon={Anchor}
@@ -6599,7 +6633,7 @@ export default function OperationDetailPage({
                                     <p className="text-[9px] text-muted-foreground uppercase tracking-wide">{lbl}</p>
                                     <p className={`text-xs font-semibold font-mono ${lbl === "Spillage" && val && parseFloat(String(val)) > 0 ? "text-amber-600" : "text-emerald-700"}`}>
                                       {val && parseFloat(String(val)) > 0
-                                        ? `${parseFloat(String(val)).toFixed(3)} L`
+                                        ? `${parseFloat(String(val)).toFixed(3)}`
                                         : "—"}
                                     </p>
                                   </div>
@@ -7279,8 +7313,12 @@ export default function OperationDetailPage({
                                         ) : activity.loading_quantity_recorded_at ? (
                                           <QuantityReadout
                                             columns={[
-                                              ["Received", `${parseFloat(activity.loading_received_quantity_litres ?? "0").toLocaleString()} MT`],
-                                              ["MTVC",     parseFloat(activity.loading_mt_vacuum ?? "0").toLocaleString()],
+                                              ["GOV",      qty(activity.loading_gov, 2)],
+                                              ["GSV",      qty(activity.loading_gsv, 2)],
+                                              ["MT(vac)",  qty(activity.loading_mt_vacuum)],
+                                              ["Density",  qty(activity.loading_density, 4)],
+                                              ["Temp",     activity.loading_temperature ? `${parseFloat(activity.loading_temperature).toFixed(1)}°` : ""],
+                                              ["VCF",      qty(activity.loading_vcf, 4)],
                                               ["Recorded", formatDateTime(activity.loading_quantity_recorded_at)],
                                             ]}
                                             note={activity.loading_quantity_description}
@@ -7608,7 +7646,7 @@ export default function OperationDetailPage({
                                                                 <div><span className="text-muted-foreground">Alongside:</span> {leg.stage_alongside_system_at ? formatDateTime(leg.stage_alongside_system_at) : "—"}</div>
                                                                 <div><span className="text-muted-foreground">Commenced Pumping:</span> {leg.stage_discharge_commenced_system_at ? formatDateTime(leg.stage_discharge_commenced_system_at) : "—"}</div>
                                                                 <div><span className="text-muted-foreground">Completed Receiving:</span> {leg.stage_discharge_completed_system_at ? formatDateTime(leg.stage_discharge_completed_system_at) : "—"}</div>
-                                                                <div><span className="text-muted-foreground">Quantity Delivered:</span> {leg.quantity_discharged_litres ? `${parseFloat(leg.quantity_discharged_litres).toLocaleString()} L` : "—"}</div>
+                                                                <div><span className="text-muted-foreground">Quantity Delivered:</span> {leg.quantity_discharged_litres ? `${parseFloat(leg.quantity_discharged_litres).toLocaleString()}` : "—"}</div>
                                                                 <div><span className="text-muted-foreground">Product:</span> {op.products?.length ? op.products.map((pr) => pr.product_type).join(", ") : (op.product_type ?? "—")}</div>
                                                               </div>
                                                               <div className="space-y-1">
@@ -7697,9 +7735,18 @@ export default function OperationDetailPage({
                                                           ) : leg.quantity_recorded_at ? (
                                                             <QuantityReadout
                                                               columns={[
-                                                                ["Discharged", `${parseFloat(leg.quantity_discharged_litres ?? "0").toLocaleString()} L`],
-                                                                ["MTVC",       parseFloat(leg.mt_vacuum ?? "0").toLocaleString()],
-                                                                ["Recorded",   formatDateTime(leg.quantity_recorded_at)],
+                                                                ["GOV",      qty(leg.gov, 2)],
+                                                                ["GSV",      qty(leg.gsv, 2)],
+                                                                ["MT(vac)",  qty(leg.mt_vacuum)],
+                                                                ["Density",  qty(leg.density, 4)],
+                                                                ["Temp",     leg.temperature ? `${parseFloat(leg.temperature).toFixed(1)}°` : ""],
+                                                                ["VCF",      qty(leg.vcf, 4)],
+                                                                // Discharged vs what this run loaded — the comparison the BM
+                                                                // had been working out by hand and typing into the note.
+                                                                ["Var GOV",     variance(leg.gov, activity.loading_gov, 2)],
+                                                                ["Var GSV",     variance(leg.gsv, activity.loading_gsv, 2)],
+                                                                ["Var MT(vac)", variance(leg.mt_vacuum, activity.loading_mt_vacuum)],
+                                                                ["Recorded",    formatDateTime(leg.quantity_recorded_at)],
                                                               ]}
                                                               note={leg.quantity_description}
                                                             />

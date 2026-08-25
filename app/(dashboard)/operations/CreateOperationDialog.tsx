@@ -40,31 +40,36 @@ import { VESSEL_SOURCE_TYPE_LABELS } from "@/lib/utils";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
+// Who can be given work on an operation. Ops Supervisor is deliberately not
+// here: they hold the Bunker Manager's authority over every operation by
+// role, so assigning them one would be redundant — and picking one of the
+// several Ops Supervisors would wrongly suggest the others are excluded.
 const ELIGIBLE_ROLES: Record<OperationType, string[]> = {
-  truck_only:     ["ops_supervisor", "logistics_officer"],
-  vessel_only:    ["ops_supervisor", "cargo_superintendent"],
-  full_operation: ["ops_supervisor", "logistics_officer", "cargo_superintendent"],
+  truck_only:     ["logistics_officer"],
+  vessel_only:    ["cargo_superintendent"],
+  full_operation: ["logistics_officer", "cargo_superintendent"],
 };
 
+// Marine Discharge is retired — it never behaved differently from Vessel
+// Operations. Tasks already saved with it keep their label in tasks/page.tsx;
+// it simply cannot be chosen for new work.
 const ELIGIBLE_TASK_TYPES: Record<OperationType, { value: string; label: string }[]> = {
   truck_only: [
     { value: "truck_logistics", label: "Truck Logistics" },
   ],
   vessel_only: [
     { value: "vessel_operations", label: "Vessel Operations" },
-    { value: "marine_discharge",  label: "Marine Discharge" },
   ],
   full_operation: [
     { value: "truck_logistics",   label: "Truck Logistics" },
     { value: "vessel_operations", label: "Vessel Operations" },
-    { value: "marine_discharge",  label: "Marine Discharge" },
   ],
 };
 
 const ROLE_LABELS: Record<string, string> = {
   ops_supervisor:       "Ops Supervisor",
-  logistics_officer:    "Logistics Officer",
-  cargo_superintendent: "Cargo Superintendent",
+  logistics_officer:    "Truck Operation",
+  cargo_superintendent: "Marine Operations",
   finance_manager:      "Finance Manager",
 };
 

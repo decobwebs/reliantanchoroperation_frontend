@@ -19,8 +19,8 @@ import {
 // The 5 roles a Bunker Manager may temporarily act as.
 const ACT_AS_ROLES: { value: string; label: string }[] = [
   { value: "ops_supervisor", label: "Ops Supervisor" },
-  { value: "logistics_officer", label: "Logistics Officer" },
-  { value: "cargo_superintendent", label: "Cargo Superintendent" },
+  { value: "logistics_officer", label: "Truck Operation" },
+  { value: "cargo_superintendent", label: "Marine Operations" },
   { value: "finance_manager", label: "Finance Manager" },
   { value: "marine_operator", label: "Marine Operator" },
 ];

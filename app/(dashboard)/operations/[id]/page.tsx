@@ -153,8 +153,8 @@ import { STATUS_PIPELINE, PIPELINE_LABELS, resolveExpectedVolumeMt } from "@/lib
 
 const ROLE_LABELS: Record<string, string> = {
   ops_supervisor:       "Ops Supervisor",
-  logistics_officer:    "Logistics Officer",
-  cargo_superintendent: "Cargo Superintendent",
+  logistics_officer:    "Truck Operation",
+  cargo_superintendent: "Marine Operations",
   finance_manager:      "Finance Manager",
 };
 
@@ -165,10 +165,12 @@ const PRIORITY_OPTIONS = [
   { value: "urgent", label: "Urgent" },
 ];
 
+// Ops Supervisor is not assignable: they already carry the Bunker Manager's
+// authority over every operation by role, so there is nothing to assign.
 const ELIGIBLE_ROLES: Record<string, string[]> = {
-  truck_only:     ["ops_supervisor", "logistics_officer"],
-  vessel_only:    ["ops_supervisor", "cargo_superintendent"],
-  full_operation: ["ops_supervisor", "logistics_officer", "cargo_superintendent"],
+  truck_only:     ["logistics_officer"],
+  vessel_only:    ["cargo_superintendent"],
+  full_operation: ["logistics_officer", "cargo_superintendent"],
 };
 
 // The small underlined text actions that sit inside marine panels — Edit,
@@ -195,16 +197,16 @@ const DOC_TYPE_LABELS: Record<string, string> = Object.fromEntries(
   DOC_TYPES.map((d) => [d.value, d.label])
 );
 
+// Marine Discharge is retired — never distinguishable from Vessel Operations
+// in any check. Existing tasks keep it; it cannot be chosen for new work.
 const ELIGIBLE_TASK_TYPES: Record<string, { value: string; label: string }[]> = {
   truck_only:     [{ value: "truck_logistics",  label: "Truck Logistics" }],
   vessel_only:    [
     { value: "vessel_operations", label: "Vessel Operations" },
-    { value: "marine_discharge",  label: "Marine Discharge" },
   ],
   full_operation: [
     { value: "truck_logistics",   label: "Truck Logistics" },
     { value: "vessel_operations", label: "Vessel Operations" },
-    { value: "marine_discharge",  label: "Marine Discharge" },
   ],
 };
 
@@ -244,7 +246,7 @@ function getAvailableTransitions(
         : [{ to: "vessel_operations", label: "Start Vessel Ops" }];
     case "pending_completion":
       // Delivery done — completion no longer happens directly from here.
-      // Ops Supervisor / Logistics Officer must submit the Truck BDN (Truck
+      // Ops Supervisor / Truck Operation must submit the Truck BDN (Truck
       // BDN tab); BM's only direct action at this stage is to bounce it back
       // a step. Where "back" lands depends on the type: truck-only reverses
       // to active, but vessel/full have no such transition (see
@@ -649,7 +651,15 @@ export default function OperationDetailPage({
   // vessel activity happens to be assigned to them. Mirrors the backend
   // (require_roles / acting_role both let a real BM through unconditionally).
   const isRealBM = user?.role === "bunker_manager";
-  const isBM = isRealBM || effectiveRole === "bunker_manager";
+  // The Ops Supervisor holds the BM's authority inside an operation, so every
+  // BM gate on this page accepts them too — this page IS "operations". The
+  // exception is approving/rejecting a BDN, gated on canApproveBdn below,
+  // because the Ops Supervisor is one of the roles that submits them.
+  const isRealOS = user?.role === "ops_supervisor";
+  const isBM =
+    isRealBM || isRealOS ||
+    effectiveRole === "bunker_manager" || effectiveRole === "ops_supervisor";
+  const canApproveBdn = isRealBM || effectiveRole === "bunker_manager";
   const isFM = isRealBM || effectiveRole === "finance_manager";
   const isLO = isRealBM || effectiveRole === "logistics_officer";
   const isMM = isRealBM || effectiveRole === "cargo_superintendent";
@@ -3906,12 +3916,12 @@ export default function OperationDetailPage({
                   <p className="text-xs text-amber-700/80 mt-1.5">
                     {op.type === "vessel_only" ? (
                       <>
-                        Awaiting the Ops Supervisor / Cargo Superintendent to submit a Vessel BDN for each
+                        Awaiting the Ops Supervisor / Marine Operations to submit a Vessel BDN for each
                         receiving vessel (Vessel BDN tab) — the operation completes once every one is approved.
                       </>
                     ) : op.type === "truck_only" ? (
                       <>
-                        Awaiting the Ops Supervisor / Logistics Officer to submit a Truck BDN for this
+                        Awaiting the Ops Supervisor / Truck Operation to submit a Truck BDN for this
                         delivery (Truck BDN tab) — the operation completes once it&apos;s approved.
                       </>
                     ) : (
@@ -4654,7 +4664,7 @@ export default function OperationDetailPage({
                           <Truck className="w-10 h-10 mb-3 opacity-30" />
                           <p className="text-sm">No feedback submitted yet</p>
                           <p className="text-xs mt-1">
-                            Logistics Officers submit feedback once the operation is &ldquo;Awaiting Feedback&rdquo;.
+                            Truck Operation submits feedback once the operation is &ldquo;Awaiting Feedback&rdquo;.
                           </p>
                         </div>
                       </CardContent>
@@ -5049,8 +5059,9 @@ export default function OperationDetailPage({
                                 )
                               )}
 
-                              {/* BM: approve / reject buttons for pending BDNs */}
-                              {isBM && bdn.status === "pending" && (
+                              {/* Approving stays with the BM — the Ops Supervisor
+                                  submits BDNs, so they must not sign off their own. */}
+                              {canApproveBdn && bdn.status === "pending" && (
                                 <div className="pt-1 space-y-2">
                                   {rejectBdnId === bdn.id ? (
                                     <div className="space-y-2 border rounded-md p-3 bg-muted/30">
@@ -5456,8 +5467,8 @@ export default function OperationDetailPage({
                               </div>
                               {tb.notes && <p className="text-xs text-foreground/80">{tb.notes}</p>}
 
-                              {/* BM: approve / reject buttons for pending Truck BDNs */}
-                              {isBM && tb.status === "pending" && (
+                              {/* BM only — see the BDN approve gate above. */}
+                              {canApproveBdn && tb.status === "pending" && (
                                 <div className="pt-1 space-y-2">
                                   {rejectTruckBdnId === tb.id ? (
                                     <div className="space-y-2 border rounded-md p-3 bg-muted/30">
@@ -5943,7 +5954,8 @@ export default function OperationDetailPage({
                               )}
                               {vb.notes && <p className="text-xs text-foreground/80">{vb.notes}</p>}
 
-                              {isBM && vb.status === "pending" && (
+                              {/* BM only — see the BDN approve gate above. */}
+                              {canApproveBdn && vb.status === "pending" && (
                                 <div className="pt-1 space-y-2">
                                   {rejectVesselBdnId === vb.id ? (
                                     <div className="space-y-2 border rounded-md p-3 bg-muted/30">
@@ -6354,7 +6366,7 @@ export default function OperationDetailPage({
                               </Select>
                             </div>
                             <div className="space-y-1.5">
-                              <Label className="text-xs">Cargo Superintendent *</Label>
+                              <Label className="text-xs">Marine Operations *</Label>
                               <Select value={actAssignedTo} onValueChange={setActAssignedTo}>
                                 <SelectTrigger className="h-8 text-xs">
                                   <SelectValue placeholder="Select manager…" />
@@ -6472,7 +6484,7 @@ export default function OperationDetailPage({
                         // a real Bunker Manager or Ops Supervisor always retains action authority
                         // here even while previewing the app as another role.
                         // Mirrors the backend's _assert_authorized: the
-                        // assigned Cargo Superintendent, any Ops Supervisor, or the
+                        // assigned Marine Operations user, any Ops Supervisor, or the
                         // Bunker Manager (who is never assignee-gated).
                         const canAct       = isAssignee || isBM || isOS;
                         const hasReceipt   = !!activity.vessel_received_mt;
@@ -7088,7 +7100,7 @@ export default function OperationDetailPage({
 
                                     {/* HSE checklist — available any time once commenced, non-blocking.
                                          Gated on BM/OS to match the backend's _hse_roles; the assigned
-                                         Cargo Superintendent would otherwise see a button that 403s. */}
+                                         Marine Operations would otherwise see a button that 403s. */}
                                     {(isBM || isOS) && (
                                       <div>
                                         {activity.hse_result && correctHseTarget?.id !== activity.id ? (

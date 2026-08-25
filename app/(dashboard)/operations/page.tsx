@@ -252,7 +252,9 @@ export default function OperationsPage() {
     };
   }, [overview]);
 
-  const isBM = effectiveRole === "bunker_manager";
+  // Ops Supervisor carries the BM's authority over operations, so the
+  // operations screens treat the two alike. See app/permissions.py.
+  const isBM = effectiveRole === "bunker_manager" || effectiveRole === "ops_supervisor";
   // Creation only — the Ops Supervisor gets no other operation-level action
   // (edit, close, pause, transition, delete all stay BM-only, front and back).
   const canCreateOperation = isBM || effectiveRole === "ops_supervisor";

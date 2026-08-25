@@ -56,6 +56,9 @@ const PRIORITY_COLOR: Record<string, string> = {
   urgent: "bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300",
 };
 
+// Every value that can appear on a stored task, including ones no longer
+// offered when assigning — existing Marine Discharge tasks must still render
+// with a name rather than a raw enum value.
 const TASK_TYPE_LABEL: Record<string, string> = {
   truck_logistics:    "Truck Logistics",
   vessel_operations:  "Vessel Operations",
@@ -259,7 +262,7 @@ function SubmitReadinessDialog({
   );
 }
 
-// ─── Cargo Superintendent "Mark Vessel Ready" Dialog ──────────────────────────
+// ─── Marine Operations "Mark Vessel Ready" Dialog ──────────────────────────
 
 const vesselReadySchema = z.object({
   notes: z.string().min(10, "Please describe the vessel readiness (min 10 chars)"),

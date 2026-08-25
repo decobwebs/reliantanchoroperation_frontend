@@ -41,7 +41,7 @@ interface TaskRowProps {
 }
 
 /**
- * One assigned task, as it appears on the Ops Supervisor and Logistics Officer
+ * One assigned task, as it appears on the Ops Supervisor and Truck Operation
  * dashboards. Both showed the same type / operation / priority trio with
  * slightly different chrome — this is the single version.
  */

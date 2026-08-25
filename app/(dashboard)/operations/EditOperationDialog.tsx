@@ -25,10 +25,12 @@ import type {
 
 const PRODUCT_TYPES = Object.keys(PRODUCT_TYPE_LABELS) as ProductType[];
 
+// Marine Discharge is retired — it never behaved differently from Vessel
+// Operations. Tasks already saved with it still display; it cannot be chosen
+// for new work.
 const TASK_TYPES = [
   { value: "truck_logistics", label: "Truck Logistics" },
   { value: "vessel_operations", label: "Vessel Operations" },
-  { value: "marine_discharge", label: "Marine Discharge" },
 ];
 
 const PRIORITIES = ["low", "normal", "high", "urgent"];

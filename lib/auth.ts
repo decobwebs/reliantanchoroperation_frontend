@@ -60,11 +60,13 @@ export async function fetchMe(): Promise<User> {
 }
 
 // Role helpers
+// Display names only. The stored role values never change — renaming a role
+// is a labelling decision, and rewriting them would orphan every existing row.
 export const ROLE_LABELS: Record<string, string> = {
   bunker_manager: "Bunker Manager",
   ops_supervisor: "Ops Supervisor",
-  logistics_officer: "Logistics Officer",
-  cargo_superintendent: "Cargo Superintendent",
+  logistics_officer: "Truck Operation",
+  cargo_superintendent: "Marine Operations",
   finance_manager: "Finance Manager",
   client: "Client",
   marine_operator: "Marine Operator",

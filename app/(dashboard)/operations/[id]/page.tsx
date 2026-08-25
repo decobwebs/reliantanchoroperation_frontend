@@ -652,14 +652,12 @@ export default function OperationDetailPage({
   // (require_roles / acting_role both let a real BM through unconditionally).
   const isRealBM = user?.role === "bunker_manager";
   // The Ops Supervisor holds the BM's authority inside an operation, so every
-  // BM gate on this page accepts them too — this page IS "operations". The
-  // exception is approving/rejecting a BDN, gated on canApproveBdn below,
-  // because the Ops Supervisor is one of the roles that submits them.
+  // BM gate on this page accepts them too — this page IS "operations", and
+  // that includes approving and rejecting BDNs.
   const isRealOS = user?.role === "ops_supervisor";
   const isBM =
     isRealBM || isRealOS ||
     effectiveRole === "bunker_manager" || effectiveRole === "ops_supervisor";
-  const canApproveBdn = isRealBM || effectiveRole === "bunker_manager";
   const isFM = isRealBM || effectiveRole === "finance_manager";
   const isLO = isRealBM || effectiveRole === "logistics_officer";
   const isMM = isRealBM || effectiveRole === "cargo_superintendent";
@@ -5059,9 +5057,8 @@ export default function OperationDetailPage({
                                 )
                               )}
 
-                              {/* Approving stays with the BM — the Ops Supervisor
-                                  submits BDNs, so they must not sign off their own. */}
-                              {canApproveBdn && bdn.status === "pending" && (
+                              {/* Approve / reject a pending BDN */}
+                              {isBM && bdn.status === "pending" && (
                                 <div className="pt-1 space-y-2">
                                   {rejectBdnId === bdn.id ? (
                                     <div className="space-y-2 border rounded-md p-3 bg-muted/30">
@@ -5467,8 +5464,8 @@ export default function OperationDetailPage({
                               </div>
                               {tb.notes && <p className="text-xs text-foreground/80">{tb.notes}</p>}
 
-                              {/* BM only — see the BDN approve gate above. */}
-                              {canApproveBdn && tb.status === "pending" && (
+                              {/* Approve / reject a pending Truck BDN */}
+                              {isBM && tb.status === "pending" && (
                                 <div className="pt-1 space-y-2">
                                   {rejectTruckBdnId === tb.id ? (
                                     <div className="space-y-2 border rounded-md p-3 bg-muted/30">
@@ -5954,8 +5951,8 @@ export default function OperationDetailPage({
                               )}
                               {vb.notes && <p className="text-xs text-foreground/80">{vb.notes}</p>}
 
-                              {/* BM only — see the BDN approve gate above. */}
-                              {canApproveBdn && vb.status === "pending" && (
+                              {/* Approve / reject a pending Vessel BDN */}
+                              {isBM && vb.status === "pending" && (
                                 <div className="pt-1 space-y-2">
                                   {rejectVesselBdnId === vb.id ? (
                                     <div className="space-y-2 border rounded-md p-3 bg-muted/30">

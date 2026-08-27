@@ -120,7 +120,7 @@ export function GlobalSearch({ className }: { className?: string }) {
         aria-controls={listId}
         aria-autocomplete="list"
         aria-label="Search operations"
-        placeholder="Search operations, vessels, trucks, documents…"
+        placeholder="Search operations by number or notes…"
         value={value}
         onChange={(e) => {
           setValue(e.target.value);

@@ -4860,8 +4860,9 @@ export default function OperationDetailPage({
               {canSeeBDN && (
                 <TabsContent value="bdns" className="mt-4 space-y-4">
 
-                  {/* MM: Create BDN form */}
-                  {isMM && !["completed", "cancelled", "archived"].includes(op.status) && (
+                  {/* Marine Operations or Ops Supervisor raises this — the same
+                      pair who submit the Truck and Vessel BDNs. */}
+                  {(isMM || isBM) && !["completed", "cancelled", "archived"].includes(op.status) && (
                     <Card className="rounded-2xl border border-navy-100 shadow-[0_1px_2px_rgb(16_36_71/0.04)] dark:border-border">
                       <CardHeader className="pb-3 pt-4 px-5">
                         <div className="flex items-center justify-between">

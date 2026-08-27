@@ -11,6 +11,8 @@ import {
   Phone,
   Trash2,
   MailPlus,
+  Search,
+  X,
 } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "sonner";
@@ -232,6 +234,18 @@ export default function AdminPage() {
     },
   });
 
+  // Filtering happens here rather than through the API: the registry is
+  // already loaded in full above, so matching in the browser is instant and
+  // costs no extra request. Name, email and phone all match, because the BM
+  // looks people up by whichever one they happen to remember.
+  const [query, setQuery] = useState("");
+  const q = query.trim().toLowerCase();
+  const visibleUsers = q
+    ? (users ?? []).filter((u) =>
+        [u.full_name, u.email, u.phone].some((f) => f?.toLowerCase().includes(q))
+      )
+    : users ?? [];
+
   // ── Delete ──
   const [deleteUser, setDeleteUser] = useState<User | null>(null);
   const [deleteReason, setDeleteReason] = useState("");
@@ -291,7 +305,11 @@ export default function AdminPage() {
       iconTone="blue"
       showRole={false}
       title="User Management"
-      subtitle={`${users?.length ?? 0} users registered`}
+      subtitle={
+        q
+          ? `${visibleUsers.length} of ${users?.length ?? 0} users match “${query.trim()}”`
+          : `${users?.length ?? 0} users registered`
+      }
       actions={<CreateUserDialog />}
     >
       {isError ? (
@@ -299,10 +317,38 @@ export default function AdminPage() {
       ) : isLoading ? (
         <Skeleton className="h-96 w-full rounded-2xl" />
       ) : (
-        <PanelCard icon={Users} tone="blue" title="Registry" flush className="animate-rise">
-          {users?.length ? (
+        <PanelCard
+          icon={Users}
+          tone="blue"
+          title="Registry"
+          flush
+          className="animate-rise"
+          action={
+            <div className="relative w-full sm:w-64">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search name, email or phone…"
+                aria-label="Search users"
+                className="h-9 pl-8 pr-8 text-sm"
+              />
+              {query && (
+                <button
+                  type="button"
+                  aria-label="Clear search"
+                  onClick={() => setQuery("")}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+          }
+        >
+          {visibleUsers.length ? (
             <div className="divide-y divide-border/70">
-              {users.map((u) => (
+              {visibleUsers.map((u) => (
                 <div key={u.id} className="flex items-center gap-4 px-4 py-4 lg:px-5">
                   <Avatar className="h-9 w-9 shrink-0">
                     <AvatarFallback className="bg-brand-50 text-xs font-semibold text-brand-700 dark:bg-brand-500/15 dark:text-brand-300">
@@ -382,7 +428,14 @@ export default function AdminPage() {
           ) : (
             <div className="flex flex-col items-center py-16 text-center">
               <Users className="h-9 w-9 text-muted-foreground/25" strokeWidth={1.5} />
-              <p className="mt-3 text-sm font-medium text-foreground">No users found</p>
+              <p className="mt-3 text-sm font-medium text-foreground">
+                {q ? `Nobody matches “${query.trim()}”` : "No users found"}
+              </p>
+              {q && (
+                <Button variant="outline" size="sm" className="mt-3" onClick={() => setQuery("")}>
+                  Clear search
+                </Button>
+              )}
             </div>
           )}
         </PanelCard>

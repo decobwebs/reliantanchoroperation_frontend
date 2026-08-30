@@ -62,6 +62,7 @@ import { EditOperationDialog } from "../EditOperationDialog";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { PanelCard } from "@/components/dashboard/PanelCard";
 import { DetailHeader, MetaChip } from "@/components/operations/DetailHeader";
+import { OperationScorecardPanel } from "@/components/operations/OperationScorecardPanel";
 import { JourneyStepper, type JourneyStep } from "@/components/operations/JourneyStepper";
 import { OperationSummaryCard } from "@/components/operations/OperationSummaryCard";
 import { StatusTimeline } from "@/components/operations/StatusTimeline";
@@ -141,7 +142,6 @@ import type {
   ClientNotificationRecipient,
   ClientNotificationLog,
   PendingClientNotification,
-  OperationKpi,
   RoleStageDurations,
 } from "@/types";
 import { PRODUCT_TYPE_LABELS, LEG_STAGES } from "@/types";
@@ -358,14 +358,16 @@ function AssignTaskDialog({
   const eligibleRoles    = ELIGIBLE_ROLES[operationType] ?? [];
   const eligibleTaskTypes = ELIGIBLE_TASK_TYPES[operationType] ?? [];
 
+  // /admin/staff, not /admin/users — the latter is Bunker-Manager-only and
+  // would leave this picker empty for an Ops Supervisor.
   const { data: staffUsers } = useQuery({
-    queryKey: ["staff-users"],
+    queryKey: ["operation-staff"],
     queryFn: async () => {
-      const res = await api.get<ApiResponse<{ items: User[] }>>("/admin/users?per_page=100");
-      const items = (res.data.data as { items: User[] }).items ?? [];
-      return items.filter((u) => u.is_active && eligibleRoles.includes(u.role));
+      const res = await api.get<ApiResponse<User[]>>("/admin/staff");
+      return res.data.data ?? [];
     },
     enabled: open,
+    select: (all: User[]) => all.filter((u) => eligibleRoles.includes(u.role)),
   });
 
   const mutation = useMutation({
@@ -925,13 +927,13 @@ export default function OperationDetailPage({
   });
 
   const { data: marineManagers } = useQuery({
-    queryKey: ["marine-managers"],
+    queryKey: ["operation-staff"],
     queryFn: async () => {
-      const res = await api.get<ApiResponse<{ items: User[] }>>("/admin/users?per_page=100");
-      const items = (res.data.data as { items: User[] }).items ?? [];
-      return items.filter((u) => u.is_active && u.role === "cargo_superintendent");
+      const res = await api.get<ApiResponse<User[]>>("/admin/staff");
+      return res.data.data ?? [];
     },
     enabled: isBM,
+    select: (all: User[]) => all.filter((u) => u.role === "cargo_superintendent"),
   });
 
   const { data: versions } = useQuery({
@@ -1290,15 +1292,6 @@ export default function OperationDetailPage({
     queryFn: async () => {
       const res = await api.get<ApiResponse<ClientNotificationLog[]>>(`/operations/${id}/client-notifications/log`);
       return res.data.data ?? [];
-    },
-    enabled: isBM && op?.type !== "truck_only",
-  });
-
-  const { data: operationKpi, isLoading: operationKpiLoading, isError: operationKpiErrored, refetch: refetchOperationKpi } = useQuery({
-    queryKey: ["operation-kpi", id],
-    queryFn: async () => {
-      const res = await api.get<ApiResponse<OperationKpi>>(`/operations/${id}/kpi`);
-      return res.data.data ?? null;
     },
     enabled: isBM && op?.type !== "truck_only",
   });
@@ -3689,6 +3682,20 @@ export default function OperationDetailPage({
         }
         actions={
           <>
+            {/* Report card lives on its own route rather than as a tab here:
+                this file is ~10,000 lines and is used every day, so a new
+                folder cannot break it while editing it might. */}
+            <Button
+              asChild
+              variant="outline"
+              className="h-10.5 gap-2 text-[13px] font-semibold"
+            >
+              <Link href={`/operations/${op.id}/scorecard`}>
+                <Gauge className="h-4 w-4" strokeWidth={2.2} />
+                Report Card
+              </Link>
+            </Button>
+
             {isBM && (
               <Button
                 variant="outline"
@@ -7832,62 +7839,10 @@ export default function OperationDetailPage({
               {/* ── KPI tab — cast-off to discharge-completed duration + per-stage/role timing, computed live from stage timestamps and the audit trail, no new tables */}
               {isBM && op.type !== "truck_only" && (
                 <TabsContent value="kpi" className="mt-4 space-y-4">
-                  <Card className="rounded-2xl border border-navy-100 shadow-[0_1px_2px_rgb(16_36_71/0.04)] dark:border-border">
-                    <CardHeader className="pb-2">
-                      <CardTitle className="flex items-center gap-2 text-[15px] font-bold tracking-tight">
-                        <Gauge className="w-4 h-4 text-primary" />
-                        Operation Duration
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="p-5 pt-0">
-                      {operationKpiLoading ? (
-                        <div className="flex justify-center py-6"><Spinner size={20} className="text-muted-foreground" /></div>
-                      ) : operationKpiErrored ? (
-                        <div className="flex flex-col items-center gap-2 py-6">
-                          <p className="text-sm text-rose-600">Failed to load operation duration</p>
-                          <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => refetchOperationKpi()}>Retry</Button>
-                        </div>
-                      ) : !operationKpi || (!operationKpi.cast_off_at && !operationKpi.discharge_completed_at) ? (
-                        <p className="text-sm text-muted-foreground text-center py-6">No stage data recorded yet</p>
-                      ) : (
-                        <div className="grid grid-cols-3 gap-4">
-                          <InfoItem label="Earliest Cast-Off" value={operationKpi.cast_off_at ? formatDateTime(operationKpi.cast_off_at) : "—"} />
-                          <InfoItem label="Latest Discharge Completed" value={operationKpi.discharge_completed_at ? formatDateTime(operationKpi.discharge_completed_at) : "—"} />
-                          <InfoItem label="Overall Duration" value={operationKpi.duration_hours != null ? `${operationKpi.duration_hours.toFixed(1)} hrs` : "—"} />
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-
-                  <Card className="rounded-2xl border border-navy-100 shadow-[0_1px_2px_rgb(16_36_71/0.04)] dark:border-border">
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-[15px] font-bold tracking-tight">Per-Vessel-Run Breakdown</CardTitle>
-                    </CardHeader>
-                    <CardContent className="p-0">
-                      {operationKpiLoading ? (
-                        <div className="flex justify-center py-6"><Spinner size={20} className="text-muted-foreground" /></div>
-                      ) : operationKpiErrored ? (
-                        <div className="flex flex-col items-center gap-2 py-6">
-                          <p className="text-sm text-rose-600">Failed to load vessel-run breakdown</p>
-                          <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => refetchOperationKpi()}>Retry</Button>
-                        </div>
-                      ) : !operationKpi?.vessel_runs.length ? (
-                        <p className="text-sm text-muted-foreground text-center py-6">No vessel runs yet</p>
-                      ) : (
-                        <div className="divide-y">
-                          {operationKpi.vessel_runs.map((r) => (
-                            <div key={r.vessel_activity_id} className="px-4 py-3 flex items-center justify-between gap-3 text-xs">
-                              <span className="font-medium">{r.vessel_name ?? "—"}</span>
-                              <span className="text-muted-foreground">
-                                {r.cast_off_at ? formatDateTime(r.cast_off_at) : "—"} → {r.discharge_completed_at ? formatDateTime(r.discharge_completed_at) : "—"}
-                              </span>
-                              <span className="font-mono shrink-0">{r.duration_hours != null ? `${r.duration_hours.toFixed(1)} hrs` : "—"}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
+                  {/* The full report card. Rendered from a shared component so
+                      the same scorecard appears here and on the standalone
+                      /operations/[id]/scorecard page without living twice. */}
+                  <OperationScorecardPanel operationId={id} />
 
                   <Card className="rounded-2xl border border-navy-100 shadow-[0_1px_2px_rgb(16_36_71/0.04)] dark:border-border">
                     <CardHeader className="pb-2">

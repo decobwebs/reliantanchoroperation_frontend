@@ -119,23 +119,22 @@ export function EditOperationDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, operation.id]);
 
+  // Narrow pickers rather than /admin/users, which is Bunker-Manager-only —
+  // see the same note in CreateOperationDialog.
   const { data: clients } = useQuery({
-    queryKey: ["users-clients"],
+    queryKey: ["operation-clients"],
     queryFn: async () => {
-      const res = await api.get<ApiResponse<User[]>>("/admin/users?role=client&per_page=100");
-      const d = res.data.data;
-      return Array.isArray(d) ? d : (d as unknown as { items: User[] }).items ?? [];
+      const res = await api.get<ApiResponse<User[]>>("/admin/clients");
+      return res.data.data ?? [];
     },
     enabled: open,
   });
 
   const { data: staff } = useQuery({
-    queryKey: ["users-staff"],
+    queryKey: ["operation-staff"],
     queryFn: async () => {
-      const res = await api.get<ApiResponse<User[]>>("/admin/users?per_page=100");
-      const d = res.data.data;
-      const all = Array.isArray(d) ? d : (d as unknown as { items: User[] }).items ?? [];
-      return all.filter((u) => u.role !== "client" && u.is_active);
+      const res = await api.get<ApiResponse<User[]>>("/admin/staff");
+      return res.data.data ?? [];
     },
     enabled: open,
   });

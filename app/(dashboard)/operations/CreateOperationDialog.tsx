@@ -578,24 +578,25 @@ export function CreateOperationDialog({ open, onClose, onCreated }: Props) {
   }, [prevType]);
 
   // ── Clients query
+  // /admin/clients and /admin/staff, not /admin/users: the latter is the
+  // account-management surface and stays Bunker-Manager-only, so it 403s for
+  // an Ops Supervisor and leaves both pickers empty. These two are the narrow
+  // read-only lists any operation manager may read.
   const { data: clients } = useQuery({
-    queryKey: ["users-clients"],
+    queryKey: ["operation-clients"],
     queryFn: async () => {
-      const res = await api.get<ApiResponse<User[]>>("/admin/users?role=client&per_page=100");
-      const d = res.data.data;
-      return Array.isArray(d) ? d : (d as unknown as { items: User[] }).items ?? [];
+      const res = await api.get<ApiResponse<User[]>>("/admin/clients");
+      return res.data.data ?? [];
     },
     enabled: open,
   });
 
   // ── Staff users query (non-client, active)
   const { data: staffUsers = [], isLoading: isStaffLoading } = useQuery({
-    queryKey: ["staff-users-all"],
+    queryKey: ["operation-staff"],
     queryFn: async () => {
-      const res = await api.get("/admin/users?per_page=100&is_active=true");
-      const d = res.data?.data;
-      const raw: User[] = Array.isArray(d) ? d : Array.isArray(d?.items) ? d.items : [];
-      return raw.filter((u: User) => u.is_active && u.role !== "client");
+      const res = await api.get<ApiResponse<User[]>>("/admin/staff");
+      return res.data.data ?? [];
     },
     enabled: open,
     staleTime: 0,

@@ -62,7 +62,6 @@ import { EditOperationDialog } from "../EditOperationDialog";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { PanelCard } from "@/components/dashboard/PanelCard";
 import { DetailHeader, MetaChip } from "@/components/operations/DetailHeader";
-import { OperationScorecardPanel } from "@/components/operations/OperationScorecardPanel";
 import { JourneyStepper, type JourneyStep } from "@/components/operations/JourneyStepper";
 import { OperationSummaryCard } from "@/components/operations/OperationSummaryCard";
 import { StatusTimeline } from "@/components/operations/StatusTimeline";
@@ -142,6 +141,7 @@ import type {
   ClientNotificationRecipient,
   ClientNotificationLog,
   PendingClientNotification,
+  OperationKpi,
   RoleStageDurations,
 } from "@/types";
 import { PRODUCT_TYPE_LABELS, LEG_STAGES } from "@/types";
@@ -178,6 +178,24 @@ const ELIGIBLE_ROLES: Record<string, string[]> = {
 // one family rather than a dozen slightly different links.
 const INLINE_LINK =
   "rounded text-[11px] font-semibold text-brand-600 underline underline-offset-2 transition-colors hover:text-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+/**
+ * Says what is stopping a form from being submitted.
+ *
+ * The BDN submit buttons grey out until every required field is filled, but
+ * they used to give no reason — a field scrolled out of view (Temperature,
+ * the discharge times) left users stuck with no clue why nothing happened.
+ * The list here is the same check that disables the button, so the two can
+ * never disagree.
+ */
+function MissingFieldsHint({ missing }: { missing: string[] }) {
+  if (missing.length === 0) return null;
+  return (
+    <p role="status" aria-live="polite" className="text-[11px] leading-relaxed text-amber-700 dark:text-amber-300">
+      <span className="font-semibold">Still needed:</span> {missing.join(", ")}
+    </p>
+  );
+}
+
 const INLINE_LINK_DANGER =
   "rounded text-[11px] font-semibold text-destructive underline underline-offset-2 transition-colors hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
@@ -1296,6 +1314,15 @@ export default function OperationDetailPage({
     enabled: isBM && op?.type !== "truck_only",
   });
 
+  const { data: operationKpi, isLoading: operationKpiLoading, isError: operationKpiErrored, refetch: refetchOperationKpi } = useQuery({
+    queryKey: ["operation-kpi", id],
+    queryFn: async () => {
+      const res = await api.get<ApiResponse<OperationKpi>>(`/operations/${id}/kpi`);
+      return res.data.data ?? null;
+    },
+    enabled: isBM && op?.type !== "truck_only",
+  });
+
   const { data: stageDurations, isLoading: stageDurationsLoading, isError: stageDurationsErrored, refetch: refetchStageDurations } = useQuery({
     queryKey: ["operation-kpi-stage-durations", id],
     queryFn: async () => {
@@ -1519,6 +1546,14 @@ export default function OperationDetailPage({
   const [bdnDensity,      setBdnDensity]      = useState("");
   const [bdnTemp,         setBdnTemp]         = useState("");
   const [bdnNotes,        setBdnNotes]        = useState("");
+  // One definition for both the button's disabled state and its hint.
+  const loadingBdnMissing = [
+    !bdnVesselId     && "Vessel",
+    !bdnQty          && "MT",
+    !bdnGov          && "GOV",
+    !bdnGsv          && "GSV",
+    !bdnDeliveryDate && "Loading Date",
+  ].filter(Boolean) as string[];
   const [rejectBdnId,     setRejectBdnId]     = useState<string | null>(null);
   const [rejectBdnReason, setRejectBdnReason] = useState("");
   // BM: edit any BDN regardless of status — the one BDN flow that had no
@@ -1681,7 +1716,27 @@ export default function OperationDetailPage({
     onError: (err) => toast.error(getErrorMessage(err)),
   });
 
-  const truckBdnFormComplete = TRUCK_BDN_REQUIRED_FIELDS.every((k) => (truckBdnForm[k] ?? "").trim() !== "");
+  // Names as they appear on the form, one for every required field.
+  const TRUCK_BDN_FIELD_LABELS: Record<(typeof TRUCK_BDN_REQUIRED_FIELDS)[number], string> = {
+    company_name: "Company Name",
+    product_type: "Product Type",
+    receiving_vessel: "Receiving Vessel",
+    discharge_location: "Discharge Location",
+    quantity_loaded_mt: "Quantity Loaded",
+    quantity_discharged_mt: "Quantity Discharged",
+    density: "Density",
+    temperature: "Temperature",
+    vcf: "VCF",
+    gov: "GOV",
+    discharge_commenced_at: "Commenced Discharge (full date and time, incl. AM/PM)",
+    discharge_completed_at: "Completed Discharge (full date and time, incl. AM/PM)",
+    discharge_completion_date: "Date of Discharge Completion",
+  };
+  // The required list stays the source of truth; the labels only name it.
+  const truckBdnMissing = TRUCK_BDN_REQUIRED_FIELDS
+    .filter((k) => (truckBdnForm[k] ?? "").trim() === "")
+    .map((k) => TRUCK_BDN_FIELD_LABELS[k]);
+  const truckBdnFormComplete = truckBdnMissing.length === 0;
 
   const closeTruckBdnForm = () => {
     setShowTruckBdnForm(false);
@@ -1828,18 +1883,53 @@ export default function OperationDetailPage({
 
   // Full Operation only — replaces the retired Start/Receipt/Bunkering/
   // Discharge/Complete flow's ROB recording. Not required for vessel_only.
-  const vesselBdnFormComplete =
-    VESSEL_BDN_REQUIRED_FIELDS.every((k) => (vesselBdnForm[k] ?? "").trim() !== "") &&
-    VESSEL_BDN_POSITIVE_FIELDS.every((k) => {
-      const n = parseFloat(vesselBdnForm[k] ?? "");
-      return Number.isFinite(n) && n > 0;
-    }) &&
-    VESSEL_BDN_OPTIONAL_POSITIVE_FIELDS.every((k) => {
-      const raw = (vesselBdnForm[k] ?? "").trim();
-      if (raw === "") return true;
-      const n = parseFloat(raw);
-      return Number.isFinite(n) && n > 0;
-    });
+  // Names as they appear on the form. The submit button and the hint under it
+  // both read vesselBdnMissing, so what the hint lists is exactly what is
+  // keeping the button disabled — nothing more, nothing less.
+  const VESSEL_BDN_FIELD_LABELS: Record<string, string> = {
+    company_name: "Company Name",
+    product_type: "Product Type",
+    discharge_location: "Discharge Location",
+    receiving_vessel: "Receiving Vessel",
+    discharge_gov: "GOV",
+    discharge_gsv: "GSV",
+    discharge_mt_vacuum: "MTvac",
+    density: "Density",
+    vcf: "VCF",
+    temperature: "Temperature",
+    // A date-and-time box only counts as filled once every part is set,
+    // AM/PM included — it can look filled while the browser says it is empty.
+    discharge_commenced_at: "Commence Discharge (full date and time, incl. AM/PM)",
+    discharge_completed_at: "Discharge Completed (full date and time, incl. AM/PM)",
+    received_gov: "Received GOV",
+    received_gsv: "Received GSV",
+    received_mt_vacuum: "Received MTvac",
+  };
+  const vesselBdnMissing = [
+    // Empty required fields, in form order.
+    ...Object.keys(VESSEL_BDN_FIELD_LABELS)
+      .filter((k) => (VESSEL_BDN_REQUIRED_FIELDS as readonly string[]).includes(k))
+      .filter((k) => (vesselBdnForm[k] ?? "").trim() === "")
+      .map((k) => VESSEL_BDN_FIELD_LABELS[k]),
+    // Filled in, but not a number above zero.
+    ...VESSEL_BDN_POSITIVE_FIELDS
+      .filter((k) => (vesselBdnForm[k] ?? "").trim() !== "")
+      .filter((k) => {
+        const n = parseFloat(vesselBdnForm[k] ?? "");
+        return !(Number.isFinite(n) && n > 0);
+      })
+      .map((k) => `${VESSEL_BDN_FIELD_LABELS[k]} must be above 0`),
+    // Optional readings: fine left blank, but if given they must be above zero.
+    ...VESSEL_BDN_OPTIONAL_POSITIVE_FIELDS
+      .filter((k) => {
+        const raw = (vesselBdnForm[k] ?? "").trim();
+        if (raw === "") return false;
+        const n = parseFloat(raw);
+        return !(Number.isFinite(n) && n > 0);
+      })
+      .map((k) => `${VESSEL_BDN_FIELD_LABELS[k]} must be above 0`),
+  ];
+  const vesselBdnFormComplete = vesselBdnMissing.length === 0;
 
   const createVesselBdnMutation = useMutation({
     mutationFn: async () => {
@@ -3682,20 +3772,6 @@ export default function OperationDetailPage({
         }
         actions={
           <>
-            {/* Report card lives on its own route rather than as a tab here:
-                this file is ~10,000 lines and is used every day, so a new
-                folder cannot break it while editing it might. */}
-            <Button
-              asChild
-              variant="outline"
-              className="h-10.5 gap-2 text-[13px] font-semibold"
-            >
-              <Link href={`/operations/${op.id}/scorecard`}>
-                <Gauge className="h-4 w-4" strokeWidth={2.2} />
-                Report Card
-              </Link>
-            </Button>
-
             {isBM && (
               <Button
                 variant="outline"
@@ -4981,11 +5057,12 @@ export default function OperationDetailPage({
                           </div>
                           <Button
                             size="sm" className="w-full"
-                            disabled={!bdnVesselId || !bdnQty || !bdnGov || !bdnGsv || !bdnDeliveryDate || createBdnMutation.isPending}
+                            disabled={loadingBdnMissing.length > 0 || createBdnMutation.isPending}
                             onClick={() => createBdnMutation.mutate()}
                           >
                             {createBdnMutation.isPending ? "Submitting…" : "Submit BDN"}
                           </Button>
+                          <MissingFieldsHint missing={loadingBdnMissing} />
                         </CardContent>
                       )}
                     </Card>
@@ -5337,6 +5414,7 @@ export default function OperationDetailPage({
                           >
                             {createTruckBdnMutation.isPending ? "Submitting…" : "Submit Truck BDN"}
                           </Button>
+                          <MissingFieldsHint missing={truckBdnMissing} />
                         </CardContent>
                       )}
                     </Card>
@@ -5805,6 +5883,7 @@ export default function OperationDetailPage({
                             </Button>
                             <Button size="sm" variant="outline" onClick={() => { setVesselBdnFormActivityId(null); setVesselBdnFormIsLeg(false); setVesselBdnForm({}); }}>Cancel</Button>
                           </div>
+                          <MissingFieldsHint missing={vesselBdnMissing} />
                         </CardContent>
                       )}
                     </Card>
@@ -7839,10 +7918,62 @@ export default function OperationDetailPage({
               {/* ── KPI tab — cast-off to discharge-completed duration + per-stage/role timing, computed live from stage timestamps and the audit trail, no new tables */}
               {isBM && op.type !== "truck_only" && (
                 <TabsContent value="kpi" className="mt-4 space-y-4">
-                  {/* The full report card. Rendered from a shared component so
-                      the same scorecard appears here and on the standalone
-                      /operations/[id]/scorecard page without living twice. */}
-                  <OperationScorecardPanel operationId={id} />
+                  <Card className="rounded-2xl border border-navy-100 shadow-[0_1px_2px_rgb(16_36_71/0.04)] dark:border-border">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="flex items-center gap-2 text-[15px] font-bold tracking-tight">
+                        <Gauge className="w-4 h-4 text-primary" />
+                        Operation Duration
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-5 pt-0">
+                      {operationKpiLoading ? (
+                        <div className="flex justify-center py-6"><Spinner size={20} className="text-muted-foreground" /></div>
+                      ) : operationKpiErrored ? (
+                        <div className="flex flex-col items-center gap-2 py-6">
+                          <p className="text-sm text-rose-600">Failed to load operation duration</p>
+                          <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => refetchOperationKpi()}>Retry</Button>
+                        </div>
+                      ) : !operationKpi || (!operationKpi.cast_off_at && !operationKpi.discharge_completed_at) ? (
+                        <p className="text-sm text-muted-foreground text-center py-6">No stage data recorded yet</p>
+                      ) : (
+                        <div className="grid grid-cols-3 gap-4">
+                          <InfoItem label="Earliest Cast-Off" value={operationKpi.cast_off_at ? formatDateTime(operationKpi.cast_off_at) : "—"} />
+                          <InfoItem label="Latest Discharge Completed" value={operationKpi.discharge_completed_at ? formatDateTime(operationKpi.discharge_completed_at) : "—"} />
+                          <InfoItem label="Overall Duration" value={operationKpi.duration_hours != null ? `${operationKpi.duration_hours.toFixed(1)} hrs` : "—"} />
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  <Card className="rounded-2xl border border-navy-100 shadow-[0_1px_2px_rgb(16_36_71/0.04)] dark:border-border">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-[15px] font-bold tracking-tight">Per-Vessel-Run Breakdown</CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-0">
+                      {operationKpiLoading ? (
+                        <div className="flex justify-center py-6"><Spinner size={20} className="text-muted-foreground" /></div>
+                      ) : operationKpiErrored ? (
+                        <div className="flex flex-col items-center gap-2 py-6">
+                          <p className="text-sm text-rose-600">Failed to load vessel-run breakdown</p>
+                          <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => refetchOperationKpi()}>Retry</Button>
+                        </div>
+                      ) : !operationKpi?.vessel_runs.length ? (
+                        <p className="text-sm text-muted-foreground text-center py-6">No vessel runs yet</p>
+                      ) : (
+                        <div className="divide-y">
+                          {operationKpi.vessel_runs.map((r) => (
+                            <div key={r.vessel_activity_id} className="px-4 py-3 flex items-center justify-between gap-3 text-xs">
+                              <span className="font-medium">{r.vessel_name ?? "—"}</span>
+                              <span className="text-muted-foreground">
+                                {r.cast_off_at ? formatDateTime(r.cast_off_at) : "—"} → {r.discharge_completed_at ? formatDateTime(r.discharge_completed_at) : "—"}
+                              </span>
+                              <span className="font-mono shrink-0">{r.duration_hours != null ? `${r.duration_hours.toFixed(1)} hrs` : "—"}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
 
                   <Card className="rounded-2xl border border-navy-100 shadow-[0_1px_2px_rgb(16_36_71/0.04)] dark:border-border">
                     <CardHeader className="pb-2">

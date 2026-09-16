@@ -19,6 +19,7 @@ import { SessionGuard } from "@/components/SessionGuard";
 const NAV = [
   { href: "/portal", label: "Dashboard" },
   { href: "/portal/operations", label: "My Operations" },
+  { href: "/portal/delivery-performance", label: "Delivery Performance" },
 ];
 
 export default function PortalLayout({

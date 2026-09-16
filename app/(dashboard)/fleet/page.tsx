@@ -159,7 +159,7 @@ function CreateTruckDialog({
             </div>
             <div className="space-y-1.5">
               <Label>Capacity (L) <span className="text-destructive">*</span></Label>
-              <Input type="number" step="0.01" placeholder="e.g. 30" {...register("capacity_mt")} />
+              <Input type="number" step="0.01" placeholder="e.g. 40000" {...register("capacity_mt")} />
               {errors.capacity_mt && <p className="text-xs text-destructive">{errors.capacity_mt.message}</p>}
             </div>
           </div>

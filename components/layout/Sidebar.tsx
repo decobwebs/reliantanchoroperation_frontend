@@ -18,6 +18,10 @@ import {
   BadgeCheck,
   Anchor,
   FileBadge2,
+  Gauge,
+  Target,
+  CalendarClock,
+  SlidersHorizontal,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
@@ -58,7 +62,12 @@ export const NAV_ITEMS: NavItem[] = [
     icon: CheckSquare,
     // finance_manager and marine_operator are never directly assigned tasks —
     // marine_operator's work (BFL/NC/PPDL/waivers) isn't task-scoped.
-    roles: ["ops_supervisor", "logistics_officer", "cargo_superintendent"],
+    // bunker_manager is here because a promoted user keeps the tasks they were
+    // assigned under their old role: Aliyu Kabir moved from Ops Supervisor to
+    // BM carrying 17 open ones, and without this row the page that shows them
+    // vanishes from his sidebar. The endpoint never gated on role — it returns
+    // whatever is assigned to you — so only the link was missing.
+    roles: ["bunker_manager", "ops_supervisor", "logistics_officer", "cargo_superintendent"],
   },
 
   // ── Fleet ────────────────────────────────────────────────────────────────
@@ -124,12 +133,48 @@ export const NAV_ITEMS: NavItem[] = [
     roles: ["bunker_manager", "finance_manager"],
   },
 
+  // ── Performance ──────────────────────────────────────────────────────────
+  {
+    // Every staff member sees their own score and nothing else; the endpoint
+    // takes no user parameter, so there is no way to ask for a colleague's.
+    href: "/my-performance",
+    label: "My Performance",
+    icon: Target,
+    roles: ["bunker_manager", "ops_supervisor", "logistics_officer", "cargo_superintendent", "finance_manager", "marine_operator"],
+  },
+
+  {
+    // The capture point for the on-time delivery KPI. The truck team sets the
+    // plans, operation managers can too; nobody else has a reason to.
+    href: "/planned-arrivals",
+    label: "Planned Arrivals",
+    icon: CalendarClock,
+    roles: ["bunker_manager", "ops_supervisor", "logistics_officer"],
+  },
+
   // ── Analytics & Admin ────────────────────────────────────────────────────
+  {
+    // Company-wide: money, fleet, licences and every person's scores. That
+    // sits outside the operation boundary the Ops Supervisor works within,
+    // so it is Bunker Manager only — matching the endpoint's own gate.
+    href: "/command-center",
+    label: "Command Center",
+    icon: Gauge,
+    roles: ["bunker_manager"],
+  },
   {
     href: "/analytics",
     label: "Analytics",
     icon: BarChart3,
     roles: ["bunker_manager", "ops_supervisor", "finance_manager"],
+  },
+  {
+    // Targets, month close and the HR pack. Company-wide settings, so it
+    // matches the endpoints' own Bunker-Manager-only gate.
+    href: "/kpi-settings",
+    label: "KPI Settings",
+    icon: SlidersHorizontal,
+    roles: ["bunker_manager"],
   },
   {
     href: "/admin",

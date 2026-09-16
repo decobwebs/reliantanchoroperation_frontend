@@ -5,6 +5,8 @@ import { cn } from "@/lib/utils";
 import { TONE_TILE_CLASSES, type AccentTone } from "./tones";
 
 interface PanelCardProps {
+  /** Anchor target, so a panel can be jumped to from a section menu. */
+  id?: string;
   icon: LucideIcon;
   title: string;
   subtitle?: string;
@@ -23,6 +25,7 @@ interface PanelCardProps {
  * title/subtitle pair, optional right-aligned controls, then the body.
  */
 export function PanelCard({
+  id,
   icon: Icon,
   title,
   subtitle,
@@ -35,6 +38,7 @@ export function PanelCard({
 }: PanelCardProps) {
   return (
     <section
+      id={id}
       className={cn(
         "flex flex-col overflow-hidden rounded-2xl border border-slate-200/80 bg-card",
         "shadow-[0_1px_2px_rgba(16,24,40,0.04)] dark:border-border",

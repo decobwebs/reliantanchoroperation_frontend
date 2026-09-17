@@ -2378,7 +2378,10 @@ export default function OperationDetailPage({
     setCastOffClient(activity.cast_off_client_name ?? "");
     // Prefilled from the vessel already on the run — the BM can overwrite it
     // when the client's vessel is not the one recorded here.
-    setCastOffVessel(activity.cast_off_client_vessel_name ?? activity.vessel_name ?? "");
+    // Never pre-fill with our own vessel. This box is the CLIENT's receiving
+    // vessel; filling it with ours meant saving without retyping stored our
+    // vessel as theirs, and client emails then named it as theirs.
+    setCastOffVessel(activity.cast_off_client_vessel_name ?? "");
     // Always leave one empty row so there is somewhere to type.
     setCastOffEmails(activity.cast_off_client_emails?.length ? [...activity.cast_off_client_emails] : [""]);
   };
@@ -6857,8 +6860,8 @@ export default function OperationDetailPage({
                                               <Input className="h-9 sm:h-8 text-xs" value={castOffClient} onChange={(e) => setCastOffClient(e.target.value)} placeholder="Client company…" />
                                             </div>
                                             <div className="space-y-1">
-                                              <Label className="text-[10px] text-muted-foreground">Vessel Name</Label>
-                                              <Input className="h-9 sm:h-8 text-xs" value={castOffVessel} onChange={(e) => setCastOffVessel(e.target.value)} placeholder="Receiving vessel…" />
+                                              <Label className="text-[10px] text-muted-foreground">Client&apos;s Receiving Vessel</Label>
+                                              <Input className="h-9 sm:h-8 text-xs" value={castOffVessel} onChange={(e) => setCastOffVessel(e.target.value)} placeholder="The client's vessel, not ours…" />
                                             </div>
                                           </div>
                                           <div className="space-y-1">
@@ -6902,7 +6905,7 @@ export default function OperationDetailPage({
                                             <button className={cn(INLINE_LINK, "shrink-0")} onClick={() => openCastOffForm(activity)}>Edit</button>
                                           </div>
                                           {activity.cast_off_client_vessel_name && (
-                                            <p className="text-muted-foreground">Vessel: {activity.cast_off_client_vessel_name}</p>
+                                            <p className="text-muted-foreground">Receiving vessel: {activity.cast_off_client_vessel_name}</p>
                                           )}
                                           {!!activity.cast_off_client_emails?.length && (
                                             <p className="text-muted-foreground break-words">

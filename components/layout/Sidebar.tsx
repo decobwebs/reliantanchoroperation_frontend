@@ -18,6 +18,7 @@ import {
   BadgeCheck,
   Anchor,
   FileBadge2,
+  FileSpreadsheet,
   Gauge,
   Target,
   CalendarClock,
@@ -180,6 +181,14 @@ export const NAV_ITEMS: NavItem[] = [
     href: "/admin",
     label: "User Admin",
     icon: Users,
+    roles: ["bunker_manager"],
+  },
+  {
+    // Twelve columns of the regulator's sheet are the same on every row and
+    // every operation. They are set once here, not retyped per export.
+    href: "/nmdpra-settings",
+    label: "Operation Sheet",
+    icon: FileSpreadsheet,
     roles: ["bunker_manager"],
   },
   {

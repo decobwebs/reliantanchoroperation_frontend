@@ -106,6 +106,9 @@ export interface Operation {
   expected_volume_mt?: string;
   actual_volume_mt?: string;
   notes?: string;
+  // NMDPRA operation sheet, columns G and T.
+  certificate_of_quality?: string;
+  certificate_of_completion?: string;
   currency: string;
   vessel_id?: string;
   naval_clearance_id?: string;

@@ -31,6 +31,7 @@ import {
   Shield,
   Activity,
   Download,
+  FileSpreadsheet,
   User as UserIcon,
   Wallet,
   Receipt,
@@ -3374,6 +3375,27 @@ export default function OperationDetailPage({
     URL.revokeObjectURL(url);
   };
 
+  // The NMDPRA operation sheet: the regulator's own 37 columns, one row per
+  // truck load. Built on the server because it is a real .xlsx, not a CSV —
+  // the browser only saves the bytes it is handed.
+  const [downloadingSheet, setDownloadingSheet] = useState(false);
+  const downloadOperationSheet = async () => {
+    setDownloadingSheet(true);
+    try {
+      const res = await api.get(`/operations/${id}/nmdpra-sheet.xlsx`, { responseType: "blob" });
+      const url = URL.createObjectURL(res.data as Blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `NMDPRA-${op?.operation_number ?? id.slice(0, 8)}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    } finally {
+      setDownloadingSheet(false);
+    }
+  };
+
   // ── Helpers
   const ACTION_LABELS: Record<string, string> = {
     ADD_TRUCK_TO_OPERATION: "Truck added to operation",
@@ -3801,6 +3823,19 @@ export default function OperationDetailPage({
               >
                 <Download className="h-4 w-4" strokeWidth={2.2} />
                 Export Activity
+              </Button>
+            )}
+
+            {isBM && op.type !== "vessel_only" && (
+              <Button
+                variant="outline"
+                className="h-10.5 gap-2 text-[13px] font-semibold"
+                onClick={downloadOperationSheet}
+                disabled={downloadingSheet}
+                title="The NMDPRA sheet for this operation — one row per truck load"
+              >
+                {downloadingSheet ? <Spinner size={16} /> : <FileSpreadsheet className="h-4 w-4" strokeWidth={2.2} />}
+                Operation Sheet
               </Button>
             )}
 

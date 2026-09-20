@@ -89,6 +89,8 @@ export function EditOperationDialog({
   const [vesselId, setVesselId] = useState(operation.vessel_id ?? "");
   const [sourceType, setSourceType] = useState(operation.source_type ?? "");
   const [actualVolumeMt, setActualVolumeMt] = useState(operation.actual_volume_mt ?? "");
+  const [certQuality, setCertQuality] = useState(operation.certificate_of_quality ?? "");
+  const [certCompletion, setCertCompletion] = useState(operation.certificate_of_completion ?? "");
   const [loadingLocation, setLoadingLocation] = useState(operation.loading_location ?? "");
   const [dischargeLocation, setDischargeLocation] = useState(operation.discharge_location ?? "");
   const [currency, setCurrency] = useState(operation.currency ?? "NGN");
@@ -105,6 +107,8 @@ export function EditOperationDialog({
     setVesselId(operation.vessel_id ?? "");
     setSourceType(operation.source_type ?? "");
     setActualVolumeMt(operation.actual_volume_mt ?? "");
+    setCertQuality(operation.certificate_of_quality ?? "");
+    setCertCompletion(operation.certificate_of_completion ?? "");
     setLoadingLocation(operation.loading_location ?? "");
     setDischargeLocation(operation.discharge_location ?? "");
     setCurrency(operation.currency ?? "NGN");
@@ -206,6 +210,8 @@ export function EditOperationDialog({
         vessel_id: vesselId || undefined,
         source_type: opType === "vessel_only" ? (sourceType || undefined) : undefined,
         actual_volume_mt: actualVolumeMt !== "" ? parseFloat(String(actualVolumeMt)) : undefined,
+        certificate_of_quality: certQuality.trim() || undefined,
+        certificate_of_completion: certCompletion.trim() || undefined,
         loading_location: loadingLocation.trim() || undefined,
         discharge_location: dischargeLocation.trim() || undefined,
         currency: currency || undefined,
@@ -414,6 +420,20 @@ export function EditOperationDialog({
                 value={actualVolumeMt} onChange={(e) => setActualVolumeMt(e.target.value)}
               />
             </div>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="min-w-0 space-y-1.5">
+                <Label className="text-xs">Certificate of Quality</Label>
+                <Input className="h-9 text-sm" placeholder="e.g. HPFO R/070325/05"
+                  value={certQuality} onChange={(e) => setCertQuality(e.target.value)} />
+              </div>
+              <div className="min-w-0 space-y-1.5">
+                <Label className="text-xs">Certificate of Completion</Label>
+                <Input className="h-9 text-sm" placeholder="e.g. RAL/BDR/24.25"
+                  value={certCompletion} onChange={(e) => setCertCompletion(e.target.value)} />
+              </div>
+            </div>
+            {/* Both appear on the NMDPRA operation sheet, columns G and T. */}
 
             <div className="min-w-0 space-y-1.5">
               <Label className="text-xs">Notes</Label>

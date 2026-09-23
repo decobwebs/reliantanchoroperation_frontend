@@ -11,6 +11,7 @@ import { ClipboardList, CheckCircle2, Clock, XCircle } from "lucide-react";
 import { formatDate, formatRelative, OP_TYPE_LABELS } from "@/lib/utils";
 import Link from "next/link";
 import type { ApiResponse, PaginatedData, Operation, OperationStatus } from "@/types";
+import { PushSettingsCard } from "@/components/notifications/PushSettingsCard";
 
 interface PortalDashboard {
   total_operations: number;
@@ -50,6 +51,8 @@ export default function PortalDashboardPage() {
           Here&apos;s an overview of your operations with Reliant Anchor.
         </p>
       </div>
+
+      <PushSettingsCard />
 
       {loadingSummary ? (
         <div className="grid grid-cols-2 gap-4 md:grid-cols-4">

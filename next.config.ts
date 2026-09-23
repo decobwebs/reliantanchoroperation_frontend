@@ -55,6 +55,12 @@ const securityHeaders = [
       "img-src 'self' data: blob: https:",
       "font-src 'self' data:",
       `connect-src ${connectSrc}`,
+      // The service worker and manifest. Both already fall back to
+      // default-src 'self' today, so nothing changes here — stated
+      // explicitly so a future narrowing of default-src can't silently break
+      // PWA install or push registration.
+      "worker-src 'self'",
+      "manifest-src 'self'",
       "frame-ancestors 'none'",
       "base-uri 'self'",
       "form-action 'self'",
@@ -65,7 +71,21 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   async headers() {
-    return [{ source: "/:path*", headers: securityHeaders }];
+    return [
+      {
+        // Must never be cached and must never be sniffed as anything but
+        // JavaScript, or a stale sw.js keeps running after a deploy and push
+        // handling silently runs old code. More specific than /:path*, so
+        // this wins over the general security headers below for this path.
+        source: "/sw.js",
+        headers: [
+          { key: "Content-Type", value: "application/javascript; charset=utf-8" },
+          { key: "Cache-Control", value: "no-cache, no-store, must-revalidate" },
+          { key: "Service-Worker-Allowed", value: "/" },
+        ],
+      },
+      { source: "/:path*", headers: securityHeaders },
+    ];
   },
 };
 

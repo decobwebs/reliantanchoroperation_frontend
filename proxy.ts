@@ -4,12 +4,20 @@ const PUBLIC_PATHS = ["/login", "/set-password", "/api/auth", "/privacy", "/term
 // Static assets served from /public (logo, images, fonts, etc.) — must never be
 // gated behind auth, or unauthenticated pages (e.g. /login) can't load them.
 const PUBLIC_FILE = /\.(?:svg|png|jpe?g|gif|webp|ico|txt|xml|json|webmanifest|woff2?|ttf|otf)$/i;
+// Files that must be reachable unauthenticated but aren't covered by
+// PUBLIC_FILE. `/sw.js` in particular: `.js` is deliberately absent from that
+// regex, and a service worker that gets redirected to /login can never
+// register — so push notifications would fail with no error surfacing
+// anywhere in the app. Exact match, not startsWith, so "/sw.js.map" can't
+// slip past as an unauthenticated route.
+const PUBLIC_EXACT = new Set(["/sw.js", "/offline.html"]);
 
 export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   // Allow public paths and static assets
   if (
+    PUBLIC_EXACT.has(pathname) ||
     PUBLIC_PATHS.some((p) => pathname.startsWith(p)) ||
     pathname.startsWith("/_next") ||
     pathname.startsWith("/favicon") ||

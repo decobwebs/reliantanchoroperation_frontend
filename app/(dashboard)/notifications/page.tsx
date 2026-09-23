@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn, formatDateTime } from "@/lib/utils";
 import type { ApiResponse, PaginatedData, Notification } from "@/types";
+import { PushSettingsCard } from "@/components/notifications/PushSettingsCard";
 
 export default function NotificationsPage() {
   const qc = useQueryClient();
@@ -38,7 +39,9 @@ export default function NotificationsPage() {
   });
 
   const markRead = useMutation({
-    mutationFn: (id: string) => api.post(`/notifications/${id}/read`),
+    // PUT, not POST — the backend only declares @router.put("/{id}/read"), so
+    // this silently 405'd and marking a single notification read never worked.
+    mutationFn: (id: string) => api.put(`/notifications/${id}/read`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["notifications"] });
       qc.invalidateQueries({ queryKey: ["notifications-unread-count"] });
@@ -74,6 +77,8 @@ export default function NotificationsPage() {
         ) : undefined
       }
     >
+      <PushSettingsCard />
+
       {isLoading ? (
         <Skeleton className="h-96 w-full rounded-2xl" />
       ) : (

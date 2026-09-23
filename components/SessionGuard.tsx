@@ -31,6 +31,10 @@ export function SessionGuard() {
   useEffect(() => {
     let cancelled = false;
 
+    // Deliberately does not touch the device's push subscription. Session
+    // expiry is not sign-out — push is meant to keep reaching this user after
+    // their session has lapsed, which is the entire point of push. Only the
+    // explicit "turn off notifications" switch on /notifications unsubscribes.
     const endSession = async (reason: "absolute" | "idle") => {
       if (endedRef.current) return;
       endedRef.current = true;

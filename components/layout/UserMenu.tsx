@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Bell, Check, ChevronDown, LogOut, UserCog } from "lucide-react";
+import { Bell, BellOff, Check, ChevronDown, LogOut, UserCog } from "lucide-react";
+import { getPushState, isPushSupported } from "@/lib/push";
 import { cn, getInitials } from "@/lib/utils";
 import { ROLE_LABELS } from "@/lib/auth";
 import { useAuth } from "@/hooks/useAuth";
@@ -33,6 +34,12 @@ const ACT_AS_ROLES: { value: string; label: string }[] = [
 export function UserMenu({ className }: { className?: string }) {
   const { user, logout, effectiveRole, isActingAs, actAs, clearActAs } = useAuth();
   const [switching, setSwitching] = useState(false);
+  const [pushOff, setPushOff] = useState(false);
+
+  useEffect(() => {
+    if (!isPushSupported()) return;
+    void getPushState().then((s) => setPushOff(s.permission !== "granted"));
+  }, []);
 
   if (!user) return null;
 
@@ -100,9 +107,14 @@ export function UserMenu({ className }: { className?: string }) {
         <DropdownMenuSeparator />
 
         <DropdownMenuItem asChild className="text-xs">
-          <Link href="/notifications">
-            <Bell className="mr-2 h-3.5 w-3.5" />
-            Notifications
+          <Link href="/notifications" className="justify-between">
+            <span className="flex items-center">
+              <Bell className="mr-2 h-3.5 w-3.5" />
+              Notifications
+            </span>
+            {/* Passive hint only — never an auto-prompt. Turning push on is a
+                deliberate gesture on the notifications page itself. */}
+            {pushOff && <BellOff className="h-3.5 w-3.5 text-muted-foreground" />}
           </Link>
         </DropdownMenuItem>
 

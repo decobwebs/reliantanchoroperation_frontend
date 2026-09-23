@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { SessionGuard } from "@/components/SessionGuard";
+import { PushRegistrar } from "@/components/PushRegistrar";
 
 export default function DashboardLayout({
   children,
@@ -55,6 +56,7 @@ export default function DashboardLayout({
   return (
     <TooltipProvider>
       <SessionGuard />
+      <PushRegistrar />
       <SidebarProvider>
         <div className="flex h-screen overflow-hidden bg-shell">
           <Sidebar />

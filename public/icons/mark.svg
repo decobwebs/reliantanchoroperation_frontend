@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 140 140" role="img" aria-label="Reliant Anchor">
+  <!-- Reliant Anchor mark, redrawn as vector from public/logo-email.png (140x140).
+       The raster original is only 140px wide with no alpha, so every app icon is
+       rendered from THIS file instead — see scripts/gen-icons.mjs. The viewBox
+       deliberately matches the original's pixel grid 1:1, so coordinates here can
+       be compared against the source directly.
+       Colours are the sampled originals, which are the brand tokens in
+       app/globals.css: #0d79c9 is the brand-500 token, #102447 is the navy. -->
+  <g fill="none" fill-rule="evenodd">
+    <!-- Ring + shank + the lower-left half of the swoosh -->
+    <circle cx="69.5" cy="22" r="10.75" stroke="#0d79c9" stroke-width="7.5"/>
+    <path fill="#0d79c9" d="M64.5,30 L64.5,55.5
+      C59,60.5 50.5,67 41.5,75.2
+      C51,72.5 64,66 74.5,56.5
+      L74.5,30 Z"/>
+    <!-- Anchor body: upper-right half of the swoosh, shank, arms, flukes, crown -->
+    <path fill="#102447" d="M105.5,45
+      C98,51 86,59.5 76.5,69
+      L78,105 L80,107.5 L83,106
+      C96,100.5 105,94 112,84
+      L105.5,80
+      C110,73 116,68 120.5,63
+      C123,70 124.5,77 125,80
+      L125,86 L119.5,83
+      C118,90 115,100 106,108
+      C103,113 95,119 84,124
+      C77,127 72,130 69.5,135
+      C67,130 62,127 55,124
+      C44,119 36,113 33,108
+      C24,100 21,90 19.5,83
+      L14,86 L14.5,80
+      C15,77 16.5,70 18.5,63
+      C23,68 27,73 33.5,80
+      L27,84
+      C30,88 43,100.5 56,106
+      L59,107.5 L61,105
+      L62.5,69
+      C71,62 87,53 105.5,45 Z"/>
+  </g>
+</svg>

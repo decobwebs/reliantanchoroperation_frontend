@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
@@ -10,13 +10,34 @@ const inter = Inter({
   display: "swap",
 });
 
+// No viewportFit: "cover" — that would draw content under the iPhone notch,
+// and nothing in the shell uses env(safe-area-inset-*) yet. Leaving it off
+// makes iOS letterbox the safe areas in the theme colour, which is correct
+// out of the box.
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#102447" },
+    { media: "(prefers-color-scheme: dark)", color: "#101826" },
+  ],
+};
+
 export const metadata: Metadata = {
   title: "Reliant Anchor — Operations Management",
   description: "RAOMS — Maritime bunker operations management system",
+  applicationName: "RAOMS",
+  // NOT setting `manifest` here — app/manifest.ts (the file-convention route)
+  // already injects the <link rel="manifest">, and setting both emits two.
+  appleWebApp: {
+    capable: true,
+    title: "RAOMS",
+    statusBarStyle: "default",
+  },
   icons: {
     icon: "/favicon.png",
     shortcut: "/favicon.png",
-    apple: "/favicon.png",
+    apple: "/apple-touch-icon.png",
   },
 };
 

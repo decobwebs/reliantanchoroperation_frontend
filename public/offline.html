@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Offline — RAOMS</title>
+<!--
+  Static, self-contained, no data, nothing authenticated. Served by the
+  service worker (public/sw.js) ONLY for a navigation request that fails with
+  no network — see the fetch handler there for why nothing else is cached.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, Arial, sans-serif;
+    background: #ffffff;
+    color: #102447;
+  }
+  @media (prefers-color-scheme: dark) {
+    body { background: #0b1120; color: #eef2f8; }
+    .card { background: #101826; border-color: #1f2937; }
+    .hint { color: #9aa8bd; }
+  }
+  .card {
+    max-width: 360px;
+    width: 100%;
+    text-align: center;
+    padding: 32px 24px;
+    border: 1px solid #e2e8f0;
+    border-radius: 16px;
+    background: #f8fafc;
+  }
+  .mark { width: 64px; height: 64px; margin: 0 auto 16px; display: block; }
+  h1 { font-size: 18px; font-weight: 700; margin: 0 0 8px; }
+  p { font-size: 14px; line-height: 1.5; margin: 0; color: #475569; }
+  .hint { color: #64748b; }
+  button {
+    margin-top: 20px;
+    padding: 10px 20px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #ffffff;
+    background: linear-gradient(140deg, #0e79c8 0%, #0a3250 100%);
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+  <div class="card">
+    <svg class="mark" viewBox="0 0 140 140" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <circle cx="69.5" cy="22" r="10.75" fill="none" stroke="#0d79c9" stroke-width="7.5"/>
+      <path fill="#0d79c9" d="M64.5,30 L64.5,55.5 C59,60.5 51,72.5 41.5,75.2 C51,72.5 64,66 74.5,56.5 L74.5,30 Z"/>
+      <path fill="#102447" d="M105.5,45 C98,51 86,59.5 76.5,69 L78,105 L80,107.5 L83,106 C96,100.5 105,94 112,84 L105.5,80 C110,73 116,68 120.5,63 C123,70 124.5,77 125,80 L125,86 L119.5,83 C118,90 115,100 106,108 C103,113 95,119 84,124 C77,127 72,130 69.5,135 C67,130 62,127 55,124 C44,119 36,113 33,108 C24,100 21,90 19.5,83 L14,86 L14.5,80 C15,77 16.5,70 18.5,63 C23,68 27,73 33.5,80 L27,84 C30,88 43,100.5 56,106 L59,107.5 L61,105 L62.5,69 C71,62 87,53 105.5,45 Z"/>
+    </svg>
+    <h1>You're offline</h1>
+    <p>RAOMS needs a connection to show live operations data.</p>
+    <p class="hint" style="margin-top:8px;">Reconnect and try again — nothing here is cached, so what you see will always be current.</p>
+    <button onclick="location.reload()">Try again</button>
+  </div>
+</body>
+</html>

@@ -1,4 +1,5 @@
 import { api, setAccessToken, extractData } from "./api";
+import { syncPush } from "./push";
 import type { AuthTokens, User } from "@/types";
 
 export async function login(email: string, password: string): Promise<User> {
@@ -23,7 +24,15 @@ export async function login(email: string, password: string): Promise<User> {
 
   // Fetch user profile
   const meRes = await api.get<{ data: User }>("/auth/me");
-  return extractData(meRes);
+  const user = extractData(meRes);
+
+  // Fire-and-forget — must never block the post-login redirect. On a shared
+  // field device this browser's push endpoint is the same regardless of who
+  // signs in; the backend's upsert reassigns it to this user, so whoever was
+  // signed in before stops receiving on it from this moment.
+  void syncPush();
+
+  return user;
 }
 
 /**
@@ -41,9 +50,21 @@ export async function completeSession(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ access_token: accessToken, refresh_token: refreshToken }),
   });
-  return fetchMe();
+  const user = await fetchMe();
+  void syncPush();
+  return user;
 }
 
+// Deliberately does NOT unsubscribe this device from push. Signing out ends
+// the session, not the subscription — the whole point of push is reaching a
+// user who isn't in the app, and a subscription outliving the session is what
+// makes that work. The trade-off: on a device shared between people, the
+// PREVIOUS user's alerts keep arriving here until someone else signs in and
+// syncPush() (called from login(), above) reassigns the endpoint to them. If
+// you're tempted to add disablePush() here to "fix" that: don't — that was a
+// deliberate product decision, not an oversight. The explicit "turn off
+// notifications" switch on /notifications is the only thing that should call
+// disablePush().
 export async function logout(): Promise<void> {
   try {
     await api.post("/auth/logout");

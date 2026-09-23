@@ -14,6 +14,7 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { SessionGuard } from "@/components/SessionGuard";
 import { PushRegistrar } from "@/components/PushRegistrar";
+import { InstallPrompt } from "@/components/InstallPrompt";
 
 export default function DashboardLayout({
   children,
@@ -57,6 +58,7 @@ export default function DashboardLayout({
     <TooltipProvider>
       <SessionGuard />
       <PushRegistrar />
+      <InstallPrompt />
       <SidebarProvider>
         <div className="flex h-screen overflow-hidden bg-shell">
           <Sidebar />

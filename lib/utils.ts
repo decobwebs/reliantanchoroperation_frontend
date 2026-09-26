@@ -7,31 +7,64 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+// A calendar day with no time part, e.g. a delivery or licence-expiry date.
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+// A timestamp that already says which timezone it is in: Z, or ±HH:MM / ±HHMM / ±HH.
+const HAS_ZONE = /(Z|[+-]\d{2}(:?\d{2})?)$/i;
+
+/**
+ * Turn an API date string into a Date.
+ *
+ * This used to append "Z" to anything without a "Z" or "+" in it. For a
+ * date-only value that produced "2026-09-26Z", which Chrome accepts but
+ * Safari reads as an invalid date — and date-fns `format` throws on an
+ * invalid date. Every screen that showed a delivery, expiry or due date
+ * therefore crashed in Safari, which is every browser on an iPhone and
+ * Safari on a Mac, replacing the whole page with Next.js's "This page
+ * couldn't load". Chrome users never saw it, which is why it looked random.
+ *
+ * Now:
+ *   - a date-only value is a calendar day, built in local time so it never
+ *     shifts to the day before or after;
+ *   - a timestamp with a space is given the "T" Safari needs;
+ *   - "Z" is only added when there is genuinely no zone, and a negative
+ *     offset (e.g. "-01:00") is recognised rather than broken.
+ */
 export function toUtcDate(date: string): Date {
-  // Append Z if no timezone info so JS treats it as UTC (not local time)
-  const s = /[Z+]/.test(date) ? date : date + "Z";
-  return new Date(s);
+  const s = date.trim();
+  if (DATE_ONLY.test(s)) {
+    const [y, m, d] = s.split("-").map(Number);
+    return new Date(y, m - 1, d);
+  }
+  const iso = s.includes("T") ? s : s.replace(" ", "T");
+  return new Date(HAS_ZONE.test(iso) ? iso : iso + "Z");
+}
+
+/**
+ * Format a date for display, never throwing. A value the browser cannot read
+ * shows as "—" instead of taking the whole page down with it.
+ */
+function safeFormat(date: string | null | undefined, render: (d: Date) => string): string {
+  if (!date) return "—";
+  const d = toUtcDate(date);
+  return Number.isNaN(d.getTime()) ? "—" : render(d);
 }
 
 export function formatDate(date: string | null | undefined): string {
-  if (!date) return "—";
-  return format(toUtcDate(date), "dd MMM yyyy");
+  return safeFormat(date, (d) => format(d, "dd MMM yyyy"));
 }
 
 export function formatDateTime(date: string | null | undefined): string {
-  if (!date) return "—";
-  return format(toUtcDate(date), "dd MMM yyyy, HH:mm");
+  return safeFormat(date, (d) => format(d, "dd MMM yyyy, HH:mm"));
 }
 
 /** Year-less day + time — for dense rails and steppers where the year is noise. */
 export function formatDayTime(date: string | null | undefined): string {
-  if (!date) return "—";
-  return format(toUtcDate(date), "dd MMM, HH:mm");
+  return safeFormat(date, (d) => format(d, "dd MMM, HH:mm"));
 }
 
 export function formatRelative(date: string | null | undefined): string {
-  if (!date) return "—";
-  return formatDistanceToNow(toUtcDate(date), { addSuffix: true });
+  return safeFormat(date, (d) => formatDistanceToNow(d, { addSuffix: true }));
 }
 
 export function formatCurrency(

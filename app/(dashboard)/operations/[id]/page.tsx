@@ -69,6 +69,7 @@ import { JourneyStepper, type JourneyStep } from "@/components/operations/Journe
 import { OperationSummaryCard } from "@/components/operations/OperationSummaryCard";
 import { StatusTimeline } from "@/components/operations/StatusTimeline";
 import { StatTile, StatTileRow } from "@/components/operations/StatTile";
+import { StsCollectionsPanel, type StsHsePhaseTemplate } from "@/components/operations/StsCollectionsPanel";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -704,6 +705,10 @@ export default function OperationDetailPage({
     to: OperationStatus; label: string; destructive?: boolean;
   } | null>(null);
   const [showReopenDialog, setShowReopenDialog] = useState(false);
+  // Cancel Operation — the backend has always allowed the BM and Ops
+  // Supervisor to cancel from any live status; there was just no button.
+  const [showCancelOp, setShowCancelOp] = useState(false);
+  const [cancelOpReason, setCancelOpReason] = useState("");
   const [reopenNotes,      setReopenNotes]      = useState("");
   const [approvingFeedbackId, setApprovingFeedbackId] = useState<string | null>(null);
   const [approveComment,      setApproveComment]       = useState("");
@@ -1872,7 +1877,7 @@ export default function OperationDetailPage({
     "density", "vcf", "discharge_gov", "discharge_gsv", "discharge_mt_vacuum",
   ] as const;
   // Received-side readings are optional — if given, still must be positive.
-  const VESSEL_BDN_OPTIONAL_POSITIVE_FIELDS = ["received_gov", "received_gsv", "received_mt_vacuum"] as const;
+  const VESSEL_BDN_OPTIONAL_POSITIVE_FIELDS = ["received_gov", "received_gsv", "received_mt_vacuum", "bdr_quantity_mt"] as const;
 
   // Full Operation only — replaces the retired Start/Receipt/Bunkering/
   // Discharge/Complete flow's ROB recording. Not required for vessel_only.
@@ -1897,6 +1902,7 @@ export default function OperationDetailPage({
     received_gov: "Received GOV",
     received_gsv: "Received GSV",
     received_mt_vacuum: "Received MTvac",
+    bdr_quantity_mt: "BDR Quantity MT(vac)",
   };
   const vesselBdnMissing = [
     // Empty required fields, in form order.
@@ -1946,6 +1952,7 @@ export default function OperationDetailPage({
         received_gov:               vesselBdnForm.received_gov?.trim() ? parseFloat(vesselBdnForm.received_gov) : undefined,
         received_gsv:               vesselBdnForm.received_gsv?.trim() ? parseFloat(vesselBdnForm.received_gsv) : undefined,
         received_mt_vacuum:         vesselBdnForm.received_mt_vacuum?.trim() ? parseFloat(vesselBdnForm.received_mt_vacuum) : undefined,
+        bdr_quantity_mt:            vesselBdnForm.bdr_quantity_mt?.trim() ? parseFloat(vesselBdnForm.bdr_quantity_mt) : undefined,
         notes:                      vesselBdnForm.notes?.trim() || undefined,
       });
     },
@@ -2026,6 +2033,7 @@ export default function OperationDetailPage({
       received_gov:               vb.received_gov ?? "",
       received_gsv:               vb.received_gsv ?? "",
       received_mt_vacuum:         vb.received_mt_vacuum ?? "",
+      bdr_quantity_mt:            vb.bdr_quantity_mt ?? "",
       notes:                      vb.notes ?? "",
     });
     setEditVesselBdnReason("");
@@ -2053,6 +2061,7 @@ export default function OperationDetailPage({
         received_gov:               editVesselBdnForm.received_gov ? parseFloat(editVesselBdnForm.received_gov) : undefined,
         received_gsv:               editVesselBdnForm.received_gsv ? parseFloat(editVesselBdnForm.received_gsv) : undefined,
         received_mt_vacuum:         editVesselBdnForm.received_mt_vacuum ? parseFloat(editVesselBdnForm.received_mt_vacuum) : undefined,
+        bdr_quantity_mt:            editVesselBdnForm.bdr_quantity_mt ? parseFloat(editVesselBdnForm.bdr_quantity_mt) : undefined,
         notes:                      editVesselBdnForm.notes || undefined,
         reason:                     editVesselBdnReason.trim(),
       });
@@ -2362,6 +2371,14 @@ export default function OperationDetailPage({
       officerField: "hse_post_safety_officer" as const,
     },
   ];
+
+  // Ship-to-ship collections use the same vessel-to-vessel form, split the
+  // same way, so the crew signs the identical checklist either direction.
+  const STS_HSE_PHASES: StsHsePhaseTemplate[] = HSE_PHASES.map((p) => ({
+    phase: p.phase,
+    label: p.label,
+    items: LEG_HSE_TEMPLATE.filter((t) => p.sections.includes(t.section)),
+  }));
 
   const hsePhaseChecklist = (phase: (typeof HSE_PHASES)[number]) =>
     blankChecklist(LEG_HSE_TEMPLATE.filter((t) => phase.sections.includes(t.section)));
@@ -3139,8 +3156,86 @@ export default function OperationDetailPage({
     "Conduct a post-operation debrief with the team",
     "Clean and store equipment appropriately",
   ];
-  const CHECKLIST_ITEMS_BY_PHASE: Record<AuditPhase, string[]> = { pre: PRE_CHECKLIST_ITEMS, post: POST_CHECKLIST_ITEMS };
+  // Loading: the truck inspection before it loads at the depot — management's
+  // form QHS_RAL_OP_08_TI01, worded exactly as on the paper. Pre and Post
+  // above are both jetty checks (discharge into the barge); this one is not.
+  // Grouped by the form's own sections; each item is still stored as plain
+  // text, the same as Pre and Post.
+  const LOADING_CHECKLIST_SECTIONS: { title: string; items: string[] }[] = [
+    { title: "Vehicle Identification", items: [
+      "Verify vehicle registration, license plate, and VIN",
+    ] },
+    { title: "Lights and Reflectors", items: [
+      "Headlights (high and low beam)",
+      "Taillights",
+      "Brake lights",
+      "Turn signals (front and rear)",
+      "Hazard lights",
+      "Reflectors (front, rear, and side)",
+    ] },
+    { title: "Tires", items: [
+      "Check tire pressure",
+      "Inspect tread depth",
+      "Look for signs of wear, damage, or uneven wear",
+    ] },
+    { title: "Brakes", items: [
+      "Check brake fluid level",
+      "Inspect brake pads and linings",
+      "Test brake function (service and emergency)",
+    ] },
+    { title: "Frame and Body", items: [
+      "Inspect frame for damage or rust",
+      "Verify all doors and compartments are secured",
+    ] },
+    { title: "Engine and Transmission", items: [
+      "Check engine oil level",
+      "Inspect engine belts and hoses",
+      "Verify proper transmission function",
+    ] },
+    { title: "Safety Equipment", items: [
+      "Fire extinguisher",
+      "Reflective triangles or road flares",
+      "Spare tire and tire-changing equipment",
+    ] },
+    { title: "Tanker and Trailer", items: [
+      "Inspect tanker trailer for damage or leaks",
+      "Verify proper securement of tanker to trailer",
+      "Identify any signs of leakage, such as drips, spills, or unusual odors after loading",
+      "Inspect cargo manifolds and fittings for damage or leak",
+    ] },
+  ];
+  const LOADING_CHECKLIST_ITEMS = LOADING_CHECKLIST_SECTIONS.flatMap((sec) => sec.items);
+  const CHECKLIST_ITEMS_BY_PHASE: Record<AuditPhase, string[]> = {
+    loading: LOADING_CHECKLIST_ITEMS, pre: PRE_CHECKLIST_ITEMS, post: POST_CHECKLIST_ITEMS,
+  };
+  // Pre and Post have no sections — one untitled group.
+  const CHECKLIST_SECTIONS_BY_PHASE: Record<AuditPhase, { title: string; items: string[] }[]> = {
+    loading: LOADING_CHECKLIST_SECTIONS,
+    pre: [{ title: "", items: PRE_CHECKLIST_ITEMS }],
+    post: [{ title: "", items: POST_CHECKLIST_ITEMS }],
+  };
+  // With a loading check added, "Pre (before loading)" read as the depot
+  // check. Pre and Post are named for where they actually happen.
+  const AUDIT_PHASE_LABELS: Record<AuditPhase, string> = {
+    loading: "Loading (truck inspection before loading)",
+    pre: "Pre-Discharge (at the jetty)",
+    post: "Post-Discharge (at the jetty)",
+  };
+  const AUDIT_DIALOG_TITLES: Record<AuditPhase, string> = {
+    loading: "Loading Safety Checklist (truck inspection before loading)",
+    pre: "Pre-Discharge Safety Checklist (at the jetty)",
+    post: "Post-Discharge Safety Checklist (at the jetty)",
+  };
   const HEADER_FIELDS_BY_PHASE: Record<AuditPhase, { k: string; label: string }[]> = {
+    loading: [
+      { k: "truck_number", label: "Truck Number" },
+      { k: "driver_name", label: "Truck Driver" },
+      { k: "driver_phone", label: "Driver Contact" },
+      { k: "product_type", label: "Product Type" },
+      { k: "loading_depot", label: "Loading Depot" },
+      { k: "operation_manager", label: "Operation Manager" },
+      { k: "safety_officer", label: "Safety Officer" },
+    ],
     pre: [
       { k: "safety_officer", label: "Safety Officer" },
       { k: "driver_name", label: "Truck Driver" },
@@ -3245,11 +3340,11 @@ export default function OperationDetailPage({
     onError: (err) => toast.error(getErrorMessage(err)),
   });
 
-  // Renders one phase's (Pre or Post) safety-checklist banner + breakdown for a
+  // Renders one phase's (Loading, Pre or Post) safety-checklist banner + breakdown for a
   // truck operation. Neither phase gates the other, nor the movement stages —
   // both are just independently trackable readiness checks.
   const renderAuditBanner = (to: TruckOperation, phase: AuditPhase, audit?: TruckSafetyAudit) => {
-    const label = phase === "pre" ? "Pre (before loading)" : "Post (before discharge)";
+    const label = AUDIT_PHASE_LABELS[phase];
     const auditPassed = audit?.result === "satisfactory";
     const failedItems = audit?.checklist.filter((c) => !c.passed) ?? [];
     const waivedSet = new Set((audit?.waivers ?? []).map((w: AuditWaiver) => w.item));
@@ -3895,6 +3990,19 @@ export default function OperationDetailPage({
                     <Palette className="mr-2 h-3.5 w-3.5" />
                     Set operation colour
                   </DropdownMenuItem>
+
+                  {!["cancelled", "archived", "completed"].includes(op.status) && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        className="text-[13px] text-destructive focus:text-destructive"
+                        onSelect={() => setShowCancelOp(true)}
+                      >
+                        <XCircle className="mr-2 h-3.5 w-3.5" />
+                        Cancel Operation
+                      </DropdownMenuItem>
+                    </>
+                  )}
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
@@ -4227,7 +4335,8 @@ export default function OperationDetailPage({
                 <p className="text-sm font-semibold text-amber-800">Load the vessel first</p>
                 <p className="text-xs text-amber-700/90 mt-0.5">
                   This is a full operation: record all truck discharges into the vessel
-                  (Truck Reports tab) <strong>before</strong> starting vessel operations. The
+                  (Truck Reports tab) and any ship-to-ship collections (Marine tab){" "}
+                  <strong>before</strong> starting vessel operations. The
                   vessel&rsquo;s ROB is captured when vessel ops begin — starting early snapshots
                   a stale figure.
                 </p>
@@ -5903,6 +6012,16 @@ export default function OperationDetailPage({
                               </div>
                             </div>
 
+                            {/* The client's BDR figure — what they acknowledge receiving,
+                                whatever was discharged or received. Often only known
+                                later, so it can be added through Edit afterwards. */}
+                            <div className="space-y-1.5 sm:max-w-[33%]">
+                              <Label className="text-xs">
+                                BDR Quantity MT(vac) <span className="font-normal text-muted-foreground">(from the client&apos;s BDR, optional)</span>
+                              </Label>
+                              <Input type="number" step="0.001" min="0" className="h-8 text-xs" value={vesselBdnForm.bdr_quantity_mt ?? ""} onChange={(e) => setVesselBdnForm((f) => ({ ...f, bdr_quantity_mt: e.target.value }))} />
+                            </div>
+
                             {/* No truck-vs-vessel reconciliation here — this form is entirely
                                  about OUR vessel discharging OUT to the receiving vessel above.
                                  That reconciliation is the loading leg (trucks onto our vessel)
@@ -6070,6 +6189,13 @@ export default function OperationDetailPage({
                                   )}
                                 </div>
                               )}
+                              {vb.bdr_quantity_mt && (
+                                <div className="text-[11px] rounded-md p-2.5 bg-emerald-50 text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-300">
+                                  <span className="font-semibold">BDR Quantity MT(vac):</span>{" "}
+                                  {parseFloat(vb.bdr_quantity_mt).toLocaleString(undefined, { minimumFractionDigits: 3 })}
+                                  <span className="ml-1 opacity-75">— client&apos;s BDR figure</span>
+                                </div>
+                              )}
                               {vb.truck_discharged_total_mt != null && (
                                 <div className="grid grid-cols-3 gap-x-4 gap-y-1 text-[11px] rounded-md p-2.5 bg-indigo-50 text-indigo-800 dark:bg-indigo-500/10 dark:text-indigo-300">
                                   <span className="col-span-3 text-[10px] font-semibold uppercase tracking-wide">Truck ↔ Vessel Reconciliation</span>
@@ -6149,7 +6275,7 @@ export default function OperationDetailPage({
                         tone="blue"
                         label="Total Loaded Quantity"
                         value={quantitySummary ? `${parseFloat(quantitySummary.total_loaded_mt).toLocaleString(undefined, { minimumFractionDigits: 2 })} MT` : "—"}
-                        detail={quantitySummary ? `Trucks ${parseFloat(quantitySummary.truck_loaded_mt).toLocaleString()} MT · Terminal ${parseFloat(quantitySummary.terminal_loaded_mt).toLocaleString()} MT` : undefined}
+                        detail={quantitySummary ? `Trucks ${parseFloat(quantitySummary.truck_loaded_mt).toLocaleString()} MT · Terminal ${parseFloat(quantitySummary.terminal_loaded_mt).toLocaleString()} MT${parseFloat(quantitySummary.sts_loaded_mt ?? "0") > 0 ? ` · Ship-to-ship ${parseFloat(quantitySummary.sts_loaded_mt ?? "0").toLocaleString()} MT` : ""}` : undefined}
                       />
                     </StatTileRow>
 
@@ -6321,6 +6447,20 @@ export default function OperationDetailPage({
                       );
                     })()}
                   </section>
+
+                  <StsCollectionsPanel
+                    operationId={id}
+                    operationStatus={op.status}
+                    operationType={op.type}
+                    canRecord={isBM || isMM || effectiveRole === "marine_operator"}
+                    canManage={isBM}
+                    hsePhases={STS_HSE_PHASES}
+                    onChanged={() => {
+                      qc.invalidateQueries({ queryKey: ["operation-quantity-summary", id] });
+                      qc.invalidateQueries({ queryKey: ["operation-totals", id] });
+                      qc.invalidateQueries({ queryKey: ["operation-activity", id] });
+                    }}
+                  />
 
                   {/* ── Vessel Receipt Summary: the actual BDN detail, not a truck-
                        derived guess. Sourced from whichever BDN flow is the real
@@ -8136,8 +8276,10 @@ export default function OperationDetailPage({
                       };
                       const firstPendingIdx = TRUCK_STAGES.findIndex((s) => !stageValues[s.key]);
 
-                      // Pre (before loading) and Post (before discharge) are two independent,
-                      // non-blocking checklists — neither gates the other or the movement stages.
+                      // Loading (depot), Pre-Discharge and Post-Discharge (jetty) are three
+                      // independent, non-blocking checklists — none gates another or the
+                      // movement stages.
+                      const loadingAudit = to.safety_audits?.find((a) => a.phase === "loading");
                       const preAudit  = to.safety_audits?.find((a) => a.phase === "pre");
                       const postAudit = to.safety_audits?.find((a) => a.phase === "post");
 
@@ -8222,8 +8364,9 @@ export default function OperationDetailPage({
                             </div>
                           )}
 
-                          {/* Safety Audits — Pre (before loading) and Post (before discharge),
-                              independently trackable, neither gates the other */}
+                          {/* Safety Audits — Loading, Pre-Discharge and Post-Discharge,
+                              independently trackable, none gates another */}
+                          {renderAuditBanner(to, "loading", loadingAudit)}
                           {renderAuditBanner(to, "pre", preAudit)}
                           {renderAuditBanner(to, "post", postAudit)}
 
@@ -9026,7 +9169,7 @@ export default function OperationDetailPage({
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Shield className="w-4 h-4 text-primary" />
-              {auditPhase === "pre" ? "Pre-Operation Safety Checklist (before loading)" : "Post-Operation Safety Checklist (before discharge)"}
+              {AUDIT_DIALOG_TITLES[auditPhase]}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 mt-1 max-h-[70vh] overflow-y-auto pr-1">
@@ -9047,8 +9190,12 @@ export default function OperationDetailPage({
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
                 Checklist — tick each item that PASSES inspection
               </p>
-              <div className="grid grid-cols-1 gap-1.5">
-                {CHECKLIST_ITEMS_BY_PHASE[auditPhase].map((item) => {
+              {CHECKLIST_SECTIONS_BY_PHASE[auditPhase].map((section) => (
+              <div key={section.title || auditPhase} className="grid grid-cols-1 gap-1.5">
+                {section.title && (
+                  <p className="mt-2 text-[11px] font-semibold text-foreground">{section.title}</p>
+                )}
+                {section.items.map((item) => {
                   const passed = auditChecklist[item] ?? false;
                   const checkedAt = auditItemTimestamps[item];
                   return (
@@ -9072,6 +9219,7 @@ export default function OperationDetailPage({
                   );
                 })}
               </div>
+              ))}
               {Object.values(auditChecklist).filter((v) => !v).length > 0 && (
                 <div className="mt-2 flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
                   <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
@@ -9627,6 +9775,40 @@ export default function OperationDetailPage({
             >
               {unlinkNcMutation.isPending && <Spinner size={14} className="mr-1.5" />}
               Unlink
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── BM: Cancel Operation — reason required, recorded on the status history ── */}
+      <Dialog open={showCancelOp} onOpenChange={(v) => { setShowCancelOp(v); if (!v) setCancelOpReason(""); }}>
+        <DialogContent className="sm:max-w-sm" aria-describedby={undefined}>
+          <DialogHeader>
+            <DialogTitle>Cancel {op.operation_number}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 mt-1">
+            <p className="text-sm text-muted-foreground">
+              The operation stops where it is. Nothing recorded on it is deleted, and it can be
+              reopened later as a new version.
+            </p>
+            <Label className="text-xs">Reason <span className="text-destructive">*</span></Label>
+            <Textarea
+              rows={3} className="resize-none text-sm" placeholder="Why is this operation being cancelled…"
+              value={cancelOpReason} onChange={(e) => setCancelOpReason(e.target.value)}
+            />
+          </div>
+          <DialogFooter className="mt-4">
+            <Button variant="outline" onClick={() => setShowCancelOp(false)}>Keep Operation</Button>
+            <Button
+              variant="destructive"
+              disabled={!cancelOpReason.trim() || transitionMutation.isPending}
+              onClick={() => transitionMutation.mutate(
+                { to_status: "cancelled", reason: cancelOpReason.trim() },
+                { onSuccess: () => { setShowCancelOp(false); setCancelOpReason(""); } },
+              )}
+            >
+              {transitionMutation.isPending && <Spinner size={14} className="mr-1.5" />}
+              Cancel Operation
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -10208,6 +10390,10 @@ export default function OperationDetailPage({
                   <Input type="number" step="0.001" value={editVesselBdnForm.received_mt_vacuum ?? ""} onChange={(e) => setEditVesselBdnForm((f) => ({ ...f, received_mt_vacuum: e.target.value }))} />
                 </div>
               </div>
+            </div>
+            <div className="space-y-1.5 sm:max-w-[33%]">
+              <Label className="text-xs">BDR Quantity MT(vac) <span className="font-normal text-muted-foreground">(client&apos;s BDR)</span></Label>
+              <Input type="number" step="0.001" value={editVesselBdnForm.bdr_quantity_mt ?? ""} onChange={(e) => setEditVesselBdnForm((f) => ({ ...f, bdr_quantity_mt: e.target.value }))} />
             </div>
             {op?.type === "full_operation" && (
               <p className="text-[11px] text-muted-foreground">

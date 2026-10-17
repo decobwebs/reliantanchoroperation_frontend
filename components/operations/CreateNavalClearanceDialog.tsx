@@ -6,6 +6,7 @@ import { PlusCircle, Anchor, Trash2, Fuel } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "sonner";
 import { api, getErrorMessage } from "@/lib/api";
+import { formatDate } from "@/lib/utils";
 import { useDynamicRows, DynamicRowCard } from "@/components/shared/DynamicRows";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -60,6 +61,16 @@ export function CreateNavalClearanceDialog({
     },
     enabled: open,
   });
+  // Expired BFLs are offered too — a clearance is often raised against a BFL
+  // from earlier in the year that still has litres left. Ones with litres
+  // left come first; expiry is labelled, never a block. Plain string compare
+  // on YYYY-MM-DD avoids Date parsing, which Safari gets wrong.
+  const today = new Date().toLocaleDateString("en-CA");
+  const isExpired = (b: Bfl) => b.expiry_date < today;
+  const hasLitresLeft = (b: Bfl) => parseFloat(b.remaining_litres ?? "0") > 0;
+  const pickerBfls = [...(activeBfls ?? [])].sort(
+    (a, b) => Number(hasLitresLeft(b)) - Number(hasLitresLeft(a)),
+  );
   const { data: clients } = useQuery({
     queryKey: ["admin-clients"],
     queryFn: async () => {
@@ -191,9 +202,10 @@ export function CreateNavalClearanceDialog({
                     <Select value={d.bfl_id} onValueChange={(v) => drawdownRows.update(i, { bfl_id: v })}>
                       <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select BFL…" /></SelectTrigger>
                       <SelectContent>
-                        {activeBfls?.map((b) => (
+                        {pickerBfls.map((b) => (
                           <SelectItem key={b.id} value={b.id} className="text-xs">
                             {b.bfl_number} · {b.product_type} · {b.remaining_litres ? parseFloat(b.remaining_litres).toLocaleString() : "—"} L left
+                            {isExpired(b) && <span className="ml-1 text-amber-600">· expired {formatDate(b.expiry_date)}</span>}
                           </SelectItem>
                         ))}
                       </SelectContent>

@@ -539,7 +539,7 @@ export interface TruckEvent {
 }
 
 export type AuditResult = "satisfactory" | "not_satisfactory";
-export type AuditPhase = "pre" | "post";
+export type AuditPhase = "loading" | "pre" | "post";
 
 export interface AuditWaiver {
   item: string;
@@ -1054,6 +1054,8 @@ export interface VesselBdn {
   received_gov?: string;
   received_gsv?: string;
   received_mt_vacuum?: string;
+  // The client's BDR (Bunker Delivery Receipt) figure, MT(vac).
+  bdr_quantity_mt?: string;
   // Truck-vs-vessel reconciliation (Full Operation only) — truck_discharged_total_mt
   // is system-computed, never entered; vessel_received_total_mt is the one
   // manual figure; truck_variance_mt is derived. Null for vessel_only BDNs.
@@ -1088,7 +1090,61 @@ export interface TerminalLoadingReceipt {
 export interface QuantitySummary {
   truck_loaded_mt: string;
   terminal_loaded_mt: string;
+  // Approved ship-to-ship collections (MT(vac)). Absent from an older API.
+  sts_loaded_mt?: string;
   total_loaded_mt: string;
+}
+
+// ─── Ship-to-ship collections ────────────────────────────────────────────────
+// The barge collecting product from another vessel, alongside its trucks.
+
+export type StsCollectionStatus = "in_progress" | "pending" | "approved" | "rejected" | "cancelled";
+export type StsStage = "cast_off" | "alongside" | "receiving_started" | "receiving_completed";
+export type StsHsePhase = "pre" | "during" | "post";
+
+export interface StsHseRecord {
+  checklist: { section?: string; item: string; passed: boolean; notes?: string }[];
+  result: "satisfactory" | "not_satisfactory";
+  notes?: string | null;
+  safety_officer?: string | null;
+  conducted_by_name?: string;
+  conducted_at?: string;
+}
+
+export interface StsCollection {
+  id: string;
+  operation_id: string;
+  vessel_id: string;
+  vessel_name?: string;
+  source_vessel_name: string;
+  source_vessel_imo?: string | null;
+  product_type?: string | null;
+  location?: string | null;
+  status: StsCollectionStatus;
+  stage?: StsStage | null;
+  cast_off_at?: string | null;
+  alongside_at?: string | null;
+  receiving_started_at?: string | null;
+  receiving_completed_at?: string | null;
+  hse: Partial<Record<StsHsePhase, StsHseRecord>>;
+  receipt_number?: string | null;
+  gov?: string | null;
+  gsv?: string | null;
+  mt_vacuum?: string | null;
+  density?: string | null;
+  vcf?: string | null;
+  temperature?: string | null;
+  submitted_by_name?: string | null;
+  submitted_at?: string | null;
+  reviewed_by_name?: string | null;
+  reviewed_at?: string | null;
+  rejection_reason?: string | null;
+  cancelled_at?: string | null;
+  cancel_reason?: string | null;
+  notes?: string | null;
+  created_by_name?: string | null;
+  created_at: string;
+  recorded_after_delivery_started: boolean;
 }
 
 // ─── Documents ───────────────────────────────────────────────────────────────

@@ -11,6 +11,7 @@ import {
   Clock,
   Copy,
   Download,
+  FileSpreadsheet,
   FileText,
   Filter,
   Hourglass,
@@ -20,7 +21,7 @@ import {
   Settings2,
 } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
-import { api } from "@/lib/api";
+import { api, getErrorMessage } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { KpiCard } from "@/components/dashboard/KpiCard";
@@ -176,7 +177,7 @@ async function downloadCSV(
 }
 
 export default function OperationsPage() {
-  const { effectiveRole } = useAuth();
+  const { user, effectiveRole } = useAuth();
   const router = useRouter();
 
   const [page, setPage] = useState(1);
@@ -187,6 +188,27 @@ export default function OperationsPage() {
   const [range, setRange] = useState("all");
   const [showCreate, setShowCreate] = useState(false);
   const [exporting, setExporting] = useState(false);
+  // The full operations data set (every operation, one row per truck load,
+  // management's 34-column layout). Bunker Manager only — it spans every
+  // operation, like the global BDN register.
+  const canDownloadDataSet = user?.role === "bunker_manager" || effectiveRole === "bunker_manager";
+  const [downloadingDataSet, setDownloadingDataSet] = useState(false);
+  const downloadDataSet = async () => {
+    setDownloadingDataSet(true);
+    try {
+      const res = await api.get("/reports/operations-dataset.xlsx", { responseType: "blob" });
+      const url = URL.createObjectURL(res.data as Blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `RAOMS-DATA-SET-${new Date().toLocaleDateString("en-CA")}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    } finally {
+      setDownloadingDataSet(false);
+    }
+  };
   const [hidden, setHidden] = useState<ColumnId[]>([]);
 
   // Debounce the search box so typing doesn't fire a request per keystroke.
@@ -306,6 +328,21 @@ export default function OperationsPage() {
             )}
             Export CSV
           </Button>
+          {canDownloadDataSet && (
+            <Button
+              variant="outline"
+              className="h-10.5 rounded-xl border-navy-100 px-4 text-[13px] font-semibold dark:border-border"
+              disabled={downloadingDataSet}
+              onClick={downloadDataSet}
+            >
+              {downloadingDataSet ? (
+                <Spinner size={16} />
+              ) : (
+                <FileSpreadsheet className="h-4 w-4" strokeWidth={2.5} />
+              )}
+              Data Set
+            </Button>
+          )}
           {canCreateOperation && (
             <Button
               className="brand-grad-active h-10.5 rounded-xl px-4 text-[13px] font-semibold text-white shadow-[0_12px_26px_-14px_rgb(14_121_200/0.9)] hover:opacity-95"

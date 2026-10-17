@@ -11,6 +11,7 @@ import {
   Anchor,
   ChevronRight,
   AlertCircle,
+  Search,
 } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { useForm } from "react-hook-form";
@@ -22,6 +23,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { PanelCard } from "@/components/dashboard/PanelCard";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -86,6 +88,7 @@ function SubmitReadinessDialog({
   onSubmitted: () => void;
 }) {
   const [selectedTruckIds, setSelectedTruckIds] = useState<string[]>([]);
+  const [truckSearch, setTruckSearch] = useState("");
 
   const { register, handleSubmit, reset, formState: { errors } } =
     useForm<FeedbackForm>({ resolver: zodResolver(feedbackSchema) });
@@ -119,6 +122,7 @@ function SubmitReadinessDialog({
       toast.success("Readiness report submitted — awaiting BM approval");
       reset();
       setSelectedTruckIds([]);
+      setTruckSearch("");
       onSubmitted();
     },
     onError: (err) => toast.error(getErrorMessage(err)),
@@ -130,11 +134,25 @@ function SubmitReadinessDialog({
     );
   };
 
+  // The fleet runs to well over a hundred plates, so scrolling to find one
+  // was the slow part. Match on plate or driver, ignoring case and spaces
+  // ("kna 84" finds KNA84XA). Ticked trucks stay on top so a search never
+  // hides what has already been picked.
+  const squash = (v: string) => v.toLowerCase().replace(/\s+/g, "");
+  const needle = squash(truckSearch);
+  const pickable = (trucks ?? []).filter((t) => ["available", "assigned"].includes(t.status));
+  const shownTrucks = pickable
+    .filter((t) => selectedTruckIds.includes(t.id)
+      || !needle
+      || squash(t.truck_number).includes(needle)
+      || squash(t.driver_name ?? "").includes(needle))
+    .sort((a, b) => Number(selectedTruckIds.includes(b.id)) - Number(selectedTruckIds.includes(a.id)));
+
   const opStatus = task.operation?.status;
   const canSubmit = opStatus === "awaiting_feedback";
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { if (!v) { reset(); setSelectedTruckIds([]); onClose(); } }}>
+    <Dialog open={open} onOpenChange={(v) => { if (!v) { reset(); setSelectedTruckIds([]); setTruckSearch(""); onClose(); } }}>
       <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto" aria-describedby={undefined}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -173,10 +191,19 @@ function SubmitReadinessDialog({
                 Loading trucks...
               </div>
             ) : trucks?.length ? (
+              <>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                <Input
+                  value={truckSearch}
+                  onChange={(e) => setTruckSearch(e.target.value)}
+                  placeholder="Search plate number or driver…"
+                  className="pl-9"
+                  autoComplete="off"
+                />
+              </div>
               <div className="border rounded-lg divide-y max-h-44 overflow-y-auto">
-                {trucks
-                  .filter((t) => ["available", "assigned"].includes(t.status))
-                  .map((truck) => (
+                {shownTrucks.map((truck) => (
                     <label
                       key={truck.id}
                       className="flex items-center gap-3 px-4 py-2.5 hover:bg-muted/40 cursor-pointer"
@@ -197,12 +224,18 @@ function SubmitReadinessDialog({
                       </span>
                     </label>
                   ))}
-                {trucks.filter((t) => ["available", "assigned"].includes(t.status)).length === 0 && (
+                {pickable.length === 0 && (
                   <p className="text-sm text-muted-foreground text-center py-4">
                     No available trucks. All trucks must be &apos;available&apos; or &apos;assigned&apos;.
                   </p>
                 )}
+                {pickable.length > 0 && shownTrucks.length === 0 && (
+                  <p className="text-sm text-muted-foreground text-center py-4">
+                    No truck matches &ldquo;{truckSearch}&rdquo;.
+                  </p>
+                )}
               </div>
+              </>
             ) : (
               <p className="text-sm text-muted-foreground py-2">No trucks registered in fleet.</p>
             )}
@@ -246,7 +279,7 @@ function SubmitReadinessDialog({
             <Button
               type="button"
               variant="outline"
-              onClick={() => { reset(); setSelectedTruckIds([]); onClose(); }}
+              onClick={() => { reset(); setSelectedTruckIds([]); setTruckSearch(""); onClose(); }}
             >
               Cancel
             </Button>

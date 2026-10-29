@@ -489,11 +489,21 @@ export interface Invoice {
 
 // ─── Fleet ───────────────────────────────────────────────────────────────────
 
+export type TruckAvailability =
+  | "available" | "assigned" | "in_transit" | "discharging" | "maintenance" | "out_of_service";
+
 export interface Truck {
   id: string;
   truck_number: string;
   capacity_mt: string;
+  /** Hand-set: available, maintenance or out_of_service. */
   status: string;
+  /** What the truck is doing now — read from its live job by the server.
+   *  Use this, not `status`, anywhere a person decides whether to send it. */
+  availability?: TruckAvailability;
+  current_operation_id?: string | null;
+  current_operation_number?: string | null;
+  ownership?: "company" | "contractor" | null;
   driver_name?: string;
   driver_phone?: string;
   chassis_number?: string;

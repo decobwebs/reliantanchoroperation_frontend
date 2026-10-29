@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useMemo, useState, useRef } from "react";
 import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -9,6 +9,9 @@ import {
   ChevronRight,
   ImagePlus,
   X,
+  Search,
+  Route,
+  Wrench,
 } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { useForm } from "react-hook-form";
@@ -31,21 +34,23 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import type { ApiResponse, Truck as TruckType } from "@/types";
-
-const STATUS_COLOR: Record<string, string> = {
-  available:      "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300",
-  assigned:       "bg-brand-100 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300",
-  in_transit:     "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300",
-  discharging:    "bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300",
-  maintenance:    "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300",
-  out_of_service: "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300",
-};
+import {
+  AVAILABILITY_COLOR, AVAILABILITY_LABEL, AVAILABILITY_ORDER, OWNERSHIP_LABEL, availabilityOf,
+} from "@/lib/trucks";
+import type { ApiResponse, Truck as TruckType, TruckAvailability } from "@/types";
 
 const truckSchema = z.object({
   truck_number:     z.string().min(1, "Truck number is required").trim(),
   capacity_mt:      z.string().min(1, "Capacity is required").refine((v) => !isNaN(parseFloat(v)) && parseFloat(v) > 0, "Must be a positive number"),
+  ownership:        z.enum(["company", "contractor", "unset"]),
   chassis_number:   z.string().optional(),
   current_location: z.string().optional(),
   notes:            z.string().optional(),
@@ -61,8 +66,8 @@ function CreateTruckDialog({
   onClose: () => void;
   onCreated: () => void;
 }) {
-  const { register, handleSubmit, reset, formState: { errors } } =
-    useForm<TruckForm>({ resolver: zodResolver(truckSchema) });
+  const { register, handleSubmit, reset, watch, setValue, formState: { errors } } =
+    useForm<TruckForm>({ resolver: zodResolver(truckSchema), defaultValues: { ownership: "unset" } });
 
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
@@ -101,6 +106,7 @@ function CreateTruckDialog({
       const res = await api.post<{ data: { id: string } }>("/trucks", {
         truck_number:     data.truck_number.trim(),
         capacity_mt:      parseFloat(data.capacity_mt),
+        ownership:        data.ownership === "unset" ? undefined : data.ownership,
         chassis_number:   data.chassis_number?.trim() || undefined,
         current_location: data.current_location?.trim() || undefined,
         notes:            data.notes?.trim() || undefined,
@@ -162,6 +168,17 @@ function CreateTruckDialog({
               <Input type="number" step="0.01" placeholder="e.g. 40000" {...register("capacity_mt")} />
               {errors.capacity_mt && <p className="text-xs text-destructive">{errors.capacity_mt.message}</p>}
             </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Ownership</Label>
+            <Select value={watch("ownership")} onValueChange={(v) => setValue("ownership", v as TruckForm["ownership"])}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="company">Company-owned</SelectItem>
+                <SelectItem value="contractor">Contractor</SelectItem>
+                <SelectItem value="unset">Not sure yet</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <div className="space-y-1.5">
             <Label>Chassis Number <span className="text-muted-foreground font-normal text-xs">(optional)</span></Label>
@@ -275,8 +292,32 @@ export default function FleetPage() {
     },
   });
 
-  const available = trucks?.filter((t) => t.status === "available").length ?? 0;
-  const assigned  = trucks?.filter((t) => t.status === "assigned").length ?? 0;
+  const [filter, setFilter] = useState<TruckAvailability | "all">("all");
+  const [owner, setOwner] = useState<"all" | "company" | "contractor" | "unset">("all");
+  const [search, setSearch] = useState("");
+
+  const counts = useMemo(() => {
+    const c = Object.fromEntries(AVAILABILITY_ORDER.map((a) => [a, 0])) as Record<TruckAvailability, number>;
+    for (const t of trucks ?? []) c[availabilityOf(t)] = (c[availabilityOf(t)] ?? 0) + 1;
+    return c;
+  }, [trucks]);
+  const onJob = counts.assigned + counts.in_transit + counts.discharging;
+
+  // Plate, driver or operation, ignoring case and spaces ("kna 84" finds KNA84XA).
+  const squash = (v: string) => v.toLowerCase().replace(/\s+/g, "");
+  const needle = squash(search);
+  const shown = (trucks ?? []).filter((t) => {
+    if (filter !== "all" && availabilityOf(t) !== filter) return false;
+    if (owner !== "all" && (t.ownership ?? "unset") !== owner) return false;
+    if (needle && !squash(t.truck_number).includes(needle) && !squash(t.driver_name ?? "").includes(needle)
+        && !squash(t.current_operation_number ?? "").includes(needle)) return false;
+    return true;
+  });
+
+  const chips: { key: TruckAvailability | "all"; label: string; n: number }[] = [
+    { key: "all", label: "All", n: trucks?.length ?? 0 },
+    ...AVAILABILITY_ORDER.map((a) => ({ key: a, label: AVAILABILITY_LABEL[a], n: counts[a] })),
+  ];
 
   return (
     <DashboardShell
@@ -284,7 +325,7 @@ export default function FleetPage() {
       iconTone="blue"
       showRole={false}
       title="Fleet — Trucks"
-      subtitle="Manage truck fleet"
+      subtitle="Every company and contractor truck, and where each one is now"
       actions={
         isBM ? (
           <Button
@@ -297,44 +338,103 @@ export default function FleetPage() {
         ) : undefined
       }
     >
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard title="Total Trucks" value={trucks?.length ?? 0} icon={Truck} color="blue" />
-        <StatCard title="Available" value={available} icon={Truck} color="emerald" />
-        <StatCard title="Assigned" value={assigned} icon={Truck} color="amber" />
+        <StatCard title="Available" value={counts.available} icon={Truck} color="emerald" />
+        <StatCard
+          title="On a Job"
+          value={onJob}
+          subtitle={`${counts.assigned} assigned · ${counts.in_transit} in transit · ${counts.discharging} discharging`}
+          icon={Route}
+          color="amber"
+        />
+        <StatCard title="Maintenance / Out" value={counts.maintenance + counts.out_of_service} icon={Wrench} color="red" />
       </div>
 
       {isLoading ? (
         <Skeleton className="h-96 w-full rounded-2xl" />
       ) : (
         <PanelCard icon={Truck} tone="blue" title="Registry" flush className="animate-rise">
-          {trucks?.length ? (
-            <div className="divide-y divide-border/70">
-              {trucks.map((truck) => (
-                <Link
-                  key={truck.id}
-                  href={`/fleet/${truck.id}`}
-                  className="group flex items-center justify-between px-4 py-4 transition-colors hover:bg-muted/40 lg:px-5"
+          <div className="space-y-3 border-b border-border/70 px-4 py-3 lg:px-5">
+            <div className="flex flex-wrap gap-1.5">
+              {chips.map((c) => (
+                <button
+                  key={c.key}
+                  type="button"
+                  onClick={() => setFilter(c.key)}
+                  className={cn(
+                    "rounded-full border px-2.5 py-1 text-[11.5px] font-semibold transition-colors",
+                    filter === c.key
+                      ? "border-brand-600 bg-brand-600 text-white"
+                      : "border-border text-muted-foreground hover:bg-muted/50",
+                  )}
                 >
-                  <div className="min-w-0 flex-1">
-                    <p className="font-mono text-[14px] font-bold tracking-tight text-foreground">{truck.truck_number}</p>
-                    <p className="mt-0.5 truncate text-[12.5px] text-muted-foreground">
-                      <span className="tabular-nums">{parseFloat(truck.capacity_mt).toLocaleString()} L</span>
-                      {truck.driver_name ? ` · ${truck.driver_name}` : ""}
-                      {truck.current_location ? ` · ${truck.current_location}` : ""}
-                    </p>
-                    <span
-                      className={cn(
-                        "mt-1.5 inline-block rounded-full px-2 py-0.5 text-[10.5px] font-semibold capitalize",
-                        STATUS_COLOR[truck.status] ?? "bg-muted text-muted-foreground"
-                      )}
-                    >
-                      {truck.status.replace(/_/g, " ")}
-                    </span>
-                  </div>
-                  <ChevronRight className="ml-3 h-4 w-4 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
-                </Link>
+                  {c.label} <span className="tabular-nums opacity-80">{c.n}</span>
+                </button>
               ))}
             </div>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <div className="relative flex-1">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search plate, driver or operation…"
+                  className="pl-9"
+                />
+              </div>
+              <Select value={owner} onValueChange={(v) => setOwner(v as typeof owner)}>
+                <SelectTrigger className="sm:w-48"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All owners</SelectItem>
+                  <SelectItem value="company">Company-owned</SelectItem>
+                  <SelectItem value="contractor">Contractor</SelectItem>
+                  <SelectItem value="unset">Ownership not set</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <p className="text-[11.5px] text-muted-foreground">{shown.length} shown</p>
+          </div>
+          {shown.length ? (
+            <div className="divide-y divide-border/70">
+              {shown.map((truck) => {
+                const now = availabilityOf(truck);
+                return (
+                  <Link
+                    key={truck.id}
+                    href={`/fleet/${truck.id}`}
+                    className="group flex items-center justify-between px-4 py-4 transition-colors hover:bg-muted/40 lg:px-5"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="font-mono text-[14px] font-bold tracking-tight text-foreground">{truck.truck_number}</p>
+                      <p className="mt-0.5 truncate text-[12.5px] text-muted-foreground">
+                        <span className="tabular-nums">{parseFloat(truck.capacity_mt).toLocaleString()} L</span>
+                        {truck.driver_name ? ` · ${truck.driver_name}` : ""}
+                        {truck.current_location ? ` · ${truck.current_location}` : ""}
+                      </p>
+                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                        <span className={cn("rounded-full px-2 py-0.5 text-[10.5px] font-semibold", AVAILABILITY_COLOR[now] ?? "bg-muted text-muted-foreground")}>
+                          {AVAILABILITY_LABEL[now] ?? now}
+                        </span>
+                        {truck.current_operation_number && (
+                          <span className="rounded-full border border-border px-2 py-0.5 font-mono text-[10.5px] font-semibold text-foreground">
+                            On {truck.current_operation_number}
+                          </span>
+                        )}
+                        {truck.ownership && (
+                          <span className="rounded-full bg-muted px-2 py-0.5 text-[10.5px] font-medium text-muted-foreground">
+                            {OWNERSHIP_LABEL[truck.ownership]}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <ChevronRight className="ml-3 h-4 w-4 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+                  </Link>
+                );
+              })}
+            </div>
+          ) : trucks?.length ? (
+            <p className="py-12 text-center text-sm text-muted-foreground">No trucks match these filters.</p>
           ) : (
             <div className="flex flex-col items-center py-16 text-center">
               <Truck className="h-9 w-9 text-muted-foreground/25" strokeWidth={1.5} />

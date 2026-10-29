@@ -1,6 +1,6 @@
 "use client";
 
-import { use } from "react";
+import { use, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import {
@@ -28,11 +28,17 @@ import {
   Thermometer,
   BarChart3,
   Wrench,
+  Settings2,
+  Building2,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { PanelCard } from "@/components/dashboard/PanelCard";
 import { TruckIssuesPanel } from "@/components/shared/TruckIssuesPanel";
+import { TruckSettingsDialog } from "@/components/shared/TruckSettingsDialog";
+import { Button } from "@/components/ui/button";
+import { useAuth } from "@/hooks/useAuth";
+import { AVAILABILITY_COLOR, AVAILABILITY_LABEL, OWNERSHIP_LABEL, availabilityOf } from "@/lib/trucks";
 import { MetaChip } from "@/components/operations/DetailHeader";
 import { StatTile, StatTileRow } from "@/components/operations/StatTile";
 import { Badge } from "@/components/ui/badge";
@@ -40,17 +46,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn, formatDate, formatNumber } from "@/lib/utils";
 import type { ApiResponse, TruckProfile } from "@/types";
-
-// Same vocabulary/colours as the Fleet list page's STATUS_COLOR — kept in
-// sync manually since it's only these two consumers.
-const STATUS_COLOR: Record<string, string> = {
-  available:      "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300",
-  assigned:       "bg-brand-100 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300",
-  in_transit:     "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300",
-  discharging:    "bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300",
-  maintenance:    "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300",
-  out_of_service: "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300",
-};
 
 const OP_STATUS_COLOR: Record<string, string> = {
   completed:   "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300",
@@ -120,6 +115,9 @@ export default function TruckProfilePage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
+  const { effectiveRole } = useAuth();
+  const canEdit = effectiveRole === "bunker_manager" || effectiveRole === "logistics_officer";
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ["truck-profile", id],
@@ -157,6 +155,7 @@ export default function TruckProfilePage({
   }
 
   const { truck, stats, history } = data;
+  const now = availabilityOf(truck);
   const issues   = data.issues ?? [];
   const openIssues = issues.filter((i) => i.status === "open").length;
   const effPct   = stats.efficiency_pct ?? null;
@@ -193,9 +192,23 @@ export default function TruckProfilePage({
           <h1 className="font-mono text-[26px] font-extrabold leading-none tracking-tight text-foreground lg:text-[30px]">
             {truck.truck_number}
           </h1>
-          <span className={cn("inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[12px] font-semibold capitalize", STATUS_COLOR[truck.status] ?? "bg-muted text-muted-foreground")}>
-            {truck.status.replace(/_/g, " ")}
+          <span className={cn("inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[12px] font-semibold", AVAILABILITY_COLOR[now] ?? "bg-muted text-muted-foreground")}>
+            {AVAILABILITY_LABEL[now] ?? now}
           </span>
+          {truck.current_operation_id && truck.current_operation_number && (
+            <Link
+              href={`/operations/${truck.current_operation_id}`}
+              className="rounded-lg border border-border px-2.5 py-1 font-mono text-[12px] font-semibold text-brand-600 hover:bg-muted/50 dark:text-brand-300"
+            >
+              On {truck.current_operation_number}
+            </Link>
+          )}
+          {canEdit && truck.is_active && (
+            <Button size="sm" variant="outline" className="ml-auto gap-1.5 rounded-lg" onClick={() => setSettingsOpen(true)}>
+              <Settings2 className="h-3.5 w-3.5" />
+              Status &amp; ownership
+            </Button>
+          )}
           {!truck.is_active && (
             <Badge variant="destructive" className="rounded-lg">Inactive</Badge>
           )}
@@ -203,6 +216,7 @@ export default function TruckProfilePage({
 
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <MetaChip icon={Package}>{formatNumber(parseFloat(truck.capacity_mt))} L capacity</MetaChip>
+          {truck.ownership && <MetaChip icon={Building2}>{OWNERSHIP_LABEL[truck.ownership]}</MetaChip>}
           {truck.driver_name && <MetaChip icon={User}>{truck.driver_name}</MetaChip>}
           {truck.driver_phone && <MetaChip icon={Phone}>{truck.driver_phone}</MetaChip>}
           {truck.current_location && <MetaChip icon={MapPin}>{truck.current_location}</MetaChip>}
@@ -473,7 +487,8 @@ export default function TruckProfilePage({
             <PanelCard icon={TruckIcon} tone="blue" title="Vehicle Information">
               <InfoRow label="Registration / Number" value={truck.truck_number} mono />
               <InfoRow label="Capacity" value={`${formatNumber(parseFloat(truck.capacity_mt))} L`} />
-              <InfoRow label="Status" value={truck.status.replace(/_/g, " ")} capitalize />
+              <InfoRow label="Status" value={AVAILABILITY_LABEL[now] ?? now} />
+              <InfoRow label="Ownership" value={truck.ownership ? OWNERSHIP_LABEL[truck.ownership] : "Not set"} />
               <InfoRow label="Active" value={truck.is_active ? "Yes" : "No"} />
               <InfoRow label="Registered" value={formatDate(truck.created_at)} />
               <InfoRow label="Last Updated" value={formatDate(truck.updated_at)} />
@@ -510,6 +525,9 @@ export default function TruckProfilePage({
           </div>
         </TabsContent>
       </Tabs>
+      {canEdit && (
+        <TruckSettingsDialog key={settingsOpen ? "open" : "closed"} truck={truck} open={settingsOpen} onOpenChange={setSettingsOpen} />
+      )}
     </DashboardShell>
   );
 }

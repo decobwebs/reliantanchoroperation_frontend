@@ -34,7 +34,8 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { useState } from "react";
-import type { ApiResponse, User, Vessel, PFI, ProductType, OperationType, NavalClearance, VesselSourceType } from "@/types";
+import type { ApiResponse, User, Vessel, PFI, ProductType, OperationType, NavalClearance, VesselSourceType, Truck } from "@/types";
+import { TruckPicker } from "@/components/shared/TruckPicker";
 import { PRODUCT_TYPE_LABELS } from "@/types";
 import { VESSEL_SOURCE_TYPE_LABELS } from "@/lib/utils";
 
@@ -543,6 +544,9 @@ export function CreateOperationDialog({ open, onClose, onCreated }: Props) {
 
   const opType = watch("type") as OperationType;
   const [navalClearanceIds, setNavalClearanceIds] = useState<string[]>([]);
+  // Trucks put straight on the job from the register, without waiting for a
+  // readiness report (management's truck module request, Oct 2026).
+  const [truckIds, setTruckIds] = useState<string[]>([]);
 
   // Seed one empty product row when the dialog opens, so the form isn't
   // empty-by-default requiring an extra click.
@@ -573,6 +577,10 @@ export function CreateOperationDialog({ open, onClose, onCreated }: Props) {
     // can't get silently resubmitted (the backend rejects it outright).
     if (prevType !== "vessel_only") {
       setValue("source_type", undefined);
+    }
+    // A vessel-only job has no trucks.
+    if (prevType === "vessel_only") {
+      setTruckIds([]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prevType]);
@@ -613,6 +621,16 @@ export function CreateOperationDialog({ open, onClose, onCreated }: Props) {
     enabled: open && opType !== "truck_only",
   });
 
+  // ── Trucks query (shown when the job has trucks)
+  const { data: trucks = [], isLoading: isTrucksLoading } = useQuery({
+    queryKey: ["trucks"],
+    queryFn: async () => {
+      const res = await api.get<ApiResponse<Truck[]>>("/trucks");
+      return res.data.data ?? [];
+    },
+    enabled: open && opType !== "vessel_only",
+  });
+
   // ── Naval Clearances query (optional link — shown when not truck_only)
   const { data: navalClearances } = useQuery({
     queryKey: ["naval-clearances-picker"],
@@ -646,6 +664,7 @@ export function CreateOperationDialog({ open, onClose, onCreated }: Props) {
         notes:              data.notes?.trim() || undefined,
         assignments:        data.assignments.length > 0 ? data.assignments : undefined,
         pfi_allocations:    data.pfi_allocations?.length ? data.pfi_allocations : undefined,
+        truck_ids:          data.type !== "vessel_only" && truckIds.length ? truckIds : undefined,
       };
       const res = await api.post("/operations", payload);
       const operation = extractData<{ id: string }>(res);
@@ -660,6 +679,7 @@ export function CreateOperationDialog({ open, onClose, onCreated }: Props) {
       toast.success("Operation created");
       reset();
       setNavalClearanceIds([]);
+      setTruckIds([]);
       onCreated();
     },
     onError: (err) => toast.error(getErrorMessage(err)),
@@ -668,6 +688,7 @@ export function CreateOperationDialog({ open, onClose, onCreated }: Props) {
   const handleClose = useCallback(() => {
     reset();
     setNavalClearanceIds([]);
+    setTruckIds([]);
     onClose();
   }, [reset, onClose]);
 
@@ -934,6 +955,36 @@ export function CreateOperationDialog({ open, onClose, onCreated }: Props) {
               </div>
             )}
           </div>
+
+          {/* ── Section 2a: Trucks ───────────────────────────────────── */}
+          {opType !== "vessel_only" && (
+            <div className="space-y-3 border-t pt-4">
+              <div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Trucks
+                  </span>
+                  <Badge variant="secondary" className="text-[10px] normal-case">optional</Badge>
+                </div>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Pick trucks from the fleet to put them on this job now. Truck Operation can
+                  still add more through the readiness report.
+                </p>
+              </div>
+              {isTrucksLoading ? (
+                <div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
+                  <Spinner size={16} />
+                  Loading trucks...
+                </div>
+              ) : (
+                <TruckPicker
+                  trucks={trucks}
+                  selectedIds={truckIds}
+                  onToggle={(id) => setTruckIds((prev) => (prev.includes(id) ? prev.filter((t) => t !== id) : [...prev, id]))}
+                />
+              )}
+            </div>
+          )}
 
           {/* ── Section 2b: PFI Allocations ──────────────────────────── */}
           <div className="space-y-3 border-t pt-4">

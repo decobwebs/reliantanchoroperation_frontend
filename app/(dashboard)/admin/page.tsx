@@ -56,6 +56,8 @@ const ROLE_COLOR: Record<string, string> = {
   logistics_officer:    "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300",
   cargo_superintendent: "bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300",
   marine_operator:      "bg-teal-100 text-teal-700 dark:bg-teal-500/15 dark:text-teal-300",
+  safety_officer:       "bg-orange-100 text-orange-700 dark:bg-orange-500/15 dark:text-orange-300",
+  hr:                   "bg-pink-100 text-pink-700 dark:bg-pink-500/15 dark:text-pink-300",
   client:               "bg-slate-100 text-slate-700 dark:bg-slate-500/15 dark:text-slate-300",
 };
 
@@ -66,6 +68,8 @@ const STAFF_ROLES = [
   "logistics_officer",
   "cargo_superintendent",
   "marine_operator",
+  "safety_officer",
+  "hr",
   "client",
 ] as const;
 

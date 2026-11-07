@@ -9,6 +9,8 @@ import { LogisticsOfficerDashboard } from "./_dashboards/LogisticsOfficerDashboa
 import { MarineManagerDashboard } from "./_dashboards/MarineManagerDashboard";
 import { MarineOperatorDashboard } from "./_dashboards/MarineOperatorDashboard";
 import { FinanceManagerDashboard } from "./_dashboards/FinanceManagerDashboard";
+import { SafetyOfficerDashboard } from "./_dashboards/SafetyOfficerDashboard";
+import { HrDashboard } from "./_dashboards/HrDashboard";
 
 export default function DashboardPage() {
   const { user, loading, effectiveRole } = useAuth();
@@ -34,6 +36,10 @@ export default function DashboardPage() {
       return <MarineOperatorDashboard />;
     case "finance_manager":
       return <FinanceManagerDashboard />;
+    case "safety_officer":
+      return <SafetyOfficerDashboard />;
+    case "hr":
+      return <HrDashboard />;
     default:
       return (
         <div className="flex items-center justify-center h-full text-muted-foreground text-sm">

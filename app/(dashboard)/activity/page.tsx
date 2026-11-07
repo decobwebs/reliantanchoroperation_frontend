@@ -120,6 +120,8 @@ const ROLE_LABELS: Record<string, string> = {
   finance_manager:      "Finance",
   client:               "Client",
   marine_operator:      "Marine Op",
+  safety_officer:       "Safety",
+  hr:                   "HR",
 };
 
 function EntityIcon({ type }: { type: string }) {

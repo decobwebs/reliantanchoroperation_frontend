@@ -91,6 +91,8 @@ export const ROLE_LABELS: Record<string, string> = {
   finance_manager: "Finance Manager",
   client: "Client",
   marine_operator: "Marine Operator",
+  safety_officer: "Safety Officer",
+  hr: "HR",
 };
 
 export function isStaff(role: string): boolean {

@@ -685,15 +685,22 @@ export default function OperationDetailPage({
   const isLO = isRealBM || effectiveRole === "logistics_officer";
   const isMM = isRealBM || effectiveRole === "cargo_superintendent";
   const isOS = isRealBM || effectiveRole === "ops_supervisor";
+  // The Safety Officer reads every operation and changes none of it: they
+  // get the tabs below, never a button. Every action on this page is gated
+  // on one of the flags above, which they never hold. No finance, no
+  // feedback (truck sourcing), no KPI.
+  const isSO = effectiveRole === "safety_officer";
 
   const canSeeTasks            = isBM || isOS || isLO || isMM;
-  const canSeeBDN              = isBM || isMM;
-  const canSeeTruckBdn         = isBM || isOS || isLO;
-  const canSeeVesselBdn        = isBM || isMM || isOS || isFM;
+  const canSeeBDN              = isBM || isMM || isSO;
+  const canSeeTruckBdn         = isBM || isOS || isLO || isSO;
+  const canSeeVesselBdn        = isBM || isMM || isOS || isFM || isSO;
   const canSeeFeedback         = isBM || isLO;
   const canSeeFinance          = isBM || isFM;
-  const canSeeMarine           = isBM || isMM;
-  const canSeeTruckOps         = isBM || isOS || isLO || isMM;
+  const canSeeMarine           = isBM || isMM || isSO;
+  const canSeeTruckOps         = isBM || isOS || isLO || isMM || isSO;
+  const canSeeTruckReports     = isLO || isBM || isOS || isSO;
+  const canSeeActivity         = isBM || isSO;
 
   // ── UI state
   const [showAssignTask,   setShowAssignTask]   = useState(false);
@@ -875,7 +882,7 @@ export default function OperationDetailPage({
       const res = await api.get<ApiResponse<Document[]>>(`/operations/${id}/documents`);
       return res.data.data;
     },
-    enabled: isBM,
+    enabled: isBM || isSO,
   });
 
   const { data: pfis, refetch: refetchPfis } = useQuery({
@@ -948,7 +955,7 @@ export default function OperationDetailPage({
       const d = res.data.data;
       return Array.isArray(d) ? d : (d as { items: Vessel[] }).items ?? [];
     },
-    enabled: isBM || isMM || isLO,
+    enabled: isBM || isMM || isLO || isSO,
   });
 
   const { data: marineManagers } = useQuery({
@@ -1142,7 +1149,7 @@ export default function OperationDetailPage({
       const res = await api.get<ApiResponse<AuditLogEntry[]>>(`/operations/${id}/audit-log`);
       return res.data.data ?? [];
     },
-    enabled: isBM,
+    enabled: canSeeActivity,
     refetchInterval: 20_000,
   });
 
@@ -4407,7 +4414,7 @@ export default function OperationDetailPage({
                   <TabsTrigger value="kpi">KPI</TabsTrigger>
                 )}
 
-                {(isLO || isBM || isOS) && op.type !== "vessel_only" && (
+                {canSeeTruckReports && op.type !== "vessel_only" && (
                   <TabsTrigger value="truck-reports">
                     Truck Reports
                     <TabCount value={truckOps?.length} />
@@ -4419,7 +4426,7 @@ export default function OperationDetailPage({
                   <TabCount value={docs?.length} />
                 </TabsTrigger>
 
-                {isBM && (
+                {canSeeActivity && (
                   <TabsTrigger value="activity">
                     Activity
                     <TabCount value={activityLog?.length} />
@@ -8146,7 +8153,7 @@ export default function OperationDetailPage({
               )}
 
               {/* ── Truck Reports tab — stage-by-stage progress tracker */}
-              {(isLO || isBM || isOS) && op.type !== "vessel_only" && (
+              {canSeeTruckReports && op.type !== "vessel_only" && (
                 <TabsContent value="truck-reports" className="mt-4 space-y-3">
 
                   {/* Hidden file input backing the per-truck Upload Doc control.
@@ -8939,8 +8946,8 @@ export default function OperationDetailPage({
                   </>
               </TabsContent>
 
-              {/* ── Activity feed (BM only) */}
-              {isBM && (
+              {/* ── Activity feed (BM, and the Safety Officer without finance entries) */}
+              {canSeeActivity && (
                 <TabsContent value="activity" className="mt-4 space-y-3">
                   <div className="flex items-center justify-between">
                     <p className="text-xs text-muted-foreground">Live audit trail — auto-refreshes every 20s</p>

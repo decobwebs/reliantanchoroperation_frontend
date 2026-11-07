@@ -7,7 +7,9 @@ export type UserRole =
   | "cargo_superintendent"
   | "finance_manager"
   | "client"
-  | "marine_operator";
+  | "marine_operator"
+  | "safety_officer"
+  | "hr";
 
 export interface User {
   id: string;
@@ -696,6 +698,289 @@ export interface TruckProfile {
   stats: TruckStats;
   history: TruckOperationHistory[];
   issues: TruckIssue[];
+}
+
+// ─── Vessel incident and maintenance logs ─────────────────────────────────────
+
+export type VesselIncidentType =
+  | "spill"
+  | "injury"
+  | "near_miss"
+  | "equipment_failure"
+  | "collision"
+  | "fire"
+  | "pollution"
+  | "security"
+  | "other";
+export type VesselIncidentSeverity = "low" | "medium" | "high" | "critical";
+export type VesselIncidentStatus = "open" | "under_investigation" | "closed";
+
+export interface VesselRecordAttachment {
+  id: string;
+  file_name: string;
+  mime_type?: string;
+  size_bytes?: number;
+  uploaded_by: string;
+  uploaded_by_name?: string;
+  uploaded_at: string;
+}
+
+export interface VesselIncident {
+  id: string;
+  vessel_id: string;
+  operation_id?: string;
+  operation_number?: string;
+  vessel_activity_id?: string;
+  activity_number?: string;
+  occurred_at: string;
+  location?: string;
+  incident_type: VesselIncidentType;
+  severity: VesselIncidentSeverity;
+  title: string;
+  description?: string;
+  immediate_action?: string;
+  status: VesselIncidentStatus;
+  root_cause?: string;
+  corrective_action?: string;
+  reported_by: string;
+  reported_by_name?: string;
+  closed_by?: string;
+  closed_by_name?: string;
+  closed_at?: string;
+  attachments: VesselRecordAttachment[];
+  created_at: string;
+  updated_at?: string;
+}
+
+export type VesselMaintenanceType =
+  | "planned_service"
+  | "breakdown_repair"
+  | "inspection"
+  | "dry_dock"
+  | "certificate_renewal";
+export type VesselMaintenanceStatus = "planned" | "in_progress" | "done" | "cancelled";
+
+export interface VesselMaintenanceRecord {
+  id: string;
+  vessel_id: string;
+  maintenance_type: VesselMaintenanceType;
+  title: string;
+  description?: string;
+  status: VesselMaintenanceStatus;
+  planned_date?: string;
+  completed_date?: string;
+  next_due_date?: string;
+  performed_by?: string;
+  cost?: string;
+  cost_currency?: string;
+  attachments: VesselRecordAttachment[];
+  created_by: string;
+  created_by_name?: string;
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface VesselMaintenanceDue {
+  record_id: string;
+  maintenance_type: VesselMaintenanceType;
+  title: string;
+  status: VesselMaintenanceStatus;
+  due_date: string;
+  days: number;
+  state: "overdue" | "due_soon";
+}
+
+export interface VesselMaintenanceLog {
+  records: VesselMaintenanceRecord[];
+  due: VesselMaintenanceDue[];
+}
+
+/** Figures are as recorded; null means never recorded and prints blank. */
+export interface VesselReport {
+  vessel: {
+    id: string;
+    vessel_name: string;
+    imo_number?: string;
+    vessel_type?: string;
+    flag_state?: string;
+    status: string;
+  };
+  date_from: string;
+  date_to: string;
+  generated_at: string;
+  generated_by_name: string;
+  summary: {
+    deliveries: number;
+    deliveries_approved: number;
+    approved_mt_vacuum: string | null;
+    approved_missing_mt_vacuum: number;
+    rob_start: string | null;
+    rob_end: string | null;
+    hse_checks: number;
+    hse_failed: number;
+    incidents: number;
+    incidents_by_severity: Record<VesselIncidentSeverity, number>;
+    incidents_open_now: number;
+    maintenance_done: number;
+    maintenance_overdue_now: number;
+    maintenance_due_soon_now: number;
+  };
+  deliveries: {
+    bdn_number: string;
+    delivery_date: string | null;
+    operation_id: string;
+    operation_number: string | null;
+    receiving_vessel: string | null;
+    company_name: string | null;
+    product_type: string | null;
+    status: string;
+    gov: string | null;
+    gsv: string | null;
+    mt_vacuum: string | null;
+    density: string | null;
+    temperature: string | null;
+    vcf: string | null;
+  }[];
+  rob_movements: {
+    created_at: string;
+    entry_type: string;
+    quantity: string | null;
+    rob_before: string | null;
+    rob_after: string | null;
+    operation_number: string | null;
+    description: string | null;
+    recorded_by_name: string | null;
+  }[];
+  hse_checks: {
+    conducted_at: string | null;
+    source: string;
+    operation_id: string;
+    operation_number: string | null;
+    phase: "pre" | "during" | "post";
+    result: "satisfactory" | "not_satisfactory" | null;
+    safety_officer: string | null;
+    conducted_by_name: string | null;
+    notes: string | null;
+  }[];
+  incidents: VesselIncident[];
+  maintenance: VesselMaintenanceRecord[];
+  maintenance_due: VesselMaintenanceDue[];
+}
+
+export type VesselRecordCounts = Record<
+  string,
+  { open_incidents: number; overdue_maintenance: number; due_soon_maintenance: number }
+>;
+
+// ─── Inspections and the safety dashboard ────────────────────────────────────
+
+export type InspectionSubject = "vessel" | "truck" | "operation" | "site";
+export type InspectionResult = "pass" | "pass_with_findings" | "fail";
+
+export interface InspectionAction {
+  id: string;
+  inspection_id: string;
+  description: string;
+  owner_id: string;
+  owner_name?: string | null;
+  due_date: string;
+  overdue: boolean;
+  status: "open" | "done";
+  done_note?: string | null;
+  done_by_name?: string | null;
+  done_at?: string | null;
+  created_at: string;
+}
+
+export interface Inspection {
+  id: string;
+  subject_type: InspectionSubject;
+  vessel_id?: string | null;
+  vessel_name?: string | null;
+  truck_id?: string | null;
+  truck_number?: string | null;
+  operation_id?: string | null;
+  operation_number?: string | null;
+  site_name?: string | null;
+  inspected_on: string;
+  title: string;
+  result: InspectionResult;
+  findings?: string | null;
+  inspector_id: string;
+  inspector_name?: string | null;
+  attachments: VesselRecordAttachment[];
+  actions: InspectionAction[];
+  created_at: string;
+  updated_at?: string | null;
+}
+
+export interface SafetyOverview {
+  generated_at: string;
+  recent_days: number;
+  incidents: {
+    open: {
+      id: string;
+      vessel_id: string;
+      vessel_name?: string | null;
+      title: string;
+      incident_type: VesselIncidentType;
+      severity: VesselIncidentSeverity;
+      status: VesselIncidentStatus;
+      occurred_at: string;
+      age_days: number;
+    }[];
+    by_severity: Record<VesselIncidentSeverity, number>;
+  };
+  failed_checks: {
+    total_checks: number;
+    failed: {
+      kind: "vessel" | "truck";
+      conducted_at: string | null;
+      vessel_id?: string;
+      truck_id?: string;
+      subject?: string | null;
+      source: string;
+      operation_id: string;
+      operation_number?: string | null;
+      phase: string;
+      notes?: string | null;
+      conducted_by_name?: string | null;
+    }[];
+  };
+  missing_truck_audits: {
+    truck_op_id: string;
+    truck_id: string;
+    truck_number?: string | null;
+    driver_name?: string | null;
+    operation_id: string;
+    operation_number?: string | null;
+    truck_status: string;
+    missing: ("pre" | "post")[];
+  }[];
+  open_truck_issues: {
+    id: string;
+    truck_id: string;
+    truck_number?: string | null;
+    title: string;
+    severity: "low" | "medium" | "high";
+    operation_number?: string | null;
+    created_at: string;
+    age_days: number;
+  }[];
+  maintenance_due: (VesselMaintenanceDue & { vessel_id: string; vessel_name?: string | null })[];
+  inspections: {
+    this_month: number;
+    failed_this_month: number;
+    open_actions: {
+      id: string;
+      inspection_id: string;
+      inspection_title?: string | null;
+      description: string;
+      owner_name?: string | null;
+      due_date: string;
+      overdue: boolean;
+    }[];
+  };
 }
 
 // ─── Vessel Discharge Events ──────────────────────────────────────────────────

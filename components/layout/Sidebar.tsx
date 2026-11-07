@@ -23,6 +23,8 @@ import {
   Target,
   CalendarClock,
   SlidersHorizontal,
+  ShieldCheck,
+  ClipboardCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
@@ -45,7 +47,7 @@ export const NAV_ITEMS: NavItem[] = [
     href: "/",
     label: "Dashboard",
     icon: LayoutDashboard,
-    roles: ["bunker_manager", "ops_supervisor", "logistics_officer", "cargo_superintendent", "finance_manager", "marine_operator"],
+    roles: ["bunker_manager", "ops_supervisor", "logistics_officer", "cargo_superintendent", "finance_manager", "marine_operator", "safety_officer", "hr"],
   },
 
   // ── Operations management ────────────────────────────────────────────────
@@ -53,7 +55,7 @@ export const NAV_ITEMS: NavItem[] = [
     href: "/operations",
     label: "Operations",
     icon: ClipboardList,
-    roles: ["bunker_manager", "ops_supervisor", "logistics_officer", "cargo_superintendent", "finance_manager", "marine_operator"],
+    roles: ["bunker_manager", "ops_supervisor", "logistics_officer", "cargo_superintendent", "finance_manager", "marine_operator", "safety_officer"],
   },
 
   // ── Task management ──────────────────────────────────────────────────────
@@ -76,7 +78,7 @@ export const NAV_ITEMS: NavItem[] = [
     href: "/fleet",
     label: "Trucks",
     icon: Truck,
-    roles: ["bunker_manager", "ops_supervisor", "logistics_officer"],
+    roles: ["bunker_manager", "ops_supervisor", "logistics_officer", "safety_officer"],
   },
   {
     href: "/fleet/waivers",
@@ -88,7 +90,23 @@ export const NAV_ITEMS: NavItem[] = [
     href: "/fleet/vessels",
     label: "Vessels",
     icon: Ship,
-    roles: ["bunker_manager", "ops_supervisor", "cargo_superintendent"],
+    roles: ["bunker_manager", "ops_supervisor", "cargo_superintendent", "safety_officer"],
+  },
+
+  // ── Safety ───────────────────────────────────────────────────────────────
+  // The Safety Officer's own dashboard is their Dashboard link; the BM opens
+  // the same view here.
+  {
+    href: "/safety",
+    label: "Safety",
+    icon: ShieldCheck,
+    roles: ["bunker_manager"],
+  },
+  {
+    href: "/safety/inspections",
+    label: "Inspections",
+    icon: ClipboardCheck,
+    roles: ["bunker_manager", "ops_supervisor", "safety_officer"],
   },
 
   // ── Licences ─────────────────────────────────────────────────────────────

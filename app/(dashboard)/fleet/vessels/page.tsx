@@ -11,6 +11,8 @@ import {
   CheckCircle2,
   Anchor,
   PlusCircle,
+  AlertOctagon,
+  CalendarClock,
 } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { useForm } from "react-hook-form";
@@ -33,7 +35,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn, formatNumber } from "@/lib/utils";
-import type { ApiResponse, Vessel } from "@/types";
+import type { ApiResponse, Vessel, VesselRecordCounts } from "@/types";
+
+// Matches VESSEL_RECORD_ROLES in the API's permissions.py — Truck Operation
+// can list vessels but not read their incident or maintenance logs.
+const RECORD_ROLES = ["bunker_manager", "ops_supervisor", "cargo_superintendent", "safety_officer"];
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; Icon: React.ElementType }> = {
   available:      { label: "Available",      color: "text-emerald-700 bg-emerald-50 border-emerald-200 dark:text-emerald-300 dark:bg-emerald-500/15 dark:border-emerald-500/30", Icon: CheckCircle2 },
@@ -150,8 +156,9 @@ function CreateVesselDialog({
 }
 
 export default function VesselsPage() {
-  const { effectiveRole } = useAuth();
+  const { effectiveRole, user } = useAuth();
   const qc = useQueryClient();
+  const canSeeRecords = user?.role === "bunker_manager" || RECORD_ROLES.includes(effectiveRole ?? "");
   const [showCreate, setShowCreate] = useState(false);
   const isBM = effectiveRole === "bunker_manager";
 
@@ -159,6 +166,15 @@ export default function VesselsPage() {
     queryKey: ["vessels"],
     queryFn: async () => {
       const res = await api.get<ApiResponse<Vessel[]>>("/vessels");
+      return res.data.data;
+    },
+  });
+
+  const { data: counts } = useQuery({
+    queryKey: ["vessel-record-counts"],
+    enabled: canSeeRecords,
+    queryFn: async () => {
+      const res = await api.get<ApiResponse<VesselRecordCounts>>("/vessel-records/summary");
       return res.data.data;
     },
   });
@@ -221,6 +237,7 @@ export default function VesselsPage() {
             const lowRob =
               vessel.rob_threshold_mt &&
               parseFloat(vessel.current_rob_mt) <= parseFloat(vessel.rob_threshold_mt);
+            const rec = counts?.[vessel.id];
 
             return (
               <Link key={vessel.id} href={`/fleet/vessels/${vessel.id}`} className="group block animate-rise">
@@ -280,6 +297,29 @@ export default function VesselsPage() {
                       </span>
                     </div>
                   </div>
+
+                  {rec && (rec.open_incidents > 0 || rec.overdue_maintenance > 0 || rec.due_soon_maintenance > 0) && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {rec.open_incidents > 0 && (
+                        <span className="inline-flex items-center gap-1 rounded-md bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800 dark:bg-amber-500/15 dark:text-amber-300">
+                          <AlertOctagon className="h-3 w-3" />
+                          {rec.open_incidents} open incident{rec.open_incidents === 1 ? "" : "s"}
+                        </span>
+                      )}
+                      {rec.overdue_maintenance > 0 && (
+                        <span className="inline-flex items-center gap-1 rounded-md bg-rose-100 px-2 py-0.5 text-[11px] font-semibold text-rose-700 dark:bg-rose-500/15 dark:text-rose-300">
+                          <CalendarClock className="h-3 w-3" />
+                          {rec.overdue_maintenance} overdue
+                        </span>
+                      )}
+                      {rec.due_soon_maintenance > 0 && (
+                        <span className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">
+                          <CalendarClock className="h-3 w-3" />
+                          {rec.due_soon_maintenance} due soon
+                        </span>
+                      )}
+                    </div>
+                  )}
 
                   <div className="flex items-center justify-between border-t border-border/70 pt-2.5 text-[12px] text-muted-foreground">
                     <span>{vessel.vessel_type ?? "—"}</span>

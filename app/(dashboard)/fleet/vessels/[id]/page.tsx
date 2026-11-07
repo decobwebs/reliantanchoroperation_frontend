@@ -24,8 +24,11 @@ import {
   Truck,
   Banknote,
   FolderOpen,
+  AlertOctagon,
+  Wrench,
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { useAuth } from "@/hooks/useAuth";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { PanelCard } from "@/components/dashboard/PanelCard";
 import { StatCard } from "@/components/shared/StatCard";
@@ -35,8 +38,14 @@ import { TONE_TILE_CLASSES, type AccentTone } from "@/components/dashboard/tones
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
+import { VesselIncidentsPanel } from "@/components/vessels/VesselIncidentsPanel";
+import { VesselMaintenancePanel } from "@/components/vessels/VesselMaintenancePanel";
+import { VesselOverviewPanel, VesselReportLauncher } from "@/components/vessels/VesselOverviewPanel";
 import { cn, formatDate, formatDateTime, formatNumber } from "@/lib/utils";
-import type { ApiResponse, Vessel, VesselBDNs } from "@/types";
+import type { ApiResponse, Vessel, VesselBDNs, VesselIncident, VesselMaintenanceLog } from "@/types";
+
+type VesselTab = "overview" | "deliveries" | "cargo-ledger" | "incidents" | "maintenance" | "report";
+const VESSEL_TABS: VesselTab[] = ["overview", "deliveries", "cargo-ledger", "incidents", "maintenance", "report"];
 
 // ── Config maps ────────────────────────────────────────────────────────────────
 
@@ -459,8 +468,19 @@ export default function VesselProfilePage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
-  const [activeTab, setActiveTab] = useState<"deliveries" | "cargo-ledger">("deliveries");
+  // Incident alerts link to ?tab=incidents. Read straight off the URL rather
+  // than useSearchParams(), which would put the page behind a Suspense
+  // boundary. Safe to read on first render: the tabs only mount after the
+  // vessel has loaded on the client, so the server never renders them.
+  const [activeTab, setActiveTab] = useState<VesselTab>(() => {
+    if (typeof window === "undefined") return "overview";
+    const tab = new URLSearchParams(window.location.search).get("tab") as VesselTab | null;
+    return tab && VESSEL_TABS.includes(tab) ? tab : "overview";
+  });
   const [ledgerPage, setLedgerPage] = useState(1);
+  const { effectiveRole, user } = useAuth();
+  // The Cargo Ledger carries PFI amounts, which the Safety Officer does not see.
+  const showLedger = user?.role === "bunker_manager" || effectiveRole !== "safety_officer";
 
   const { data: vessel, isLoading: vesselLoading } = useQuery({
     queryKey: ["vessel", id],
@@ -487,7 +507,26 @@ export default function VesselProfilePage({
       );
       return res.data.data;
     },
-    enabled: !!vessel && activeTab === "cargo-ledger",
+    enabled: !!vessel && showLedger && activeTab === "cargo-ledger",
+  });
+
+  // Loaded up front, not per tab: the tab labels carry the open/overdue counts.
+  const { data: incidents } = useQuery({
+    queryKey: ["vessel-incidents", id],
+    queryFn: async () => {
+      const res = await api.get<ApiResponse<VesselIncident[]>>(`/vessels/${id}/incidents`);
+      return res.data.data;
+    },
+    enabled: !!vessel,
+  });
+
+  const { data: maintenance } = useQuery({
+    queryKey: ["vessel-maintenance", id],
+    queryFn: async () => {
+      const res = await api.get<ApiResponse<VesselMaintenanceLog>>(`/vessels/${id}/maintenance`);
+      return res.data.data;
+    },
+    enabled: !!vessel,
   });
 
   if (vesselLoading) {
@@ -542,6 +581,9 @@ export default function VesselProfilePage({
   const ledgerTotal   = ledgerData?.total ?? 0;
   const ledgerSummary = ledgerData?.summary;
   const totalPages    = Math.ceil(ledgerTotal / 20);
+
+  const openIncidents   = (incidents ?? []).filter((i) => i.status !== "closed").length;
+  const overdueCount    = (maintenance?.due ?? []).filter((d) => d.state === "overdue").length;
 
   return (
     <DashboardShell bare>
@@ -627,9 +669,38 @@ export default function VesselProfilePage({
 
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)} className="animate-rise">
         <TabsList variant="underline">
-          <TabsTrigger value="deliveries">BDN Deliveries</TabsTrigger>
-          <TabsTrigger value="cargo-ledger">Cargo Ledger</TabsTrigger>
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="deliveries">Deliveries</TabsTrigger>
+          {showLedger && <TabsTrigger value="cargo-ledger">Cargo Ledger</TabsTrigger>}
+          <TabsTrigger value="incidents" className="gap-1.5">
+            <AlertOctagon className="h-3.5 w-3.5" />
+            Incidents
+            {openIncidents > 0 && (
+              <span className="rounded-full bg-amber-100 px-1.5 text-[10px] font-bold text-amber-700 dark:bg-amber-500/20 dark:text-amber-300">
+                {openIncidents}
+              </span>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="maintenance" className="gap-1.5">
+            <Wrench className="h-3.5 w-3.5" />
+            Maintenance
+            {overdueCount > 0 && (
+              <span className="rounded-full bg-rose-100 px-1.5 text-[10px] font-bold text-rose-700 dark:bg-rose-500/20 dark:text-rose-300">
+                {overdueCount}
+              </span>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="report">Report</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="overview" className="mt-4">
+          <VesselOverviewPanel
+            vesselId={id}
+            incidents={incidents}
+            maintenance={maintenance}
+            onOpenTab={setActiveTab}
+          />
+        </TabsContent>
 
         <TabsContent value="deliveries" className="mt-4">
           <PanelCard
@@ -701,7 +772,7 @@ export default function VesselProfilePage({
           </PanelCard>
         </TabsContent>
 
-        <TabsContent value="cargo-ledger" className="mt-4 space-y-4">
+        <TabsContent value="cargo-ledger" className={cn("mt-4 space-y-4", !showLedger && "hidden")}>
           {ledgerSummary && (
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-3 dark:border-emerald-500/30 dark:bg-emerald-500/10">
@@ -770,6 +841,31 @@ export default function VesselProfilePage({
               </button>
             </div>
           )}
+        </TabsContent>
+
+        <TabsContent value="incidents" className="mt-4">
+          {incidents ? (
+            <VesselIncidentsPanel vesselId={id} vesselName={vessel.vessel_name} incidents={incidents} />
+          ) : (
+            <Skeleton className="h-48 w-full rounded-2xl" />
+          )}
+        </TabsContent>
+
+        <TabsContent value="maintenance" className="mt-4 space-y-4">
+          {maintenance ? (
+            <VesselMaintenancePanel
+              vesselId={id}
+              vesselName={vessel.vessel_name}
+              vesselStatus={vessel.status}
+              log={maintenance}
+            />
+          ) : (
+            <Skeleton className="h-48 w-full rounded-2xl" />
+          )}
+        </TabsContent>
+
+        <TabsContent value="report" className="mt-4">
+          <VesselReportLauncher vesselId={id} />
         </TabsContent>
       </Tabs>
     </DashboardShell>

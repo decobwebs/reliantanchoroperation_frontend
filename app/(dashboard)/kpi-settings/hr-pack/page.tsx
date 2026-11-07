@@ -175,7 +175,10 @@ function PersonSection({ p }: { p: HrPackPerson }) {
 
 export default function HrPackPage() {
   const { user, effectiveRole } = useAuth();
-  const canSee = user && effectiveRole ? effectiveRole === "bunker_manager" : true;
+  // HR reads and prints the pack too; only the BM grades (see the API's
+  // PERFORMANCE_VIEWER_ROLES).
+  const isHr = effectiveRole === "hr";
+  const canSee = user && effectiveRole ? effectiveRole === "bunker_manager" || isHr : true;
   const periods = [0, 1, 2, 3, 4, 5].map(periodOption);
   const [period, setPeriod] = useState(periodOption(1).value);
 
@@ -213,11 +216,11 @@ export default function HrPackPage() {
     subtitle: periodLabel(period),
     actions: (
       <Link
-        href="/kpi-settings"
+        href={isHr ? "/" : "/kpi-settings"}
         className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft className="h-4 w-4" />
-        Back to KPI Settings
+        {isHr ? "Back to dashboard" : "Back to KPI Settings"}
       </Link>
     ),
   };

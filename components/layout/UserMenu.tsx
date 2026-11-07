@@ -17,13 +17,16 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-// The 5 roles a Bunker Manager may temporarily act as.
+// The roles a Bunker Manager may temporarily act as. Must match
+// ACT_AS_ELIGIBLE_ROLES in the API's routers/auth.py.
 const ACT_AS_ROLES: { value: string; label: string }[] = [
   { value: "ops_supervisor", label: "Ops Supervisor" },
   { value: "logistics_officer", label: "Truck Operation" },
   { value: "cargo_superintendent", label: "Marine Operations" },
   { value: "finance_manager", label: "Finance Manager" },
   { value: "marine_operator", label: "Marine Operator" },
+  { value: "safety_officer", label: "Safety Officer" },
+  { value: "hr", label: "HR" },
 ];
 
 /**

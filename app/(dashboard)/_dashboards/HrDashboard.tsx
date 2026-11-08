@@ -1,21 +1,29 @@
 "use client";
 
 /**
- * HR dashboard — every staff member's named score, read only.
+ * HR dashboard — people and performance at a glance, read only.
  *
  * Management agreed (1 Nov 2026) that HR sees named scores but does not
  * grade or close a month; those stay with the Bunker Manager. The API enforces
- * this (PERFORMANCE_VIEWER_ROLES): HR can call the leaderboard, the company
- * trend and the HR pack, and nothing that writes.
+ * this (PERFORMANCE_VIEWER_ROLES): every HR route only reads.
+ *
+ * The page answers four questions in order: how is the team doing, who needs
+ * support, whose work is not being recorded, and is anyone not using the
+ * system at all.
  */
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronRight, FileText, TrendingUp, Users } from "lucide-react";
+import {
+  AlertTriangle, BarChart3, ChevronRight, FileText, HeartHandshake, TrendingUp,
+  UserCheck, UserX, Users,
+} from "lucide-react";
 import { api } from "@/lib/api";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
+import { KpiCard } from "@/components/dashboard/KpiCard";
 import { PanelCard } from "@/components/dashboard/PanelCard";
+import { QuickActionTile } from "@/components/dashboard/QuickActionTile";
 import { TrendStrip, type TrendPoint } from "@/components/dashboard/TrendStrip";
 import { QueryError } from "@/components/shared/QueryError";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -25,6 +33,10 @@ import type { ApiResponse } from "@/types";
 import {
   num, periodLabel, ratingTone, recentPeriods, type Leaderboard,
 } from "@/lib/kpi-me";
+import {
+  IDLE_DAYS, daysSince, lastFullMonth, lastSeen, needsSupport, roleMedians,
+  type StaffMember,
+} from "@/lib/hr";
 
 interface CompanyTrend {
   points: TrendPoint[];
@@ -34,7 +46,7 @@ interface CompanyTrend {
 
 export function HrDashboard() {
   const { user } = useAuth();
-  const [period, setPeriod] = useState<string>(recentPeriods(1)[0]);
+  const [period, setPeriod] = useState<string>(lastFullMonth());
 
   const board = useQuery({
     queryKey: ["kpi-leaderboard", period],
@@ -43,6 +55,16 @@ export function HrDashboard() {
     staleTime: 60_000,
     queryFn: async () => {
       const res = await api.get<ApiResponse<Leaderboard>>(`/kpi/leaderboard?period=${period}`);
+      return res.data.data;
+    },
+  });
+
+  const staff = useQuery({
+    queryKey: ["hr-staff"],
+    enabled: !!user,
+    staleTime: 60_000,
+    queryFn: async () => {
+      const res = await api.get<ApiResponse<StaffMember[]>>("/kpi/people");
       return res.data.data;
     },
   });
@@ -57,87 +79,187 @@ export function HrDashboard() {
     },
   });
 
+  const rows = useMemo(() => board.data?.rows ?? [], [board.data]);
+  const medians = useMemo(() => roleMedians(rows), [rows]);
+  const support = rows.filter(needsSupport);
+  const notScored = rows.filter((r) => r.score == null);
+
+  const active = (staff.data ?? []).filter((s) => s.is_active);
+  const loginWatch = active
+    .filter((s) => {
+      const d = daysSince(s.last_login_at);
+      return d === null || d > IDLE_DAYS;
+    })
+    .sort((a, b) => (daysSince(b.last_login_at) ?? 1e9) - (daysSince(a.last_login_at) ?? 1e9));
+
   const periodPicker = (
     <select
       value={period}
       onChange={(e) => setPeriod(e.target.value)}
+      aria-label="Month"
       className="rounded-lg border border-border bg-background px-2 py-1 text-xs"
     >
       {recentPeriods(6).map((p) => (
-        <option key={p} value={p}>
-          {periodLabel(p)}
-        </option>
+        <option key={p} value={p}>{periodLabel(p)}</option>
       ))}
     </select>
   );
 
-  const data = board.data;
+  const loading = board.isLoading || staff.isLoading;
 
   return (
     <DashboardShell
       eyebrow={<>Welcome, {user?.full_name?.split(" ")[0] ?? "there"}</>}
       title="People & Performance"
-      subtitle="Every staff member's score, read only"
+      subtitle={`Reviewing ${periodLabel(period)} · read only`}
+      actions={periodPicker}
     >
-      <PanelCard
-        icon={Users}
-        tone="violet"
-        title={`Staff · ${periodLabel(period)}`}
-        subtitle={
-          data
-            ? `${data.scored_count} scored · ${data.unscored_count} without enough recorded work` +
-              (data.team_median != null ? ` · median ${num(data.team_median, { dp: 1 })}` : "")
-            : undefined
-        }
-        action={periodPicker}
-        flush
-      >
-        {board.isError ? (
-          <div className="p-4">
-            <QueryError error={board.error} onRetry={() => board.refetch()} />
+      {/* ── headline numbers ── */}
+      <section className="animate-rise grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="People metrics">
+        <KpiCard
+          tone="navy"
+          icon={Users}
+          title="Active staff"
+          value={loading ? "…" : active.length}
+          caption={`${(staff.data ?? []).length - active.length} accounts switched off`}
+          note={board.data?.team_median != null ? `Company median ${num(board.data.team_median, { dp: 1 })}` : "No median yet"}
+          noteTrend="flat"
+        />
+        <KpiCard
+          tone="emerald"
+          icon={UserCheck}
+          title="Scored"
+          value={loading ? "…" : board.data?.scored_count ?? 0}
+          caption={`of ${rows.length} people measured`}
+          note={periodLabel(period)}
+          noteTrend="flat"
+        />
+        <KpiCard
+          tone="amber"
+          icon={HeartHandshake}
+          title="Needs support"
+          value={loading ? "…" : support.length}
+          caption="Needs Improvement or Unsatisfactory"
+          note={support.length ? "See the list below" : "Nobody flagged"}
+          noteTrend="flat"
+        />
+        <KpiCard
+          tone="slate"
+          icon={UserX}
+          title="Not scored"
+          value={loading ? "…" : notScored.length}
+          caption="Too little work recorded"
+          note="Usually missing records, not poor work"
+          noteTrend="flat"
+        />
+      </section>
+
+      {/* ── month never closed: the root cause of empty trends ── */}
+      {trend.data && !trend.data.has_history && (
+        <div className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+          <div>
+            <p className="font-medium text-amber-800 dark:text-amber-200">No month has been closed yet</p>
+            <p className="mt-0.5 text-amber-800/80 dark:text-amber-200/80">
+              Scores are only saved for good when the Bunker Manager closes a month in KPI Settings.
+              Until then the trend stays empty and past scores can still move. Ask the Bunker Manager to close {periodLabel(lastFullMonth())}.
+            </p>
           </div>
-        ) : board.isLoading || !data ? (
-          <div className="space-y-2 p-4">
-            <Skeleton className="h-10 rounded-lg" />
-            <Skeleton className="h-10 rounded-lg" />
-            <Skeleton className="h-10 rounded-lg" />
-          </div>
-        ) : data.rows.length === 0 ? (
-          <p className="p-4 text-sm text-muted-foreground">No active staff found.</p>
-        ) : (
-          <div className="divide-y divide-border/60">
-            {data.provisional && (
-              <p className="px-4 py-2 text-xs text-muted-foreground">
-                This month is still running, so these scores will change.
-              </p>
-            )}
-            {data.rows.map((r) => (
-              <div key={r.user_id} className="flex items-center justify-between gap-3 px-4 py-2.5">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">{r.full_name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {r.role_label}
-                    {r.score == null &&
-                      (r.insufficient_data
-                        ? ` · only ${r.coverage.toFixed(0)}% covered`
-                        : " · nothing recorded")}
-                  </p>
-                </div>
-                <div className="shrink-0 text-right">
-                  <p className={cn("font-mono text-sm tabular-nums", ratingTone(r.rating))}>
-                    {num(r.score, { dp: 1 })}
-                  </p>
-                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                    {r.metrics_measured}/{r.metrics_total}
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+        </div>
+      )}
+
+      {/* ── quick access ── */}
+      <PanelCard icon={BarChart3} tone="blue" title="Quick access" subtitle="Everything HR can open">
+        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
+          <QuickActionTile href="/hr/staff" icon={Users} tone="violet" label="Staff directory" description="Contacts, roles, last login" />
+          <QuickActionTile href="/hr/performance" icon={BarChart3} tone="blue" label="Staff performance" description="Scores by role, export CSV" />
+          <QuickActionTile href="/kpi-settings/hr-pack" icon={FileText} tone="emerald" label="HR grading pack" description="Print or save the month as PDF" />
+          <QuickActionTile href="/hr/performance?show=support" icon={HeartHandshake} tone="amber" label="Needs support" description="People below target" />
+        </div>
       </PanelCard>
 
-      <PanelCard icon={TrendingUp} tone="blue" title="Company trend" subtitle="Median score, last 6 months">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+        {/* ── who needs support ── */}
+        <PanelCard
+          icon={HeartHandshake}
+          tone="amber"
+          title="Needs support"
+          subtitle="Compared with others in the same role"
+          flush
+        >
+          {board.isError ? (
+            <div className="p-4"><QueryError error={board.error} onRetry={() => board.refetch()} /></div>
+          ) : board.isLoading ? (
+            <div className="space-y-2 p-4"><Skeleton className="h-10 rounded-lg" /><Skeleton className="h-10 rounded-lg" /></div>
+          ) : support.length === 0 ? (
+            <p className="p-4 text-sm text-muted-foreground">
+              Nobody is below target in {periodLabel(period)}.
+            </p>
+          ) : (
+            <div className="divide-y divide-border/60">
+              {support.map((r) => {
+                const med = medians[r.role];
+                return (
+                  <Link
+                    key={r.user_id}
+                    href={`/hr/people/${r.user_id}?period=${period}`}
+                    className="flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-muted/40"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">{r.full_name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {r.role_label}
+                        {med != null && ` · role median ${med.toFixed(1)}`}
+                      </p>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <p className={cn("font-mono text-sm tabular-nums", ratingTone(r.rating))}>{num(r.score, { dp: 1 })}</p>
+                      <p className={cn("text-[11px]", ratingTone(r.rating))}>{r.rating}</p>
+                    </div>
+                    <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  </Link>
+                );
+              })}
+            </div>
+          )}
+        </PanelCard>
+
+        {/* ── not using the system ── */}
+        <PanelCard
+          icon={UserX}
+          tone="slate"
+          title="Not using the system"
+          subtitle={`Never logged in, or no login in ${IDLE_DAYS}+ days`}
+          flush
+        >
+          {staff.isError ? (
+            <div className="p-4"><QueryError error={staff.error} onRetry={() => staff.refetch()} /></div>
+          ) : staff.isLoading ? (
+            <div className="space-y-2 p-4"><Skeleton className="h-10 rounded-lg" /><Skeleton className="h-10 rounded-lg" /></div>
+          ) : loginWatch.length === 0 ? (
+            <p className="p-4 text-sm text-muted-foreground">Every active account has logged in recently.</p>
+          ) : (
+            <div className="divide-y divide-border/60">
+              {loginWatch.map((s) => (
+                <Link
+                  key={s.user_id}
+                  href={`/hr/people/${s.user_id}`}
+                  className="flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-muted/40"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium">{s.full_name}</p>
+                    <p className="text-xs text-muted-foreground">{s.role_label}</p>
+                  </div>
+                  <p className="shrink-0 text-xs text-amber-600">{lastSeen(s.last_login_at)}</p>
+                  <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                </Link>
+              ))}
+            </div>
+          )}
+        </PanelCard>
+      </div>
+
+      <PanelCard icon={TrendingUp} tone="sky" title="Company trend" subtitle="Median score, last 6 months">
         {trend.isLoading ? (
           <Skeleton className="h-24 rounded-lg" />
         ) : trend.data ? (
@@ -146,20 +268,6 @@ export function HrDashboard() {
           <p className="py-4 text-sm text-muted-foreground">History could not be loaded.</p>
         )}
       </PanelCard>
-
-      <Link href="/kpi-settings/hr-pack" className="block">
-        <PanelCard
-          icon={FileText}
-          tone="emerald"
-          title="HR grading pack"
-          subtitle="Each person's figures and evidence for a month — print or save as PDF"
-          action={<ChevronRight className="h-4 w-4 text-muted-foreground" />}
-        >
-          <p className="text-sm text-muted-foreground">
-            Open the monthly pack. Grades are entered by the Bunker Manager.
-          </p>
-        </PanelCard>
-      </Link>
     </DashboardShell>
   );
 }

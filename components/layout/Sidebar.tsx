@@ -162,6 +162,29 @@ export const NAV_ITEMS: NavItem[] = [
     roles: ["bunker_manager", "ops_supervisor", "logistics_officer", "cargo_superintendent", "finance_manager", "marine_operator"],
   },
 
+  // ── HR (read only) ───────────────────────────────────────────────────────
+  // The Bunker Manager can open these pages too (the API allows BM and HR),
+  // but already has them through Command Center and KPI Settings, so they are
+  // kept out of the BM's menu to keep it short.
+  {
+    href: "/hr/staff",
+    label: "Staff Directory",
+    icon: Users,
+    roles: ["hr"],
+  },
+  {
+    href: "/hr/performance",
+    label: "Staff Performance",
+    icon: Gauge,
+    roles: ["hr"],
+  },
+  {
+    href: "/kpi-settings/hr-pack",
+    label: "HR Grading Pack",
+    icon: FileText,
+    roles: ["hr"],
+  },
+
   {
     // The capture point for the on-time delivery KPI. The truck team sets the
     // plans, operation managers can too; nobody else has a reason to.
